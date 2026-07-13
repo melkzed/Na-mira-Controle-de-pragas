@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===========================================================================
+   Design tokens — expostos como CSS variables (RGB) para tema claro/escuro.
+   Consumidos pelo tailwind.config.ts via rgb(var(--token) / <alpha>).
+   =========================================================================== */
+:root,
+:root[data-theme='light'] {
+  --color-background: 248 250 252;   /* slate-50 */
+  --color-surface: 255 255 255;
+  --color-elevated: 255 255 255;
+  --color-foreground: 15 23 42;      /* slate-900 */
+  --color-muted: 241 245 249;        /* slate-100 */
+  --color-muted-foreground: 100 116 139; /* slate-500 */
+  --color-border: 226 232 240;       /* slate-200 */
+  --color-input: 226 232 240;
+  --color-ring: 16 185 129;          /* emerald-500 */
+
+  --color-brand: 16 185 129;         /* emerald-500 */
+  --color-brand-foreground: 255 255 255;
+  --color-brand-soft: 209 250 229;   /* emerald-100 */
+
+  --color-success: 16 185 129;
+  --color-success-soft: 209 250 229;
+  --color-warning: 245 158 11;
+  --color-warning-soft: 254 243 199;
+  --color-danger: 239 68 68;
+  --color-danger-soft: 254 226 226;
+  --color-info: 14 165 233;
+  --color-info-soft: 224 242 254;
+}
+
+:root[data-theme='dark'] {
+  --color-background: 9 12 20;
+  --color-surface: 17 22 33;
+  --color-elevated: 24 31 45;
+  --color-foreground: 226 232 240;
+  --color-muted: 30 38 54;
+  --color-muted-foreground: 148 163 184;
+  --color-border: 38 47 66;
+  --color-input: 44 54 74;
+  --color-ring: 16 185 129;
+
+  --color-brand: 16 185 129;
+  --color-brand-foreground: 6 20 15;
+  --color-brand-soft: 6 44 34;
+
+  --color-success: 34 197 94;
+  --color-success-soft: 8 45 30;
+  --color-warning: 251 191 36;
+  --color-warning-soft: 55 42 8;
+  --color-danger: 248 113 113;
+  --color-danger-soft: 55 20 20;
+  --color-info: 56 189 248;
+  --color-info-soft: 12 40 56;
+}
+
+* {
+  border-color: rgb(var(--color-border));
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  @apply bg-background text-foreground font-sans;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+/* Scrollbar discreta estilo Linear */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--color-border));
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--color-muted-foreground) / 0.5);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Skeleton shimmer */
+.skeleton {
+  @apply relative overflow-hidden rounded-md bg-muted;
+}
+.skeleton::after {
+  content: '';
+  @apply absolute inset-0 -translate-x-full animate-shimmer;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(var(--color-foreground) / 0.04),
+    transparent
+  );
+}
+
+/* Glass leve para overlays */
+.glass {
+  background: rgb(var(--color-surface) / 0.72);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+/* Grid pontilhado de fundo (hero/áreas vazias) */
+.dot-grid {
+  background-image: radial-gradient(
+    rgb(var(--color-border)) 1px,
+    transparent 1px
+  );
+  background-size: 22px 22px;
+}
+
+.focus-ring {
+  @apply outline-none ring-2 ring-ring/60 ring-offset-2 ring-offset-background;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
