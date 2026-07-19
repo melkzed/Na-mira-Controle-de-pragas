@@ -1,5 +1,8 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { AppLayout } from './presentation/components/layout/AppLayout';
+import { FieldLayout } from './presentation/components/layout/FieldLayout';
+import { RequireAuth } from './presentation/components/auth/RequireAuth';
+import { LoginPage } from './presentation/pages/LoginPage';
 import { DashboardPage } from './presentation/pages/DashboardPage';
 import { AgendaPage } from './presentation/pages/AgendaPage';
 import { RotasPage } from './presentation/pages/RotasPage';
@@ -18,9 +21,28 @@ import { CampoPage } from './presentation/pages/CampoPage';
 import { NotFoundPage } from './presentation/pages/NotFoundPage';
 
 export const router = createBrowserRouter([
+  { path: '/login', element: <LoginPage /> },
+
+  // App do Técnico — acesso a qualquer usuário autenticado (técnico é a home;
+  // staff pode pré-visualizar). Chrome dedicado, sem menu administrativo.
+  {
+    path: '/campo',
+    element: (
+      <RequireAuth>
+        <FieldLayout />
+      </RequireAuth>
+    ),
+    children: [{ index: true, element: <CampoPage /> }],
+  },
+
+  // Área administrativa — bloqueada para técnicos (redireciona a /campo).
   {
     path: '/',
-    element: <AppLayout />,
+    element: (
+      <RequireAuth requireStaff>
+        <AppLayout />
+      </RequireAuth>
+    ),
     children: [
       { index: true, element: <DashboardPage /> },
       { path: 'agenda', element: <AgendaPage /> },
@@ -36,7 +58,6 @@ export const router = createBrowserRouter([
       { path: 'fiscal', element: <FiscalPage /> },
       { path: 'relatorios', element: <RelatoriosPage /> },
       { path: 'config', element: <ConfigPage /> },
-      { path: 'campo', element: <CampoPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

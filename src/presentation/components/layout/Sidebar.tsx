@@ -9,6 +9,7 @@ import { Avatar } from '../ui/Avatar';
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const user = useAppStore((s) => s.currentUser);
+  if (!user) return null;
   const items = navForRole(user.role);
 
   const groups = items.reduce<Record<string, typeof items>>((acc, item) => {

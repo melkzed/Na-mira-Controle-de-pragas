@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Bell, Menu, Moon, Search, Sun } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Bell, LogOut, Menu, Moon, Search, Smartphone, Sun } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
-import { users } from '@/infrastructure/seed/data';
 import { ROLE_META } from '@/domain/enums';
 import { Button } from '../ui/Button';
 import { Avatar } from '../ui/Avatar';
@@ -10,11 +10,19 @@ import { Badge } from '../ui/Badge';
 import { cn } from '@/lib/utils';
 
 export function Topbar({ onMenu }: { onMenu: () => void }) {
-  const { theme, toggleTheme, currentUser, setUser, notifications, markAllRead, setCommandOpen } =
+  const { theme, toggleTheme, currentUser, logout, notifications, markAllRead, setCommandOpen } =
     useAppStore();
+  const navigate = useNavigate();
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const unread = notifications.filter((n) => !n.read).length;
+
+  if (!currentUser) return null;
+
+  const doLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border glass px-4 sm:px-6">
@@ -36,47 +44,6 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
 
       <div className="flex-1" />
 
-      {/* Alternador de papel (demo de permissões) */}
-      <div className="relative hidden md:block">
-        <button
-          onClick={() => setUserOpen((o) => !o)}
-          className="flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-muted"
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-          Perfil: {ROLE_META[currentUser.role].label}
-        </button>
-        <AnimatePresence>
-          {userOpen && (
-            <Dropdown onClose={() => setUserOpen(false)}>
-              <p className="px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-                Trocar perfil (demo RBAC)
-              </p>
-              {users
-                .filter((u, i, arr) => arr.findIndex((x) => x.role === u.role) === i)
-                .map((u) => (
-                  <button
-                    key={u.role}
-                    onClick={() => {
-                      setUser(u);
-                      setUserOpen(false);
-                    }}
-                    className={cn(
-                      'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-muted',
-                      u.role === currentUser.role && 'bg-muted',
-                    )}
-                  >
-                    <Avatar name={u.name} size="xs" />
-                    <div className="leading-tight">
-                      <p className="font-medium text-foreground">{ROLE_META[u.role].label}</p>
-                      <p className="text-xs text-muted-foreground">{u.name}</p>
-                    </div>
-                  </button>
-                ))}
-            </Dropdown>
-          )}
-        </AnimatePresence>
-      </div>
-
       {/* Tema */}
       <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Alternar tema">
         <AnimatePresence mode="wait" initial={false}>
@@ -94,12 +61,7 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
 
       {/* Notificações */}
       <div className="relative">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setNotifOpen((o) => !o)}
-          aria-label="Notificações"
-        >
+        <Button variant="ghost" size="icon" onClick={() => setNotifOpen((o) => !o)} aria-label="Notificações">
           <Bell size={18} />
           {unread > 0 && (
             <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white">
@@ -112,10 +74,7 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
             <Dropdown onClose={() => setNotifOpen(false)} width="w-80">
               <div className="flex items-center justify-between px-2 pb-2">
                 <p className="text-sm font-semibold text-foreground">Notificações</p>
-                <button
-                  onClick={markAllRead}
-                  className="text-xs font-medium text-brand hover:underline"
-                >
+                <button onClick={markAllRead} className="text-xs font-medium text-brand hover:underline">
                   Marcar todas como lidas
                 </button>
               </div>
@@ -123,14 +82,9 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
                 {notifications.map((n) => (
                   <div
                     key={n.id}
-                    className={cn(
-                      'flex gap-3 rounded-lg px-2 py-2.5 transition hover:bg-muted',
-                      !n.read && 'bg-muted/50',
-                    )}
+                    className={cn('flex gap-3 rounded-lg px-2 py-2.5 transition hover:bg-muted', !n.read && 'bg-muted/50')}
                   >
-                    <Badge tone={n.tone} dot className="mt-0.5 shrink-0">
-                      {''}
-                    </Badge>
+                    <Badge tone={n.tone} dot className="mt-0.5 shrink-0">{''}</Badge>
                     <div className="min-w-0 leading-snug">
                       <p className="text-sm font-medium text-foreground">{n.title}</p>
                       <p className="text-xs text-muted-foreground">{n.body}</p>
@@ -144,7 +98,47 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
       </div>
 
       <div className="h-6 w-px bg-border" />
-      <Avatar name={currentUser.name} size="sm" />
+
+      {/* Conta do usuário */}
+      <div className="relative">
+        <button
+          onClick={() => setUserOpen((o) => !o)}
+          className="flex items-center gap-2 rounded-lg p-0.5 transition hover:bg-muted"
+          aria-label="Conta"
+        >
+          <Avatar name={currentUser.name} size="sm" />
+          <span className="hidden pr-1 text-left leading-tight sm:block">
+            <span className="block text-sm font-medium text-foreground">{currentUser.name.split(' ')[0]}</span>
+            <span className="block text-[11px] text-muted-foreground">{ROLE_META[currentUser.role].label}</span>
+          </span>
+        </button>
+        <AnimatePresence>
+          {userOpen && (
+            <Dropdown onClose={() => setUserOpen(false)} width="w-60">
+              <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
+                <Avatar name={currentUser.name} size="sm" />
+                <div className="min-w-0 leading-tight">
+                  <p className="truncate text-sm font-medium text-foreground">{currentUser.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{currentUser.email}</p>
+                </div>
+              </div>
+              <div className="my-1 h-px bg-border" />
+              <button
+                onClick={() => { setUserOpen(false); navigate('/campo'); }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm text-foreground transition hover:bg-muted"
+              >
+                <Smartphone size={16} className="text-muted-foreground" /> App do Técnico
+              </button>
+              <button
+                onClick={doLogout}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm text-danger transition hover:bg-danger-soft"
+              >
+                <LogOut size={16} /> Sair
+              </button>
+            </Dropdown>
+          )}
+        </AnimatePresence>
+      </div>
     </header>
   );
 }

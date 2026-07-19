@@ -29,7 +29,7 @@ export function CommandPalette() {
     if (!commandOpen) setQuery('');
   }, [commandOpen]);
 
-  const nav = navForRole(currentUser.role);
+  const nav = currentUser ? navForRole(currentUser.role) : [];
 
   const results = useMemo(() => {
     const q = query.toLowerCase().trim();

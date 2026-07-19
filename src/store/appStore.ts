@@ -1,20 +1,24 @@
 import { create } from 'zustand';
 import type { AppNotification, User } from '@/domain/types';
 import { users } from '@/infrastructure/seed/data';
+import { authenticate } from '@/application/auth';
 import { daysFromNowIso } from '@/lib/misc';
 
 type Theme = 'light' | 'dark';
 
 interface AppState {
   theme: Theme;
-  currentUser: User;
+  currentUser: User | null;
   notifications: AppNotification[];
   commandOpen: boolean;
   toggleTheme: () => void;
-  setUser: (u: User) => void;
+  login: (email: string, password: string) => User | null;
+  logout: () => void;
   markAllRead: () => void;
   setCommandOpen: (open: boolean) => void;
 }
+
+const USER_KEY = 'namira-user';
 
 const initialNotifications: AppNotification[] = [
   { id: 'n-1', title: 'Nova Ordem de Serviço', body: 'OS #1045 criada para Restaurante Sabor & Cia', tone: 'info', entityType: 'service_order', read: false, createdAt: daysFromNowIso(0) },
@@ -31,9 +35,16 @@ function initTheme(): Theme {
   return theme;
 }
 
+/** Reidrata a sessão a partir do localStorage (sessão persistente). */
+function initUser(): User | null {
+  const id = localStorage.getItem(USER_KEY);
+  if (!id) return null;
+  return users.find((u) => u.id === id && u.isActive) ?? null;
+}
+
 export const useAppStore = create<AppState>((set) => ({
   theme: initTheme(),
-  currentUser: users[0], // admin por padrão
+  currentUser: initUser(),
   notifications: initialNotifications,
   commandOpen: false,
   toggleTheme: () =>
@@ -43,7 +54,18 @@ export const useAppStore = create<AppState>((set) => ({
       localStorage.setItem('namira-theme', theme);
       return { theme };
     }),
-  setUser: (currentUser) => set({ currentUser }),
+  login: (email, password) => {
+    const { user } = authenticate(email, password);
+    if (user) {
+      localStorage.setItem(USER_KEY, user.id);
+      set({ currentUser: user });
+    }
+    return user;
+  },
+  logout: () => {
+    localStorage.removeItem(USER_KEY);
+    set({ currentUser: null, commandOpen: false });
+  },
   markAllRead: () =>
     set((s) => ({
       notifications: s.notifications.map((n) => ({ ...n, read: true })),

@@ -129,9 +129,25 @@ O app roda **sem backend** usando os dados de exemplo (`VITE_DATA_SOURCE=seed`).
 Para conectar o Supabase futuramente, copie `.env.example` para `.env` e
 preencha as chaves.
 
-> 💡 Use o seletor **"Perfil"** no topo para alternar entre papéis (Administrador,
-> Supervisor, Financeiro, Técnico…) e ver o **RBAC** em ação — o menu e os acessos
-> mudam conforme a permissão. Pressione **⌘K / Ctrl+K** para a paleta de comandos.
+### Acesso (login)
+
+A aplicação abre em uma **tela de login**. Use os botões de **acesso rápido**
+ou entre com um e-mail e a senha de demonstração `namira123`:
+
+| Perfil | E-mail | Vai para |
+| --- | --- | --- |
+| Administrador | `marina@namira.com` | Dashboard (painel completo) |
+| Supervisor | `rafael@namira.com` | Dashboard |
+| Financeiro | `camila@namira.com` | Dashboard |
+| **Técnico** | `diego@namira.com` | **App do Técnico** (rota do dia) |
+
+O **técnico** entra direto no app de campo (agenda, rota, checklist e estoque
+próprios) e **não acessa** nenhuma área administrativa — as rotas são protegidas
+por papel (RBAC). Gestores podem abrir o **App do Técnico** e pré-visualizar
+qualquer técnico. A sessão é persistente (fica salva ao recarregar).
+
+> 💡 Pressione **⌘K / Ctrl+K** para a paleta de comandos. Use **"Sair"** no menu
+> da conta (canto superior direito) para trocar de usuário.
 
 ---
 

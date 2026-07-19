@@ -15,37 +15,47 @@ import { technicians } from '@/infrastructure/seed/data';
 import type { Appointment } from '@/domain/types';
 import { fmtTime } from '@/lib/date';
 import { cn } from '@/lib/utils';
+import { useAppStore } from '@/store/appStore';
 
 /**
  * Painel do Técnico — experiência dedicada de campo (mobile-first).
- * Sem acesso a dados administrativos: apenas rotina, rota e estoque próprio.
+ * Usa a identidade do técnico autenticado. Sem acesso a dados administrativos:
+ * apenas a própria rotina, rota e estoque. Staff pode pré-visualizar qualquer
+ * técnico através do seletor.
  */
 export function CampoPage() {
-  const [techId, setTechId] = useState(technicians[0].id);
+  const currentUser = useAppStore((s) => s.currentUser);
+  const isTech = currentUser?.role === 'tecnico';
+  const [previewId, setPreviewId] = useState(technicians[0].id);
+  const techId = isTech && currentUser ? currentUser.id : previewId;
+
   const todayIso = new Date().toISOString();
   const appts = useMemo(() => appointmentsForTechnician(techId, todayIso), [techId, todayIso]);
-  const [activeId, setActiveId] = useState<string | null>(appts[0]?.id ?? null);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const active = appts.find((a) => a.id === activeId) ?? appts[0];
   const loc = `loc-${techId.replace('u-', '')}`;
   const stock = technicianBalances(loc);
-  const tech = technicians.find((t) => t.id === techId)!;
+  const tech = technicians.find((t) => t.id === techId) ?? { id: techId, name: currentUser?.name ?? 'Técnico' };
 
   const doneCount = appts.filter((a) => a.status === 'finalizado').length;
 
   return (
-    <div>
-      {/* Seletor de técnico (apenas para demonstração — em produção vem do login) */}
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">App do Técnico</h1>
-          <p className="text-sm text-muted-foreground">Rotina de campo · visão do técnico</p>
+    <div className="mx-auto max-w-md">
+      {/* Seletor de pré-visualização — visível apenas para gestores/staff */}
+      {!isTech && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 p-3">
+          <span className="text-xs font-medium text-muted-foreground">Pré-visualizar como:</span>
+          <select
+            value={previewId}
+            onChange={(e) => { setPreviewId(e.target.value); setActiveId(null); }}
+            className="h-8 flex-1 rounded-lg border border-input bg-surface px-2 text-sm"
+          >
+            {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
         </div>
-        <select value={techId} onChange={(e) => { setTechId(e.target.value); setActiveId(null); }} className="h-9 rounded-lg border border-input bg-surface px-3 text-sm">
-          {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-      </div>
+      )}
 
-      <div className="mx-auto max-w-md">
+      <div>
         {/* Cabeçalho do técnico */}
         <Card className="mb-4 overflow-hidden">
           <div className="bg-gradient-to-br from-brand to-emerald-600 p-5 text-white">
