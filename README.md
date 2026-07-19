@@ -176,13 +176,24 @@ Técnico** — cada um enxergando apenas o necessário. O técnico acessa soment
 
 ---
 
-## 🗺️ Roadmap de integração
+## ✅ Funcional no modo standalone
 
-- [ ] Conectar `repository.ts` ao Supabase (Auth + Postgres + Storage)
-- [ ] Row Level Security por `org_id` e políticas por papel
+Rodando sem backend (dados persistidos no navegador via localStorage):
+
+- [x] **Login e acesso por papel** (sessão persistente; técnico isolado no app de campo)
+- [x] **CRUD real** de Clientes, Agendamentos, CRM, Produtos, Financeiro, Equipamentos, Veículos
+- [x] Cliente com **validação** (CPF/CNPJ, e-mail), máscaras e **auto-save** de rascunho
+- [x] Agenda: novo atendimento, mudança de status, cancelar/excluir
+- [x] **PDF da Ordem de Serviço** (impressão) e **exportação CSV**
+- [x] **PWA** instalável (base offline) · **code splitting** · **error boundary**
+- [x] Paleta ⌘K por teclado · acessibilidade do Drawer
+
+## 🗺️ Roadmap de integração (requer serviços externos)
+
+- [ ] Conectar `repository.ts` ao Supabase (Auth + Postgres + Storage) — RLS já pronta em [`db/rls.sql`](db/rls.sql)
 - [ ] Roteirização real (Google Maps Directions / Distance Matrix)
 - [ ] Emissão de NFS-e via provedor municipal
-- [ ] Geração de PDF de OS e notificações (WhatsApp / push)
+- [ ] Notificações reais (WhatsApp / push / e-mail)
 - [ ] App mobile nativo do técnico (offline-first)
 
 ---
