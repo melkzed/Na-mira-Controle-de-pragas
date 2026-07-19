@@ -12,6 +12,7 @@ import { getCustomer, getProduct, getServiceType, getUser } from '@/application/
 import type { ServiceOrder } from '@/domain/types';
 import { fmtDate } from '@/lib/date';
 import { downloadCsv } from '@/lib/export';
+import { printServiceOrder } from '@/lib/printOrder';
 
 export function OrdensPage() {
   const [selected, setSelected] = useState<ServiceOrder | null>(null);
@@ -61,7 +62,7 @@ export function OrdensPage() {
         title={`Ordem de Serviço #${selected?.number}`}
         subtitle={selected ? getCustomer(selected.customerId)?.name : ''}
         width="max-w-xl"
-        footer={<div className="flex justify-end gap-2"><Button variant="outline" leftIcon={<Download size={15} />}>Gerar PDF</Button><Button>Editar</Button></div>}
+        footer={<div className="flex justify-end gap-2"><Button variant="outline" leftIcon={<Download size={15} />} onClick={() => selected && printServiceOrder(selected)}>Gerar PDF</Button><Button>Editar</Button></div>}
       >
         {selected && (
           <div className="space-y-5">

@@ -106,8 +106,10 @@ erDiagram
 
 ## Row Level Security (Supabase)
 
-Recomendação: habilite RLS em todas as tabelas de negócio e crie políticas por
-`org_id` do usuário autenticado, restringindo ainda por papel. Exemplo:
+As políticas prontas estão em [`db/rls.sql`](../db/rls.sql): habilita RLS em
+todas as tabelas com `org_id`, cria isolamento por organização, restringe o
+**técnico** aos próprios atendimentos/OS/estoque e bloqueia os módulos
+financeiro/fiscal para o papel técnico. Exemplo do padrão usado:
 
 ```sql
 alter table appointments enable row level security;
@@ -133,6 +135,7 @@ create policy "tecnico vê os seus" on appointments
 ```bash
 # PostgreSQL local
 psql "$DATABASE_URL" -f db/schema.sql
+psql "$DATABASE_URL" -f db/rls.sql     # políticas de Row Level Security
 psql "$DATABASE_URL" -f db/seed.sql
 
 # Supabase (CLI)
