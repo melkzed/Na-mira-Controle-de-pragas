@@ -10,6 +10,7 @@ import { Table, type Column } from '../components/ui/Table';
 import { Avatar } from '../components/ui/Avatar';
 import * as seed from '@/infrastructure/seed/data';
 import { centralBalance, getUser, technicianBalances } from '@/application/repository';
+import { useProductsStore } from '@/store/entityStores';
 import type { Product } from '@/domain/types';
 import { formatNumber, daysUntil } from '@/lib/utils';
 import { fmtDate } from '@/lib/date';
@@ -50,6 +51,7 @@ export function EstoquePage() {
 }
 
 function CentralStock() {
+  const products = useProductsStore((s) => s.items);
   const columns: Column<Product>[] = [
     { key: 'name', header: 'Produto', render: (p) => (
       <div><p className="font-medium">{p.name}</p><p className="text-xs text-muted-foreground">{p.activeIngredient ?? p.manufacturer}</p></div>
@@ -70,7 +72,7 @@ function CentralStock() {
       return qty <= p.minQuantity ? <Badge tone="danger" dot>Repor</Badge> : qty <= p.minQuantity * 1.5 ? <Badge tone="warning" dot>Baixo</Badge> : <Badge tone="success" dot>OK</Badge>;
     } },
   ];
-  return <Table columns={columns} rows={seed.products} keyField={(p) => p.id} />;
+  return <Table columns={columns} rows={products} keyField={(p) => p.id} />;
 }
 
 function TechStock() {

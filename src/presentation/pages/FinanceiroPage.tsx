@@ -10,11 +10,16 @@ import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
 import * as seed from '@/infrastructure/seed/data';
 import { getCustomer } from '@/application/repository';
+import { useFinanceStore } from '@/store/entityStores';
+import { uid } from '@/store/createEntityStore';
+import { Drawer } from '../components/ui/Drawer';
+import { Field, Input, Select } from '../components/ui/Field';
+import { Check } from 'lucide-react';
 import type { FinanceEntry } from '@/domain/types';
-import { FinanceEntryStatus } from '@/domain/enums';
+import { FinanceEntryStatus, type FinanceEntryType } from '@/domain/enums';
 import { formatCompactCurrency, formatCurrency } from '@/lib/utils';
 import { fmtDate } from '@/lib/date';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const statusMeta: Record<FinanceEntryStatus, { label: string; tone: any }> = {
   pago: { label: 'Pago', tone: 'success' },
@@ -24,17 +29,19 @@ const statusMeta: Record<FinanceEntryStatus, { label: string; tone: any }> = {
 };
 
 export function FinanceiroPage() {
+  const { items: entries, add } = useFinanceStore();
   const [tab, setTab] = useState<'receber' | 'pagar'>('receber');
+  const [formOpen, setFormOpen] = useState(false);
 
   const totals = useMemo(() => {
-    const receber = seed.financeEntries.filter((e) => e.type === 'receita' && e.status !== 'pago' && e.status !== 'cancelado').reduce((s, e) => s + e.amount, 0);
-    const pagar = seed.financeEntries.filter((e) => e.type === 'despesa' && e.status !== 'pago' && e.status !== 'cancelado').reduce((s, e) => s + e.amount, 0);
-    const recebido = seed.financeEntries.filter((e) => e.type === 'receita' && e.status === 'pago').reduce((s, e) => s + e.amount, 0);
-    const pago = seed.financeEntries.filter((e) => e.type === 'despesa' && e.status === 'pago').reduce((s, e) => s + e.amount, 0);
+    const receber = entries.filter((e) => e.type === 'receita' && e.status !== 'pago' && e.status !== 'cancelado').reduce((s, e) => s + e.amount, 0);
+    const pagar = entries.filter((e) => e.type === 'despesa' && e.status !== 'pago' && e.status !== 'cancelado').reduce((s, e) => s + e.amount, 0);
+    const recebido = entries.filter((e) => e.type === 'receita' && e.status === 'pago').reduce((s, e) => s + e.amount, 0);
+    const pago = entries.filter((e) => e.type === 'despesa' && e.status === 'pago').reduce((s, e) => s + e.amount, 0);
     return { receber, pagar, saldo: recebido - pago, recebido };
-  }, []);
+  }, [entries]);
 
-  const rows = seed.financeEntries.filter((e) => (tab === 'receber' ? e.type === 'receita' : e.type === 'despesa'));
+  const rows = entries.filter((e) => (tab === 'receber' ? e.type === 'receita' : e.type === 'despesa'));
 
   const columns: Column<FinanceEntry>[] = [
     { key: 'desc', header: 'Descrição', render: (e) => (
@@ -50,7 +57,7 @@ export function FinanceiroPage() {
       <PageHeader
         title="Financeiro"
         description="Fluxo de caixa, contas a pagar e a receber"
-        actions={<Button leftIcon={<Plus size={16} />}>Novo lançamento</Button>}
+        actions={<Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Novo lançamento</Button>}
       />
 
       <Stagger className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -103,7 +110,54 @@ export function FinanceiroPage() {
         </div>
         <Table columns={columns} rows={rows} keyField={(e) => e.id} />
       </div>
+
+      <FinanceForm open={formOpen} defaultType={tab === 'receber' ? 'receita' : 'despesa'} onClose={() => setFormOpen(false)} onSave={(e) => { add(e); setFormOpen(false); }} />
     </div>
+  );
+}
+
+function FinanceForm({ open, defaultType, onClose, onSave }: { open: boolean; defaultType: FinanceEntryType; onClose: () => void; onSave: (e: FinanceEntry) => void }) {
+  const [type, setType] = useState<FinanceEntryType>(defaultType);
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [status, setStatus] = useState<FinanceEntryStatus>('pendente');
+  const [dueDate, setDueDate] = useState('');
+  const [touched, setTouched] = useState(false);
+
+  useEffect(() => {
+    if (open) { setType(defaultType); setDescription(''); setAmount(''); setStatus('pendente'); setDueDate(''); setTouched(false); }
+  }, [open, defaultType]);
+
+  const valid = description.trim() && Number(amount) > 0;
+  const submit = () => {
+    setTouched(true);
+    if (!valid) return;
+    onSave({
+      id: uid('fe'), orgId: 'org-namira', type, status,
+      description: description.trim(), amount: Number(amount),
+      dueDate: dueDate || undefined,
+      paidAt: status === 'pago' ? (dueDate || new Date().toISOString().slice(0, 10)) : undefined,
+      createdAt: new Date().toISOString(),
+    });
+  };
+
+  return (
+    <Drawer open={open} onClose={onClose} title="Novo lançamento" subtitle="Receita ou despesa"
+      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha descrição e valor.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!valid}>Lançar</Button></div></div>}>
+      <div className="space-y-4">
+        <Segmented value={type} onChange={setType} options={[{ value: 'receita', label: 'Receita' }, { value: 'despesa', label: 'Despesa' }]} />
+        <Field label="Descrição" required><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Contrato mensal · Cliente X" /></Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Valor (R$)" required><Input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
+          <Field label="Vencimento"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
+          <Field label="Status" className="col-span-2">
+            <Select value={status} onChange={(e) => setStatus(e.target.value as FinanceEntryStatus)}>
+              {(['pendente', 'pago', 'atrasado', 'cancelado'] as FinanceEntryStatus[]).map((s) => <option key={s} value={s}>{statusMeta[s].label}</option>)}
+            </Select>
+          </Field>
+        </div>
+      </div>
+    </Drawer>
   );
 }
 
