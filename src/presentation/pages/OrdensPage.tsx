@@ -11,9 +11,22 @@ import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getProduct, getServiceType, getUser } from '@/application/repository';
 import type { ServiceOrder } from '@/domain/types';
 import { fmtDate } from '@/lib/date';
+import { downloadCsv } from '@/lib/export';
 
 export function OrdensPage() {
   const [selected, setSelected] = useState<ServiceOrder | null>(null);
+
+  const exportCsv = () => {
+    downloadCsv('ordens-de-servico', seed.serviceOrders, [
+      { header: 'OS', value: (so) => so.number },
+      { header: 'Cliente', value: (so) => getCustomer(so.customerId)?.name ?? '' },
+      { header: 'Serviço', value: (so) => getServiceType(so.serviceTypeId)?.name ?? '' },
+      { header: 'Técnico', value: (so) => getUser(so.technicianId)?.name ?? '' },
+      { header: 'Status', value: (so) => so.status },
+      { header: 'Duração (min)', value: (so) => so.totalMinutes ?? '' },
+      { header: 'Criada em', value: (so) => fmtDate(so.createdAt) },
+    ]);
+  };
 
   const columns: Column<ServiceOrder>[] = [
     { key: 'num', header: 'OS', render: (so) => <span className="font-semibold">#{so.number}</span> },
@@ -33,7 +46,12 @@ export function OrdensPage() {
       <PageHeader
         title="Ordens de Serviço"
         description={`${seed.serviceOrders.length} ordens registradas`}
-        actions={<Button leftIcon={<Plus size={16} />}>Nova OS</Button>}
+        actions={
+          <>
+            <Button variant="outline" leftIcon={<Download size={16} />} onClick={exportCsv}>Exportar CSV</Button>
+            <Button leftIcon={<Plus size={16} />}>Nova OS</Button>
+          </>
+        }
       />
       <Table columns={columns} rows={seed.serviceOrders} keyField={(so) => so.id} onRowClick={setSelected} />
 

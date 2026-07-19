@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, LogOut, Moon, ShieldCheck, Sun } from 'lucide-react';
@@ -6,6 +6,7 @@ import { useAppStore } from '@/store/appStore';
 import { ROLE_META } from '@/domain/enums';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
+import { PageLoader } from '../RouteError';
 
 /**
  * Layout do App do Técnico — chrome enxuto, mobile-first, sem menu
@@ -86,7 +87,9 @@ export function FieldLayout() {
       </header>
 
       <main className="flex-1 overflow-y-auto px-4 py-6">
-        <Outlet />
+        <Suspense fallback={<PageLoader />}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );

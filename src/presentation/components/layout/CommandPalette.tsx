@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/store/appStore';
+import { useCustomersStore } from '@/store/customersStore';
 import { navForRole } from '@/application/navigation';
-import { customers } from '@/infrastructure/seed/data';
 import { Icon } from '../ui/Icon';
 import { cn } from '@/lib/utils';
 
 /** Paleta de comandos (⌘K) — navegação e busca de clientes. */
 export function CommandPalette() {
   const { commandOpen, setCommandOpen, currentUser } = useAppStore();
+  const customers = useCustomersStore((s) => s.customers);
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
 
@@ -55,6 +56,30 @@ export function CommandPalette() {
     setCommandOpen(false);
   };
 
+  // Navegação por teclado (↑/↓/Enter).
+  const [activeIndex, setActiveIndex] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => setActiveIndex(0), [query, commandOpen]);
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!results.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((i) => (i + 1) % results.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((i) => (i - 1 + results.length) % results.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const r = results[activeIndex];
+      if (r) go(r.to);
+    }
+  };
+
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>(`[data-idx="${activeIndex}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [activeIndex]);
+
   return (
     <AnimatePresence>
       {commandOpen && (
@@ -79,6 +104,7 @@ export function CommandPalette() {
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onKeyDown}
                 placeholder="Buscar páginas, clientes…"
                 className="h-14 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
               />
@@ -86,7 +112,7 @@ export function CommandPalette() {
                 ESC
               </kbd>
             </div>
-            <div className="max-h-80 overflow-y-auto p-2">
+            <div ref={listRef} className="max-h-80 overflow-y-auto p-2">
               {results.length === 0 && (
                 <p className="px-3 py-8 text-center text-sm text-muted-foreground">
                   Nenhum resultado para “{query}”.
@@ -95,9 +121,12 @@ export function CommandPalette() {
               {results.map((r, i) => (
                 <button
                   key={`${r.type}-${r.to}-${i}`}
+                  data-idx={i}
                   onClick={() => go(r.to)}
+                  onMouseEnter={() => setActiveIndex(i)}
                   className={cn(
-                    'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition hover:bg-muted',
+                    'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition',
+                    i === activeIndex ? 'bg-muted' : 'hover:bg-muted',
                   )}
                 >
                   <span className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground">

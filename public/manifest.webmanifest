@@ -1,0 +1,17 @@
+{
+  "name": "Na Mira · Controle de Pragas",
+  "short_name": "Na Mira",
+  "description": "Gestão operacional para controle de pragas — agenda, equipes em campo e estoque.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f4f7f5",
+  "theme_color": "#10b981",
+  "categories": ["business", "productivity"],
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

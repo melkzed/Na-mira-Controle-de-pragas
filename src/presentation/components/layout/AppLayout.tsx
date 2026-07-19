@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { CommandPalette } from './CommandPalette';
+import { PageLoader } from '../RouteError';
 import { cn } from '@/lib/utils';
 
 export function AppLayout() {
@@ -57,7 +58,9 @@ export function AppLayout() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.25 }}
             >
-              <Outlet />
+              <Suspense fallback={<PageLoader />}>
+                <Outlet />
+              </Suspense>
             </motion.div>
           </div>
         </main>

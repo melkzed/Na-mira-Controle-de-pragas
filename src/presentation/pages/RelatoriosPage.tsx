@@ -6,6 +6,10 @@ import { Button } from '../components/ui/Button';
 import { Card, CardBody } from '../components/ui/Card';
 import { Icon } from '../components/ui/Icon';
 import { Badge } from '../components/ui/Badge';
+import * as seed from '@/infrastructure/seed/data';
+import { getCustomer, getServiceType, getUser } from '@/application/repository';
+import { downloadCsv } from '@/lib/export';
+import { fmtDate } from '@/lib/date';
 
 const reports = [
   { group: 'Operação', items: [
@@ -36,6 +40,38 @@ const reports = [
 
 export function RelatoriosPage() {
   const [range, setRange] = useState('30d');
+
+  // Exporta um dataset representativo conforme o grupo do relatório.
+  const exportReport = (group: string, name: string) => {
+    const file = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    if (group === 'Financeiro & Fiscal') {
+      downloadCsv(file, seed.financeEntries, [
+        { header: 'Descrição', value: (e) => e.description },
+        { header: 'Tipo', value: (e) => e.type },
+        { header: 'Status', value: (e) => e.status },
+        { header: 'Valor', value: (e) => e.amount },
+        { header: 'Vencimento', value: (e) => (e.dueDate ? fmtDate(e.dueDate) : '') },
+      ]);
+    } else if (group === 'Equipes & Recursos') {
+      downloadCsv(file, seed.products, [
+        { header: 'Produto', value: (p) => p.name },
+        { header: 'Princípio ativo', value: (p) => p.activeIngredient ?? '' },
+        { header: 'Unidade', value: (p) => p.unit },
+        { header: 'Estoque mínimo', value: (p) => p.minQuantity },
+        { header: 'Preço', value: (p) => p.price },
+      ]);
+    } else {
+      downloadCsv(file, seed.serviceOrders, [
+        { header: 'OS', value: (so) => so.number },
+        { header: 'Cliente', value: (so) => getCustomer(so.customerId)?.name ?? '' },
+        { header: 'Serviço', value: (so) => getServiceType(so.serviceTypeId)?.name ?? '' },
+        { header: 'Técnico', value: (so) => getUser(so.technicianId)?.name ?? '' },
+        { header: 'Status', value: (so) => so.status },
+        { header: 'Duração (min)', value: (so) => so.totalMinutes ?? '' },
+      ]);
+    }
+  };
+
   return (
     <div>
       <PageHeader
@@ -71,9 +107,9 @@ export function RelatoriosPage() {
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5">
-                      <Button variant="outline" size="sm" leftIcon={<FileText size={13} />}>PDF</Button>
-                      <Button variant="outline" size="sm" leftIcon={<FileSpreadsheet size={13} />}>Excel</Button>
-                      <Button variant="ghost" size="sm" leftIcon={<Download size={13} />}>CSV</Button>
+                      <Button variant="outline" size="sm" leftIcon={<FileText size={13} />} onClick={() => window.print()}>PDF</Button>
+                      <Button variant="outline" size="sm" leftIcon={<FileSpreadsheet size={13} />} onClick={() => exportReport(section.group, r.name)}>Excel</Button>
+                      <Button variant="ghost" size="sm" leftIcon={<Download size={13} />} onClick={() => exportReport(section.group, r.name)}>CSV</Button>
                     </div>
                   </Card>
                 </motion.div>
