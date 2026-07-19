@@ -9,8 +9,12 @@ import { Avatar } from '../components/ui/Avatar';
 import { Drawer } from '../components/ui/Drawer';
 import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { Badge } from '../components/ui/Badge';
+import { Select } from '../components/ui/Field';
+import { AppointmentForm } from '../components/AppointmentForm';
 import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getServiceType, getUser } from '@/application/repository';
+import { useAppointmentsStore } from '@/store/appointmentsStore';
+import { APPOINTMENT_STATUS_META, type AppointmentStatus } from '@/domain/enums';
 import type { Appointment } from '@/domain/types';
 import { addDays, fmtTime, isSameDay, isToday, parseISO, weekDays, weekRangeLabel } from '@/lib/date';
 import { format } from 'date-fns';
@@ -23,13 +27,17 @@ const HOURS = Array.from({ length: 12 }, (_, i) => i + 7); // 07h–18h
 export function AgendaPage() {
   const [view, setView] = useState<View>('semana');
   const [ref, setRef] = useState(new Date());
-  const [selected, setSelected] = useState<Appointment | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [techFilter, setTechFilter] = useState<string>('todos');
+  const [formOpen, setFormOpen] = useState(false);
 
+  const allAppointments = useAppointmentsStore((s) => s.appointments);
   const appts = useMemo(
-    () => seed.appointments.filter((a) => techFilter === 'todos' || a.technicianId === techFilter),
-    [techFilter],
+    () => allAppointments.filter((a) => techFilter === 'todos' || a.technicianId === techFilter),
+    [allAppointments, techFilter],
   );
+  const selected = allAppointments.find((a) => a.id === selectedId) ?? null;
+  const setSelected = (a: Appointment | null) => setSelectedId(a?.id ?? null);
 
   const move = (dir: number) => {
     const days = view === 'mes' ? 30 : view === 'dia' || view === 'agenda' ? 1 : 7;
@@ -41,7 +49,7 @@ export function AgendaPage() {
       <PageHeader
         title="Agenda"
         description="Módulo central de agendamento e gestão de equipes em campo"
-        actions={<Button leftIcon={<Plus size={16} />}>Novo agendamento</Button>}
+        actions={<Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Novo agendamento</Button>}
       />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -86,6 +94,12 @@ export function AgendaPage() {
       {view === 'mapa' && <MapView appts={appts} onSelect={setSelected} />}
 
       <AppointmentDrawer appt={selected} onClose={() => setSelected(null)} />
+      <AppointmentForm
+        open={formOpen}
+        defaultDate={view === 'dia' ? ref : undefined}
+        onClose={() => setFormOpen(false)}
+        onSaved={() => setFormOpen(false)}
+      />
     </div>
   );
 }
@@ -294,6 +308,8 @@ function ApptRow({ a, onSelect, compact }: { a: Appointment; onSelect: (a: Appoi
 }
 
 function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClose: () => void }) {
+  const setStatus = useAppointmentsStore((s) => s.setStatus);
+  const removeAppt = useAppointmentsStore((s) => s.remove);
   if (!appt) return null;
   const cust = getCustomer(appt.customerId);
   const st = getServiceType(appt.serviceTypeId);
@@ -306,6 +322,13 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
           <PriorityBadge priority={appt.priority} />
           <Badge tone="neutral">{fmtTime(appt.scheduledStart)}–{fmtTime(appt.scheduledEnd)}</Badge>
         </div>
+        <Section title="Status do atendimento">
+          <Select value={appt.status} onChange={(e) => setStatus(appt.id, e.target.value as AppointmentStatus)}>
+            {(Object.keys(APPOINTMENT_STATUS_META) as AppointmentStatus[]).map((s) => (
+              <option key={s} value={s}>{APPOINTMENT_STATUS_META[s].label}</option>
+            ))}
+          </Select>
+        </Section>
         <Section title="Endereço"><p className="text-sm text-foreground">{appt.address}</p></Section>
         {tech && <Section title="Técnico responsável"><div className="flex items-center gap-2"><Avatar name={tech.name} size="sm" /><span className="text-sm text-foreground">{tech.name}</span></div></Section>}
         <Section title="Contato">
@@ -321,8 +344,8 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
         <div className="flex flex-col gap-2 pt-2">
           <Button leftIcon={<MapPin size={15} />} variant="outline">Abrir no mapa / navegação</Button>
           <div className="grid grid-cols-2 gap-2">
-            <Button variant="secondary">Reagendar</Button>
-            <Button>Gerar OS</Button>
+            <Button variant="secondary" onClick={() => setStatus(appt.id, 'cancelado')}>Cancelar atendimento</Button>
+            <Button variant="danger" onClick={() => { removeAppt(appt.id); onClose(); }}>Excluir</Button>
           </div>
         </div>
       </div>
