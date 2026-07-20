@@ -267,6 +267,12 @@ export interface Appointment {
   notes?: string;
   routeOrder?: number;
   products: AppointmentProduct[];
+  /** Agrupa as ocorrências de uma mesma recorrência (cada uma é independente). */
+  recurrenceId?: string;
+  /** Rótulo da recorrência: 'semanal' | 'quinzenal' | 'mensal'. */
+  recurrenceRule?: string;
+  /** Data/hora em que a visita foi confirmada (pelo cliente/atendimento). */
+  confirmedAt?: string;
 }
 
 export interface ServiceOrderProduct {

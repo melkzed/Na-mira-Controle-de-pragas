@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, MapPin, Plus } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, MapPin, Plus } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
@@ -29,13 +29,18 @@ export function AgendaPage() {
   const [ref, setRef] = useState(new Date());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [techFilter, setTechFilter] = useState<string>('todos');
+  const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [formOpen, setFormOpen] = useState(false);
 
   const allAppointments = useAppointmentsStore((s) => s.appointments);
   const appts = useMemo(
-    () => allAppointments.filter((a) => techFilter === 'todos' || a.technicianId === techFilter),
-    [allAppointments, techFilter],
+    () => allAppointments.filter(
+      (a) => (techFilter === 'todos' || a.technicianId === techFilter) &&
+             (statusFilter === 'todos' || a.status === statusFilter),
+    ),
+    [allAppointments, techFilter, statusFilter],
   );
+  const awaitingCount = allAppointments.filter((a) => a.status === 'agendado').length;
   const selected = allAppointments.find((a) => a.id === selectedId) ?? null;
   const setSelected = (a: Appointment | null) => setSelectedId(a?.id ?? null);
 
@@ -63,6 +68,17 @@ export function AgendaPage() {
         </div>
         <div className="flex items-center gap-2">
           <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="h-9 rounded-lg border border-input bg-surface px-3 text-sm text-foreground"
+          >
+            <option value="todos">Todos os status</option>
+            <option value="agendado">Aguardando confirmação</option>
+            <option value="confirmado">Confirmadas</option>
+            <option value="reagendado">Reagendadas</option>
+            <option value="cancelado">Canceladas</option>
+          </select>
+          <select
             value={techFilter}
             onChange={(e) => setTechFilter(e.target.value)}
             className="h-9 rounded-lg border border-input bg-surface px-3 text-sm text-foreground"
@@ -86,6 +102,17 @@ export function AgendaPage() {
           />
         </div>
       </div>
+
+      {awaitingCount > 0 && statusFilter !== 'agendado' && (
+        <button
+          onClick={() => setStatusFilter('agendado')}
+          className="mb-4 flex w-full items-center gap-2 rounded-xl border border-warning/40 bg-warning-soft/60 px-4 py-2.5 text-left text-sm text-foreground transition hover:brightness-105"
+        >
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-warning text-white text-xs font-bold">{awaitingCount}</span>
+          <span className="flex-1"><b>{awaitingCount} visita(s)</b> aguardando confirmação do cliente.</span>
+          <span className="text-xs font-medium text-warning">Ver →</span>
+        </button>
+      )}
 
       {view === 'semana' && <WeekView refDate={ref} appts={appts} onSelect={setSelected} />}
       {view === 'dia' && <DayView refDate={ref} appts={appts} onSelect={setSelected} />}
@@ -309,19 +336,38 @@ function ApptRow({ a, onSelect, compact }: { a: Appointment; onSelect: (a: Appoi
 
 function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClose: () => void }) {
   const setStatus = useAppointmentsStore((s) => s.setStatus);
+  const update = useAppointmentsStore((s) => s.update);
   const removeAppt = useAppointmentsStore((s) => s.remove);
+  const [rescheduling, setRescheduling] = useState(false);
+
+  const cust = appt ? getCustomer(appt.customerId) : undefined;
+  const st = getServiceType(appt?.serviceTypeId);
+  const tech = getUser(appt?.technicianId);
   if (!appt) return null;
-  const cust = getCustomer(appt.customerId);
-  const st = getServiceType(appt.serviceTypeId);
-  const tech = getUser(appt.technicianId);
+
+  const confirmVisit = () => update(appt.id, { status: 'confirmado', confirmedAt: new Date().toISOString() });
+
   return (
-    <Drawer open={!!appt} onClose={onClose} title={cust?.name ?? 'Atendimento'} subtitle={st?.name}>
+    <Drawer open={!!appt} onClose={() => { setRescheduling(false); onClose(); }} title={cust?.name ?? 'Atendimento'} subtitle={st?.name}>
       <div className="space-y-5">
         <div className="flex flex-wrap gap-2">
           <AppointmentStatusBadge status={appt.status} />
           <PriorityBadge priority={appt.priority} />
           <Badge tone="neutral">{fmtTime(appt.scheduledStart)}–{fmtTime(appt.scheduledEnd)}</Badge>
+          {appt.recurrenceRule && <Badge tone="info">Recorrente · {appt.recurrenceRule}</Badge>}
         </div>
+
+        {/* Confirmação da visita */}
+        {appt.status === 'agendado' && (
+          <div className="rounded-xl border border-warning/40 bg-warning-soft/50 p-3">
+            <p className="text-sm text-foreground">Esta visita <b>aguarda confirmação</b> do cliente.</p>
+            <Button size="sm" className="mt-2" leftIcon={<Check size={14} />} onClick={confirmVisit}>Confirmar visita</Button>
+          </div>
+        )}
+        {appt.confirmedAt && appt.status === 'confirmado' && (
+          <p className="text-xs text-success">✓ Confirmada em {new Date(appt.confirmedAt).toLocaleString('pt-BR')}</p>
+        )}
+
         <Section title="Status do atendimento">
           <Select value={appt.status} onChange={(e) => setStatus(appt.id, e.target.value as AppointmentStatus)}>
             {(Object.keys(APPOINTMENT_STATUS_META) as AppointmentStatus[]).map((s) => (
@@ -329,6 +375,7 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
             ))}
           </Select>
         </Section>
+
         <Section title="Endereço"><p className="text-sm text-foreground">{appt.address}</p></Section>
         {cust?.permanentNotes && (
           <div className="rounded-lg border border-warning/30 bg-warning-soft/60 p-3">
@@ -347,15 +394,65 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
           <Info label="Área" value={cust?.areaM2 ? `${cust.areaM2} m²` : '—'} />
           <Info label="Ordem na rota" value={`${appt.routeOrder ?? '—'}`} />
         </div>
-        <div className="flex flex-col gap-2 pt-2">
-          <Button leftIcon={<MapPin size={15} />} variant="outline">Abrir no mapa / navegação</Button>
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="secondary" onClick={() => setStatus(appt.id, 'cancelado')}>Cancelar atendimento</Button>
+
+        {/* Reagendar / alterar técnico (permitido a qualquer momento) */}
+        {rescheduling ? (
+          <RescheduleForm appt={appt} onDone={() => setRescheduling(false)} />
+        ) : (
+          <div className="flex flex-col gap-2 pt-2">
+            <Button leftIcon={<MapPin size={15} />} variant="outline">Abrir no mapa / navegação</Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="secondary" onClick={() => setRescheduling(true)}>Reagendar / técnico</Button>
+              <Button variant="outline" onClick={() => setStatus(appt.id, 'cancelado')}>Cancelar visita</Button>
+            </div>
             <Button variant="danger" onClick={() => { removeAppt(appt.id); onClose(); }}>Excluir</Button>
           </div>
-        </div>
+        )}
       </div>
     </Drawer>
+  );
+}
+
+/** Reagendamento: altera data/hora/técnico e marca a visita como reagendada. */
+function RescheduleForm({ appt, onDone }: { appt: Appointment; onDone: () => void }) {
+  const update = useAppointmentsStore((s) => s.update);
+  const toLocal = (iso: string) => {
+    const d = new Date(iso); const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const [start, setStart] = useState(toLocal(appt.scheduledStart));
+  const [technicianId, setTechnicianId] = useState(appt.technicianId ?? '');
+
+  const save = () => {
+    const startDate = new Date(start);
+    const endDate = new Date(startDate.getTime() + (appt.estimatedMinutes ?? 60) * 60000);
+    update(appt.id, {
+      scheduledStart: startDate.toISOString(),
+      scheduledEnd: endDate.toISOString(),
+      technicianId: technicianId || undefined,
+      status: 'reagendado',
+    });
+    onDone();
+  };
+
+  return (
+    <div className="rounded-xl border border-border bg-muted/30 p-3">
+      <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Reagendar visita</p>
+      <div className="space-y-3">
+        <label className="block text-xs font-medium text-muted-foreground">Nova data e hora
+          <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-input bg-surface px-2 text-sm text-foreground" />
+        </label>
+        <label className="block text-xs font-medium text-muted-foreground">Técnico responsável
+          <Select value={technicianId} onChange={(e) => setTechnicianId(e.target.value)} className="mt-1">
+            {seed.technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </Select>
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onDone}>Cancelar</Button>
+          <Button size="sm" leftIcon={<Check size={14} />} onClick={save}>Salvar reagendamento</Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -61,14 +61,22 @@ export const APPOINTMENT_STATUS_META: Record<
   AppointmentStatus,
   { label: string; tone: 'neutral' | 'info' | 'warning' | 'brand' | 'success' | 'danger' }
 > = {
-  agendado: { label: 'Agendado', tone: 'neutral' },
-  confirmado: { label: 'Confirmado', tone: 'info' },
+  agendado: { label: 'Aguardando confirmação', tone: 'warning' },
+  confirmado: { label: 'Confirmada', tone: 'info' },
   em_deslocamento: { label: 'Em deslocamento', tone: 'warning' },
   em_atendimento: { label: 'Em atendimento', tone: 'brand' },
-  finalizado: { label: 'Finalizado', tone: 'success' },
-  cancelado: { label: 'Cancelado', tone: 'danger' },
-  reagendado: { label: 'Reagendado', tone: 'warning' },
+  finalizado: { label: 'Finalizada', tone: 'success' },
+  cancelado: { label: 'Cancelada', tone: 'danger' },
+  reagendado: { label: 'Reagendada', tone: 'neutral' },
 };
+
+/** Status expostos como filtro/estados de confirmação da visita. */
+export const CONFIRMATION_STATUSES: AppointmentStatus[] = [
+  'agendado',
+  'confirmado',
+  'reagendado',
+  'cancelado',
+];
 
 export const APPOINTMENT_PRIORITY_META: Record<
   AppointmentPriority,

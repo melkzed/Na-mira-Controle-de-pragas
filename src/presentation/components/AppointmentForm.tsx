@@ -38,6 +38,8 @@ export function AppointmentForm({
   const [start, setStart] = useState('');
   const [duration, setDuration] = useState(90);
   const [notes, setNotes] = useState('');
+  const [recurrence, setRecurrence] = useState<'none' | 'semanal' | 'quinzenal' | 'mensal'>('none');
+  const [occurrences, setOccurrences] = useState(4);
   const [touched, setTouched] = useState(false);
 
   const selectedService = serviceTypes.find((s) => s.id === serviceTypeId);
@@ -55,6 +57,8 @@ export function AppointmentForm({
     setPriority('normal');
     setDuration(seed.serviceTypes[0]?.defaultDurationMin ?? 90);
     setNotes('');
+    setRecurrence('none');
+    setOccurrences(4);
     setTouched(false);
   }, [open, defaultDate, customers]);
 
@@ -74,25 +78,36 @@ export function AppointmentForm({
     setTouched(true);
     if (error) return;
     const cust = customers.find((c) => c.id === customerId);
-    const startDate = new Date(start);
-    const endDate = new Date(startDate.getTime() + duration * 60000);
-    add({
-      customerId,
-      serviceTypeId,
-      technicianId,
-      priority,
-      status: 'agendado',
-      scheduledStart: startDate.toISOString(),
-      scheduledEnd: endDate.toISOString(),
-      estimatedMinutes: duration,
-      address: cust ? [cust.street && `${cust.street}, ${cust.number ?? 's/n'}`, cust.district].filter(Boolean).join(' — ') : undefined,
-      latitude: cust?.latitude,
-      longitude: cust?.longitude,
-      notes: notes.trim() || undefined,
-      routeOrder: 1,
-      // Pré-preenche com os produtos padrão do serviço.
-      products: defaultProducts.map((dp) => ({ productId: dp.productId, plannedQty: dp.qty })),
-    });
+    const address = cust ? [cust.street && `${cust.street}, ${cust.number ?? 's/n'}`, cust.district].filter(Boolean).join(' — ') : undefined;
+    const products = defaultProducts.map((dp) => ({ productId: dp.productId, plannedQty: dp.qty }));
+    const recurrenceId = recurrence !== 'none' ? 'rec-' + Math.random().toString(36).slice(2, 9) : undefined;
+    const total = recurrence === 'none' ? 1 : Math.max(1, Math.min(52, occurrences));
+
+    for (let i = 0; i < total; i++) {
+      const startDate = new Date(start);
+      if (recurrence === 'semanal') startDate.setDate(startDate.getDate() + i * 7);
+      else if (recurrence === 'quinzenal') startDate.setDate(startDate.getDate() + i * 14);
+      else if (recurrence === 'mensal') startDate.setMonth(startDate.getMonth() + i);
+      const endDate = new Date(startDate.getTime() + duration * 60000);
+      add({
+        customerId,
+        serviceTypeId,
+        technicianId,
+        priority,
+        status: 'agendado', // "Aguardando confirmação"
+        scheduledStart: startDate.toISOString(),
+        scheduledEnd: endDate.toISOString(),
+        estimatedMinutes: duration,
+        address,
+        latitude: cust?.latitude,
+        longitude: cust?.longitude,
+        notes: notes.trim() || undefined,
+        routeOrder: 1,
+        products,
+        recurrenceId,
+        recurrenceRule: recurrence !== 'none' ? recurrence : undefined,
+      });
+    }
     onSaved();
   };
 
@@ -173,6 +188,29 @@ export function AppointmentForm({
         <Field label="Observações">
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Detalhes do atendimento…" />
         </Field>
+
+        {/* Recorrência */}
+        <div className="rounded-xl border border-border bg-muted/30 p-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Recorrência</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Repetir">
+              <Select value={recurrence} onChange={(e) => setRecurrence(e.target.value as typeof recurrence)}>
+                <option value="none">Não repetir</option>
+                <option value="semanal">Semanal</option>
+                <option value="quinzenal">Quinzenal</option>
+                <option value="mensal">Mensal</option>
+              </Select>
+            </Field>
+            {recurrence !== 'none' && (
+              <Field label="Nº de ocorrências">
+                <Input type="number" min={1} max={52} value={occurrences} onChange={(e) => setOccurrences(Number(e.target.value) || 1)} />
+              </Field>
+            )}
+          </div>
+          {recurrence !== 'none' && (
+            <p className="mt-2 text-xs text-muted-foreground">Serão criadas {Math.max(1, Math.min(52, occurrences))} visitas independentes; cada uma pode ser confirmada, reagendada ou cancelada sem afetar as demais.</p>
+          )}
+        </div>
       </div>
     </Drawer>
   );
