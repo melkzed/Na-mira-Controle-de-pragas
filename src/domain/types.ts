@@ -65,6 +65,13 @@ export interface Customer {
   propertyType?: string;
   areaM2?: number;
   notes?: string;
+  /** Observações permanentes do contrato — aparecem na OS, agenda e app do técnico. */
+  permanentNotes?: string;
+  /** Cliente possui contrato de monitoramento (habilita armadilhas/MIP). */
+  monitoringContracted?: boolean;
+  /** Situação cadastral e CNAE (preenchidos via consulta ao CNPJ). */
+  registrationStatus?: string;
+  economicActivity?: string;
   tags: string[];
   isActive: boolean;
   createdAt: string;

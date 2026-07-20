@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Cloud } from 'lucide-react';
+import { Check, Cloud, Loader2, Search } from 'lucide-react';
 import { Drawer } from './ui/Drawer';
 import { Button } from './ui/Button';
 import { Field, Input, Select, Textarea } from './ui/Field';
 import { Segmented } from './ui/Segmented';
+import { Badge } from './ui/Badge';
 import { useCustomersStore, type CustomerInput } from '@/store/customersStore';
 import type { Customer } from '@/domain/types';
 import type { CustomerType } from '@/domain/enums';
 import { isEmail, isValidDocument, maskCep, maskDocument, maskPhone } from '@/lib/validation';
+import { lookupCnpj } from '@/lib/cnpj';
 
 const DRAFT_KEY = 'namira-cliente-draft';
 
@@ -30,12 +32,17 @@ type FormState = {
   areaM2: string;
   tags: string;
   notes: string;
+  permanentNotes: string;
+  monitoring: boolean;
+  registrationStatus: string;
+  economicActivity: string;
 };
 
 const empty: FormState = {
   type: 'pf', name: '', companyName: '', document: '', phone: '', whatsapp: '',
   email: '', cep: '', street: '', number: '', complement: '', district: '',
   city: '', state: '', propertyType: '', areaM2: '', tags: '', notes: '',
+  permanentNotes: '', monitoring: false, registrationStatus: '', economicActivity: '',
 };
 
 function fromCustomer(c: Customer): FormState {
@@ -46,6 +53,8 @@ function fromCustomer(c: Customer): FormState {
     district: c.district ?? '', city: c.city ?? '', state: c.state ?? '',
     propertyType: c.propertyType ?? '', areaM2: c.areaM2 ? String(c.areaM2) : '',
     tags: c.tags.join(', '), notes: c.notes ?? '',
+    permanentNotes: c.permanentNotes ?? '', monitoring: !!c.monitoringContracted,
+    registrationStatus: c.registrationStatus ?? '', economicActivity: c.economicActivity ?? '',
   };
 }
 
@@ -69,6 +78,10 @@ function toInput(f: FormState): CustomerInput {
     areaM2: f.areaM2 ? Number(f.areaM2) : undefined,
     tags: f.tags.split(',').map((t) => t.trim()).filter(Boolean),
     notes: f.notes.trim() || undefined,
+    permanentNotes: f.permanentNotes.trim() || undefined,
+    monitoringContracted: f.monitoring,
+    registrationStatus: f.registrationStatus.trim() || undefined,
+    economicActivity: f.economicActivity.trim() || undefined,
   };
 }
 
@@ -131,9 +144,42 @@ export function CustomerForm({
     return e;
   }, [form]);
 
-  const set = (k: keyof FormState, v: string) => {
+  const set = (k: keyof FormState, v: string | boolean) => {
     setTouched(true);
     setForm((f) => ({ ...f, [k]: v }));
+  };
+
+  // Consulta CNPJ na Receita (BrasilAPI) e preenche automaticamente.
+  const [cnpjLoading, setCnpjLoading] = useState(false);
+  const [cnpjMsg, setCnpjMsg] = useState<string | null>(null);
+  const doLookupCnpj = async () => {
+    setCnpjMsg(null);
+    setCnpjLoading(true);
+    try {
+      const d = await lookupCnpj(form.document);
+      setTouched(true);
+      setForm((f) => ({
+        ...f,
+        name: f.name || d.tradeName || d.companyName || '',
+        companyName: d.companyName ?? f.companyName,
+        street: d.street ?? f.street,
+        number: d.number ?? f.number,
+        complement: d.complement ?? f.complement,
+        district: d.district ?? f.district,
+        city: d.city ?? f.city,
+        state: d.state ?? f.state,
+        cep: d.cep ?? f.cep,
+        phone: f.phone || d.phone || '',
+        email: f.email || d.email || '',
+        registrationStatus: d.registrationStatus ?? f.registrationStatus,
+        economicActivity: d.economicActivity ?? f.economicActivity,
+      }));
+      setCnpjMsg('ok');
+    } catch (err) {
+      setCnpjMsg(err instanceof Error ? err.message : 'Falha na consulta.');
+    } finally {
+      setCnpjLoading(false);
+    }
   };
 
   const submit = () => {
@@ -194,8 +240,20 @@ export function CustomerForm({
             </Field>
           )}
           <Field label={form.type === 'pf' ? 'CPF' : 'CNPJ'}>
-            <Input value={form.document} onChange={(e) => set('document', maskDocument(e.target.value, form.type))} placeholder={form.type === 'pf' ? '000.000.000-00' : '00.000.000/0000-00'} inputMode="numeric" />
+            <div className="flex gap-2">
+              <Input value={form.document} onChange={(e) => set('document', maskDocument(e.target.value, form.type))} placeholder={form.type === 'pf' ? '000.000.000-00' : '00.000.000/0000-00'} inputMode="numeric" />
+              {form.type === 'pj' && (
+                <Button type="button" variant="outline" size="icon" onClick={doLookupCnpj} disabled={cnpjLoading} title="Consultar na Receita" aria-label="Consultar CNPJ na Receita">
+                  {cnpjLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                </Button>
+              )}
+            </div>
             {touched && errors.document && <Err msg={errors.document} />}
+            {cnpjMsg === 'ok' && <span className="mt-1 block text-xs text-success">Dados preenchidos pela Receita.</span>}
+            {cnpjMsg && cnpjMsg !== 'ok' && <span className="mt-1 block text-xs text-danger">{cnpjMsg}</span>}
+            {form.type === 'pj' && form.registrationStatus && (
+              <span className="mt-1 inline-flex"><Badge tone={/ativa/i.test(form.registrationStatus) ? 'success' : 'warning'}>{form.registrationStatus}</Badge></span>
+            )}
           </Field>
           <Field label="E-mail">
             <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="cliente@email.com" />
@@ -235,6 +293,21 @@ export function CustomerForm({
             <Field label="Etiquetas (separadas por vírgula)" className="col-span-2"><Input value={form.tags} onChange={(e) => set('tags', e.target.value)} placeholder="Contrato mensal, Alimentício" /></Field>
             <Field label="Observações" className="col-span-2"><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
           </div>
+        </div>
+
+        {/* Complementos do contrato */}
+        <div className="border-t border-border pt-4">
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Contrato e monitoramento</p>
+          <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3">
+            <input type="checkbox" checked={form.monitoring} onChange={(e) => set('monitoring', e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-border" />
+            <span>
+              <span className="block text-sm font-medium text-foreground">Monitoramento contratado</span>
+              <span className="block text-xs text-muted-foreground">Habilita armadilhas, MIP e relatórios específicos para este cliente.</span>
+            </span>
+          </label>
+          <Field label="Observações permanentes do contrato" hint="Aparecem automaticamente na Ordem de Serviço, na agenda e no app do técnico." className="mt-4">
+            <Textarea value={form.permanentNotes} onChange={(e) => set('permanentNotes', e.target.value)} placeholder="Ex.: acessar pela portaria lateral; ligar antes de chegar; usar EPI específico; horário permitido…" />
+          </Field>
         </div>
       </div>
     </Drawer>

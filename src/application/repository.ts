@@ -7,6 +7,8 @@
  * o cliente Supabase — as telas não mudam (Dependency Inversion / SOLID).
  */
 import * as seed from '@/infrastructure/seed/data';
+import { useCustomersStore } from '@/store/customersStore';
+import { useProductsStore } from '@/store/entityStores';
 import type {
   Appointment,
   Customer,
@@ -17,8 +19,10 @@ import type {
 
 export const db = seed;
 
+// Lê das stores reativas para manter Clientes/Produtos consistentes em todos os
+// módulos (Agenda, OS, PDF, App do Técnico) — evita divergência com o seed.
 export function getCustomer(id: string): Customer | undefined {
-  return seed.customers.find((c) => c.id === id);
+  return useCustomersStore.getState().customers.find((c) => c.id === id);
 }
 
 export function getUser(id?: string): User | undefined {
@@ -27,7 +31,7 @@ export function getUser(id?: string): User | undefined {
 }
 
 export function getProduct(id: string): Product | undefined {
-  return seed.products.find((p) => p.id === id);
+  return useProductsStore.getState().items.find((p) => p.id === id);
 }
 
 export function getServiceType(id?: string) {

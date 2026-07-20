@@ -164,6 +164,19 @@ function NextVisit({ appt }: { appt: Appointment }) {
           <span className="text-foreground">{appt.address}</span>
         </div>
 
+        {cust?.permanentNotes && (
+          <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft/60 p-3 text-sm">
+            <TriangleAlert size={16} className="mt-0.5 shrink-0 text-warning" />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-warning">Observações do contrato</p>
+              <p className="text-foreground">{cust.permanentNotes}</p>
+            </div>
+          </div>
+        )}
+        {cust?.monitoringContracted && (
+          <Badge tone="info" dot>Cliente com monitoramento contratado</Badge>
+        )}
+
         <div className="grid grid-cols-2 gap-2">
           <Button variant="outline" size="sm" leftIcon={<Navigation size={15} />}>Navegar</Button>
           <Button variant="outline" size="sm" leftIcon={<PhoneCall size={15} />}>Ligar</Button>

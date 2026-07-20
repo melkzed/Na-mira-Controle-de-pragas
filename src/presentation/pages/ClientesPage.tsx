@@ -184,6 +184,15 @@ function ClienteDetail({
           <Info label="Cliente desde" value={fmtDate(customer.createdAt)} />
         </div>
 
+        {customer.monitoringContracted && <Badge tone="info" dot>Monitoramento contratado (armadilhas / MIP)</Badge>}
+
+        {customer.permanentNotes && (
+          <div className="rounded-lg border border-warning/30 bg-warning-soft/60 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-warning">Observações permanentes do contrato</p>
+            <p className="mt-0.5 text-sm text-foreground">{customer.permanentNotes}</p>
+          </div>
+        )}
+
         <div>
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Histórico de atendimentos ({history.length})</p>
           <div className="space-y-2">

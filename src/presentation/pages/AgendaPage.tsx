@@ -330,6 +330,12 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
           </Select>
         </Section>
         <Section title="Endereço"><p className="text-sm text-foreground">{appt.address}</p></Section>
+        {cust?.permanentNotes && (
+          <div className="rounded-lg border border-warning/30 bg-warning-soft/60 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-warning">Observações do contrato</p>
+            <p className="mt-0.5 text-sm text-foreground">{cust.permanentNotes}</p>
+          </div>
+        )}
         {tech && <Section title="Técnico responsável"><div className="flex items-center gap-2"><Avatar name={tech.name} size="sm" /><span className="text-sm text-foreground">{tech.name}</span></div></Section>}
         <Section title="Contato">
           <p className="text-sm text-foreground">{cust?.phone}</p>

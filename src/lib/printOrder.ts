@@ -102,6 +102,8 @@ export function printServiceOrder(so: ServiceOrder): void {
       <div style="grid-column:1/3"><span>Endereço:</span> ${esc(address)}</div>
     </div>
 
+    ${customer?.permanentNotes ? `<div style="margin-top:12px;border-left:3px solid #f59e0b;background:#fffbeb;padding:10px 12px;border-radius:6px;font-size:12px"><strong>Observações do contrato:</strong> ${esc(customer.permanentNotes)}</div>` : ''}
+
     <h2>Execução</h2>
     <div class="grid">
       <div><span>Técnico:</span> ${esc(tech?.name ?? '—')}</div>
