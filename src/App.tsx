@@ -17,6 +17,7 @@ const OrdensPage = named(() => import('./presentation/pages/OrdensPage'), 'Orden
 const ClientesPage = named(() => import('./presentation/pages/ClientesPage'), 'ClientesPage');
 const CrmPage = named(() => import('./presentation/pages/CrmPage'), 'CrmPage');
 const MonitoramentoPage = named(() => import('./presentation/pages/MonitoramentoPage'), 'MonitoramentoPage');
+const NaoConformidadePage = named(() => import('./presentation/pages/NaoConformidadePage'), 'NaoConformidadePage');
 const EstoquePage = named(() => import('./presentation/pages/EstoquePage'), 'EstoquePage');
 const ProdutosPage = named(() => import('./presentation/pages/ProdutosPage'), 'ProdutosPage');
 const EquipamentosPage = named(() => import('./presentation/pages/EquipamentosPage'), 'EquipamentosPage');
@@ -58,6 +59,7 @@ export const router = createBrowserRouter([
       { path: 'clientes', element: <ClientesPage /> },
       { path: 'crm', element: <CrmPage /> },
       { path: 'monitoramento', element: <MonitoramentoPage /> },
+      { path: 'nao-conformidade', element: <NaoConformidadePage /> },
       { path: 'estoque', element: <EstoquePage /> },
       { path: 'produtos', element: <ProdutosPage /> },
       { path: 'equipamentos', element: <EquipamentosPage /> },

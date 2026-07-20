@@ -4,10 +4,20 @@
  *  - Relatório MIP (Monitoramento Integrado de Pragas)
  * Montam HTML formatado e abrem a impressão do navegador ("Salvar como PDF").
  */
-import type { Customer, TrapDevice, TrapInspection } from '@/domain/types';
+import type { Customer, NonConformity, TrapDevice, TrapInspection } from '@/domain/types';
 import { getUser } from '@/application/repository';
 import * as seed from '@/infrastructure/seed/data';
 import { formatDocument } from './utils';
+
+export const NC_CATEGORY_LABEL: Record<NonConformity['category'], string> = {
+  fresta: 'Fresta',
+  falha_estrutural: 'Falha estrutural',
+  limpeza_inadequada: 'Limpeza inadequada',
+  armazenamento_incorreto: 'Armazenamento incorreto',
+  outra: 'Outra',
+};
+const NC_PRIORITY_LABEL: Record<string, string> = { baixa: 'Baixa', normal: 'Normal', alta: 'Alta', urgente: 'Urgente' };
+const NC_STATUS_LABEL: Record<NonConformity['status'], string> = { aberta: 'Aberta', em_andamento: 'Em andamento', resolvida: 'Resolvida' };
 
 function esc(s: unknown): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -128,4 +138,28 @@ export function printMipReport(customer: Customer, traps: TrapDevice[], inspecti
     <tbody>${inspRows || '<tr><td colspan="5" style="color:#94a3b8">Sem inspeções.</td></tr>'}</tbody></table>
     <div class="sign"><div class="line">Responsável Técnico</div><div class="line">Cliente</div></div>`;
   openPrint(`MIP · ${customer.name}`, body);
+}
+
+export function printNonConformityReport(customer: Customer, items: NonConformity[]): void {
+  const blocks = items.map((nc, i) => {
+    const photos = (nc.photos ?? [])
+      .map((ph) => `<img src="${ph.dataUrl}" alt="${esc(ph.name)}" style="width:160px;height:120px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0" />`)
+      .join('');
+    return `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong>${i + 1}. ${esc(NC_CATEGORY_LABEL[nc.category])}</strong>
+        <span class="tag ${nc.priority === 'urgente' || nc.priority === 'alta' ? 'tag-yes' : 'tag-no'}">${esc(NC_PRIORITY_LABEL[nc.priority])}</span>
+      </div>
+      <p style="margin:8px 0 4px;font-size:13px">${esc(nc.description)}</p>
+      <p style="margin:4px 0;font-size:12px;color:#64748b">Data: ${esc(fmt(nc.date))} · Situação: ${esc(NC_STATUS_LABEL[nc.status])}</p>
+      ${nc.correctiveAction ? `<p style="margin:6px 0 0;font-size:12.5px"><strong>Ação corretiva:</strong> ${esc(nc.correctiveAction)}</p>` : ''}
+      ${photos ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${photos}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  const body = `${header('Relatório de Não Conformidade')}${customerBlock(customer)}
+    <h2>Não conformidades registradas (${items.length})</h2>
+    ${blocks || '<p style="color:#94a3b8">Nenhuma não conformidade registrada.</p>'}
+    <div class="sign"><div class="line">Responsável Técnico</div><div class="line">Cliente</div></div>`;
+  openPrint(`Não Conformidade · ${customer.name}`, body);
 }

@@ -110,6 +110,31 @@ export interface TrapInspection {
   notes?: string;
 }
 
+// ── Não conformidade ────────────────────────────────────────────────────────
+export type NonConformityCategory =
+  | 'fresta'
+  | 'falha_estrutural'
+  | 'limpeza_inadequada'
+  | 'armazenamento_incorreto'
+  | 'outra';
+
+export type NonConformityStatus = 'aberta' | 'em_andamento' | 'resolvida';
+
+export interface NonConformity {
+  id: string;
+  orgId: string;
+  customerId: string;
+  date: string; // ISO
+  category: NonConformityCategory;
+  description: string;
+  priority: AppointmentPriority;
+  correctiveAction?: string;
+  status: NonConformityStatus;
+  photos?: { name: string; dataUrl: string }[];
+  createdBy?: string;
+  createdAt: string;
+}
+
 export interface ProductCategory {
   id: string;
   orgId: string;

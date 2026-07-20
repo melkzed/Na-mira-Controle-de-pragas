@@ -17,6 +17,7 @@ import type {
   ProductCategory,
   ServiceOrder,
   ServiceType,
+  NonConformity,
   StockBalance,
   StockLocation,
   Supplier,
@@ -292,6 +293,12 @@ export const trapDevices: TrapDevice[] = [
   { id: 'trap-4', orgId: ORG, customerId: 'c-4', code: 'Porta Isca 005', type: 'Porta-isca', location: 'Lixeira externa', status: 'ativa', createdAt: daysFromNow(-90) },
   { id: 'trap-5', orgId: ORG, customerId: 'c-6', code: 'Porta Isca 001', type: 'Porta-isca', location: 'Estoque seco', status: 'ativa', createdAt: daysFromNow(-200) },
   { id: 'trap-6', orgId: ORG, customerId: 'c-6', code: 'Placa Cola 001', type: 'Placa de cola', location: 'Câmara fria', status: 'substituida', createdAt: daysFromNow(-200) },
+];
+
+export const nonConformities: NonConformity[] = [
+  { id: 'nc-1', orgId: ORG, customerId: 'c-4', date: daysFromNow(-2), category: 'fresta', description: 'Fresta na porta de acesso ao depósito, permitindo entrada de roedores.', priority: 'alta', correctiveAction: 'Instalar rodo/veda-porta e telamento na saída de ar.', status: 'aberta', createdBy: 'u-t3', createdAt: daysFromNow(-2) },
+  { id: 'nc-2', orgId: ORG, customerId: 'c-6', date: daysFromNow(-6), category: 'armazenamento_incorreto', description: 'Produtos armazenados diretamente no piso, sem paletes.', priority: 'normal', correctiveAction: 'Utilizar estrados/paletes e afastar 30cm das paredes.', status: 'em_andamento', createdBy: 'u-t1', createdAt: daysFromNow(-6) },
+  { id: 'nc-3', orgId: ORG, customerId: 'c-3', date: daysFromNow(-10), category: 'limpeza_inadequada', description: 'Acúmulo de resíduos orgânicos atrás dos equipamentos da cozinha.', priority: 'urgente', correctiveAction: 'Higienização diária e reforço na coleta de resíduos.', status: 'resolvida', createdBy: 'u-t4', createdAt: daysFromNow(-10) },
 ];
 
 export const trapInspections: TrapInspection[] = [
