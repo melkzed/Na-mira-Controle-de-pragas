@@ -7,6 +7,7 @@ import type { ServiceOrder } from '@/domain/types';
 import { getCustomer, getProduct, getServiceType, getUser } from '@/application/repository';
 import * as seed from '@/infrastructure/seed/data';
 import { formatDocument } from './utils';
+import { currentBatch } from './batches';
 
 function esc(s: unknown): string {
   return String(s ?? '')
@@ -36,12 +37,16 @@ export function printServiceOrder(so: ServiceOrder): void {
     .filter(Boolean)
     .join(', ');
 
+  const fmtBatchDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—');
   const productRows = so.products
     .map((p) => {
       const prod = getProduct(p.productId);
+      const batch = currentBatch(prod);
       return `<tr>
         <td>${esc(prod?.name)}</td>
         <td>${esc(prod?.activeIngredient ?? '—')}</td>
+        <td>${esc(batch?.code ?? '—')}</td>
+        <td>${esc(fmtBatchDate(batch?.expiresAt))}</td>
         <td class="r">${esc(p.usedQty)} ${esc(prod?.unit ?? '')}</td>
       </tr>`;
     })
@@ -116,8 +121,8 @@ export function printServiceOrder(so: ServiceOrder): void {
 
     <h2>Produtos utilizados</h2>
     <table>
-      <thead><tr><th>Produto</th><th>Princípio ativo</th><th class="r">Quantidade</th></tr></thead>
-      <tbody>${productRows || '<tr><td colspan="3" style="color:#94a3b8">Nenhum produto lançado.</td></tr>'}</tbody>
+      <thead><tr><th>Produto</th><th>Princípio ativo</th><th>Lote</th><th>Validade</th><th class="r">Quantidade</th></tr></thead>
+      <tbody>${productRows || '<tr><td colspan="5" style="color:#94a3b8">Nenhum produto lançado.</td></tr>'}</tbody>
     </table>
 
     <h2>Procedimentos e observações</h2>

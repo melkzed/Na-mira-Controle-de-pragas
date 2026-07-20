@@ -4,6 +4,8 @@
  */
 import * as seed from '@/infrastructure/seed/data';
 import { centralBalance } from './repository';
+import { useProductsStore } from '@/store/entityStores';
+import { expiringBatches } from '@/lib/batches';
 import { daysUntil } from '@/lib/utils';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -85,13 +87,9 @@ export function computeDashboard(): DashboardMetrics {
     (p) => centralBalance(p.id) <= p.minQuantity,
   ).length;
 
-  const expiringCount = seed.batchExpiry.filter((b) => {
-    const d = daysUntil(b.expiresAt) ?? 999;
-    return d >= 0 && d <= 30;
-  }).length;
-  const expiredCount = seed.batchExpiry.filter(
-    (b) => (daysUntil(b.expiresAt) ?? 999) < 0,
-  ).length;
+  const expiring = expiringBatches(useProductsStore.getState().items);
+  const expiringCount = expiring.filter((r) => r.level === 'vencendo').length;
+  const expiredCount = expiring.filter((r) => r.level === 'vencido').length;
 
   const vehiclesInOperation = seed.vehicles.filter((v) => v.inOperation).length;
 

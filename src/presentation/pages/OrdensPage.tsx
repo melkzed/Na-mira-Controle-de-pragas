@@ -13,6 +13,7 @@ import type { ServiceOrder } from '@/domain/types';
 import { fmtDate } from '@/lib/date';
 import { downloadCsv } from '@/lib/export';
 import { printServiceOrder } from '@/lib/printOrder';
+import { currentBatch } from '@/lib/batches';
 
 export function OrdensPage() {
   const [selected, setSelected] = useState<ServiceOrder | null>(null);
@@ -88,12 +89,19 @@ export function OrdensPage() {
 
             <Section title="Produtos utilizados">
               <div className="space-y-2">
-                {selected.products.map((p) => (
-                  <div key={p.productId} className="flex items-center justify-between rounded-lg border border-border p-2.5">
-                    <span className="text-sm text-foreground">{getProduct(p.productId)?.name}</span>
-                    <Badge tone="brand">{p.usedQty} {getProduct(p.productId)?.unit}</Badge>
-                  </div>
-                ))}
+                {selected.products.map((p) => {
+                  const prod = getProduct(p.productId);
+                  const batch = currentBatch(prod);
+                  return (
+                    <div key={p.productId} className="flex items-center justify-between rounded-lg border border-border p-2.5">
+                      <div>
+                        <span className="text-sm text-foreground">{prod?.name}</span>
+                        {batch && <p className="text-xs text-muted-foreground">Lote {batch.code}{batch.expiresAt ? ` · val. ${new Date(batch.expiresAt).toLocaleDateString('pt-BR')}` : ''}</p>}
+                      </div>
+                      <Badge tone="brand">{p.usedQty} {prod?.unit}</Badge>
+                    </div>
+                  );
+                })}
                 {selected.products.length === 0 && <span className="text-sm text-muted-foreground">Nenhum produto lançado.</span>}
               </div>
             </Section>

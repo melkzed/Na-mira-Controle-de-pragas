@@ -10,9 +10,11 @@ import * as seed from '@/infrastructure/seed/data';
 import { centralBalance } from '@/application/repository';
 import { useProductsStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
-import type { Product } from '@/domain/types';
+import type { Batch, Product } from '@/domain/types';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { downloadCsv } from '@/lib/export';
+import { currentBatch, expiryLevel } from '@/lib/batches';
+import { fmtDate } from '@/lib/date';
 
 export function ProdutosPage() {
   const { items: products, add, update, remove } = useProductsStore();
@@ -31,7 +33,12 @@ export function ProdutosPage() {
     { key: 'name', header: 'Produto', render: (p) => (<div><p className="font-medium">{p.name}</p><p className="text-xs text-muted-foreground">{p.manufacturer}</p></div>) },
     { key: 'cat', header: 'Categoria', render: (p) => <Badge tone="neutral">{catName(p.categoryId)}</Badge> },
     { key: 'ai', header: 'Princípio ativo', render: (p) => <span className="text-muted-foreground">{p.activeIngredient ?? '—'}</span> },
-    { key: 'reg', header: 'Registro', render: (p) => p.isRegulated ? <Badge tone="info">Regulado</Badge> : <span className="text-muted-foreground">—</span> },
+    { key: 'batch', header: 'Lote atual', render: (p) => {
+      const b = currentBatch(p);
+      if (!b) return <span className="text-muted-foreground">—</span>;
+      const lvl = expiryLevel(b.expiresAt);
+      return <div><p className="text-sm">{b.code}</p><Badge tone={lvl === 'vencido' ? 'danger' : lvl === 'vencendo' ? 'warning' : 'neutral'} className="text-[10px]">val. {b.expiresAt ? fmtDate(b.expiresAt) : '—'}</Badge></div>;
+    } },
     { key: 'qty', header: 'Estoque', align: 'right', render: (p) => `${formatNumber(centralBalance(p.id))} ${p.unit}` },
     { key: 'price', header: 'Preço', align: 'right', render: (p) => formatCurrency(p.price) },
   ];
@@ -40,6 +47,8 @@ export function ProdutosPage() {
     { header: 'Produto', value: (p) => p.name },
     { header: 'Categoria', value: (p) => catName(p.categoryId) },
     { header: 'Princípio ativo', value: (p) => p.activeIngredient ?? '' },
+    { header: 'Lote atual', value: (p) => currentBatch(p)?.code ?? '' },
+    { header: 'Validade', value: (p) => { const e = currentBatch(p)?.expiresAt; return e ? fmtDate(e) : ''; } },
     { header: 'Unidade', value: (p) => p.unit },
     { header: 'Estoque mínimo', value: (p) => p.minQuantity },
     { header: 'Preço', value: (p) => p.price },
@@ -92,6 +101,27 @@ export function ProdutosPage() {
               <Info label="Preço" value={formatCurrency(selected.price)} />
               <Info label="Localização" value={selected.storageLocation ?? '—'} />
             </div>
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Histórico de lotes</p>
+              <div className="space-y-2">
+                {(selected.batches ?? []).length === 0 && <p className="text-sm text-muted-foreground">Nenhum lote cadastrado.</p>}
+                {(selected.batches ?? []).map((bch) => {
+                  const lvl = expiryLevel(bch.expiresAt);
+                  return (
+                    <div key={bch.id} className="flex items-center justify-between rounded-lg border border-border p-2.5">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Lote {bch.code}</p>
+                        <p className="text-xs text-muted-foreground">Recebido {fmtDate(bch.receivedAt)} · {bch.quantity} {selected.unit}</p>
+                      </div>
+                      <Badge tone={lvl === 'vencido' ? 'danger' : lvl === 'vencendo' ? 'warning' : 'success'} dot>
+                        {lvl === 'vencido' ? 'Vencido' : lvl === 'vencendo' ? 'Vence em breve' : 'Válido'} · {bch.expiresAt ? fmtDate(bch.expiresAt) : '—'}
+                      </Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="rounded-lg border border-info/30 bg-info-soft/50 p-3 text-sm text-foreground">
               <p className="font-semibold">FISPQ / Ficha de Segurança</p>
               <p className="mt-1 text-muted-foreground">Documento de segurança disponível para consulta e uso em campo.</p>
@@ -115,10 +145,15 @@ function ProductForm({ open, initial, onClose, onSave }: { open: boolean; initia
   const isEdit = !!initial;
   const [f, setF] = useState<Partial<Product>>({});
   const [touched, setTouched] = useState(false);
+  // Novo lote a registrar (compra) — opcional.
+  const [batchCode, setBatchCode] = useState('');
+  const [batchExpiry, setBatchExpiry] = useState('');
+  const [batchQty, setBatchQty] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setF(initial ? { ...initial } : { unit: 'un', minQuantity: 0, price: 0, isRegulated: false, isActive: true, categoryId: seed.productCategories[0]?.id });
+    setBatchCode(''); setBatchExpiry(''); setBatchQty('');
     setTouched(false);
   }, [open, initial]);
 
@@ -128,6 +163,12 @@ function ProductForm({ open, initial, onClose, onSave }: { open: boolean; initia
   const submit = () => {
     setTouched(true);
     if (!f.name?.trim()) return;
+    // Anexa um novo lote ao histórico, se informado.
+    let batches: Batch[] | undefined = initial?.batches ? [...initial.batches] : (f.batches ? [...f.batches] : undefined);
+    if (batchCode.trim()) {
+      const b: Batch = { id: uid('b'), code: batchCode.trim(), expiresAt: batchExpiry || undefined, quantity: Number(batchQty) || 0, receivedAt: new Date().toISOString().slice(0, 10) };
+      batches = [...(batches ?? []), b];
+    }
     const product: Product = {
       id: initial?.id ?? uid('prod'),
       orgId: 'org-namira',
@@ -144,6 +185,7 @@ function ProductForm({ open, initial, onClose, onSave }: { open: boolean; initia
       storageLocation: f.storageLocation?.trim() || undefined,
       isRegulated: !!f.isRegulated,
       isActive: f.isActive ?? true,
+      batches,
     };
     onSave(product, !isEdit);
   };
@@ -167,6 +209,17 @@ function ProductForm({ open, initial, onClose, onSave }: { open: boolean; initia
           <input type="checkbox" checked={!!f.isRegulated} onChange={(e) => set('isRegulated', e.target.checked)} className="h-4 w-4 rounded border-border" />
           Produto regulamentado
         </label>
+
+        {/* Registro de lote (compra) */}
+        <div className="col-span-2 border-t border-border pt-4">
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Registrar lote {isEdit ? '(nova compra)' : 'inicial'}</p>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Lote"><Input value={batchCode} onChange={(e) => setBatchCode(e.target.value)} placeholder="KO-2408" /></Field>
+            <Field label="Validade"><Input type="date" value={batchExpiry} onChange={(e) => setBatchExpiry(e.target.value)} /></Field>
+            <Field label="Qtd."><Input type="number" min={0} value={batchQty} onChange={(e) => setBatchQty(e.target.value)} /></Field>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">O lote informado é adicionado ao histórico e passa a aparecer na Ordem de Serviço.</p>
+        </div>
       </div>
     </Drawer>
   );

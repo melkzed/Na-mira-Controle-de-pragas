@@ -92,6 +92,15 @@ export interface ProductCategory {
   name: string;
 }
 
+/** Lote de um produto (rastreabilidade: código, validade, quantidade). */
+export interface Batch {
+  id: string;
+  code: string;
+  expiresAt?: string; // ISO date (yyyy-mm-dd)
+  quantity: number;
+  receivedAt: string; // ISO date
+}
+
 export interface Product {
   id: string;
   orgId: string;
@@ -109,6 +118,8 @@ export interface Product {
   storageLocation?: string;
   isRegulated: boolean;
   isActive: boolean;
+  /** Histórico de lotes — o lote "atual" é o de validade mais próxima com saldo. */
+  batches?: Batch[];
 }
 
 export interface ProductBatch {
