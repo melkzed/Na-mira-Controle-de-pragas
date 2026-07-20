@@ -190,6 +190,8 @@ export interface ServiceType {
   defaultDurationMin: number;
   defaultPrice: number;
   color: string;
+  /** Produtos padrão do serviço — pré-preenchem a OS; o técnico ajusta o que usou. */
+  defaultProducts?: { productId: string; qty: number }[];
 }
 
 export interface AppointmentProduct {

@@ -8,7 +8,7 @@
  */
 import * as seed from '@/infrastructure/seed/data';
 import { useCustomersStore } from '@/store/customersStore';
-import { useProductsStore } from '@/store/entityStores';
+import { useProductsStore, useServiceTypesStore } from '@/store/entityStores';
 import type {
   Appointment,
   Customer,
@@ -35,7 +35,7 @@ export function getProduct(id: string): Product | undefined {
 }
 
 export function getServiceType(id?: string) {
-  return seed.serviceTypes.find((s) => s.id === id);
+  return useServiceTypesStore.getState().items.find((s) => s.id === id);
 }
 
 export function centralBalance(productId: string): number {

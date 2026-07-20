@@ -65,11 +65,11 @@ export const teams: Team[] = [
 
 // ── Catálogos ───────────────────────────────────────────────────────────────
 export const serviceTypes: ServiceType[] = [
-  { id: 'st-ded', orgId: ORG, name: 'Dedetização', defaultDurationMin: 90, defaultPrice: 320, color: '#10b981' },
-  { id: 'st-des', orgId: ORG, name: 'Desratização', defaultDurationMin: 75, defaultPrice: 280, color: '#6366f1' },
-  { id: 'st-san', orgId: ORG, name: 'Sanitização', defaultDurationMin: 60, defaultPrice: 240, color: '#0ea5e9' },
-  { id: 'st-cup', orgId: ORG, name: 'Descupinização', defaultDurationMin: 120, defaultPrice: 540, color: '#f59e0b' },
-  { id: 'st-esc', orgId: ORG, name: 'Escorpião/Aranha', defaultDurationMin: 80, defaultPrice: 360, color: '#ef4444' },
+  { id: 'st-ded', orgId: ORG, name: 'Dedetização', defaultDurationMin: 90, defaultPrice: 320, color: '#10b981', defaultProducts: [{ productId: 'prod-1', qty: 1 }, { productId: 'prod-3', qty: 2 }, { productId: 'prod-7', qty: 1 }] },
+  { id: 'st-des', orgId: ORG, name: 'Desratização', defaultDurationMin: 75, defaultPrice: 280, color: '#6366f1', defaultProducts: [{ productId: 'prod-2', qty: 2 }, { productId: 'prod-7', qty: 1 }] },
+  { id: 'st-san', orgId: ORG, name: 'Sanitização', defaultDurationMin: 60, defaultPrice: 240, color: '#0ea5e9', defaultProducts: [{ productId: 'prod-5', qty: 3 }, { productId: 'prod-6', qty: 1 }] },
+  { id: 'st-cup', orgId: ORG, name: 'Descupinização', defaultDurationMin: 120, defaultPrice: 540, color: '#f59e0b', defaultProducts: [{ productId: 'prod-4', qty: 1 }] },
+  { id: 'st-esc', orgId: ORG, name: 'Escorpião/Aranha', defaultDurationMin: 80, defaultPrice: 360, color: '#ef4444', defaultProducts: [{ productId: 'prod-1', qty: 1 }] },
 ];
 
 export const pests: Pest[] = [

@@ -6,6 +6,8 @@ import { Field, Input, Select, Textarea } from './ui/Field';
 import { Segmented } from './ui/Segmented';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useCustomersStore } from '@/store/customersStore';
+import { useServiceTypesStore } from '@/store/entityStores';
+import { getProduct } from '@/application/repository';
 import * as seed from '@/infrastructure/seed/data';
 import type { AppointmentPriority } from '@/domain/enums';
 
@@ -27,6 +29,7 @@ export function AppointmentForm({
 }) {
   const add = useAppointmentsStore((s) => s.add);
   const customers = useCustomersStore((s) => s.customers);
+  const serviceTypes = useServiceTypesStore((s) => s.items);
 
   const [customerId, setCustomerId] = useState('');
   const [serviceTypeId, setServiceTypeId] = useState(seed.serviceTypes[0]?.id ?? '');
@@ -36,6 +39,9 @@ export function AppointmentForm({
   const [duration, setDuration] = useState(90);
   const [notes, setNotes] = useState('');
   const [touched, setTouched] = useState(false);
+
+  const selectedService = serviceTypes.find((s) => s.id === serviceTypeId);
+  const defaultProducts = selectedService?.defaultProducts ?? [];
 
   useEffect(() => {
     if (!open) return;
@@ -84,6 +90,8 @@ export function AppointmentForm({
       longitude: cust?.longitude,
       notes: notes.trim() || undefined,
       routeOrder: 1,
+      // Pré-preenche com os produtos padrão do serviço.
+      products: defaultProducts.map((dp) => ({ productId: dp.productId, plannedQty: dp.qty })),
     });
     onSaved();
   };
@@ -115,7 +123,7 @@ export function AppointmentForm({
         <div className="grid grid-cols-2 gap-4">
           <Field label="Tipo de serviço">
             <Select value={serviceTypeId} onChange={(e) => setServiceTypeId(e.target.value)}>
-              {seed.serviceTypes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {serviceTypes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
           </Field>
           <Field label="Técnico responsável">
@@ -124,6 +132,20 @@ export function AppointmentForm({
             </Select>
           </Field>
         </div>
+
+        {defaultProducts.length > 0 && (
+          <div className="rounded-xl border border-border bg-muted/30 p-3">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Produtos padrão do serviço</p>
+            <div className="flex flex-wrap gap-1.5">
+              {defaultProducts.map((dp) => (
+                <span key={dp.productId} className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-foreground">
+                  {getProduct(dp.productId)?.name ?? dp.productId} · {dp.qty} {getProduct(dp.productId)?.unit}
+                </span>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">Serão pré-carregados na visita; o técnico confirma o que realmente usou.</p>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Data e hora" required>
