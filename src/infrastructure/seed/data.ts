@@ -21,6 +21,8 @@ import type {
   StockLocation,
   Supplier,
   Team,
+  TrapDevice,
+  TrapInspection,
   User,
   Vehicle,
 } from '@/domain/types';
@@ -280,6 +282,23 @@ export const crmLeads: CrmLead[] = [
   { id: 'l-4', orgId: ORG, name: 'Academia Corpo & Movimento', company: 'C&M Fitness', phone: '(11) 3010-2020', source: 'Anúncio', stage: 'follow_up', estimatedValue: 1200, ownerId: 'u-sup', nextActionAt: daysFromNow(3), createdAt: daysFromNow(-14) },
   { id: 'l-5', orgId: ORG, name: 'Farmácia Vida', company: 'Vida Drogaria', phone: '(11) 3020-3030', source: 'Indicação', stage: 'ganho', estimatedValue: 1600, ownerId: 'u-admin', createdAt: daysFromNow(-20) },
   { id: 'l-6', orgId: ORG, name: 'Loja de Móveis Conforto', company: 'Conforto Móveis', phone: '(11) 3040-5050', source: 'Site', stage: 'perdido', estimatedValue: 900, ownerId: 'u-sup', notes: 'Optou por concorrente.', createdAt: daysFromNow(-25) },
+];
+
+// ── Monitoramento de armadilhas (clientes com monitoramento contratado) ──────
+export const trapDevices: TrapDevice[] = [
+  { id: 'trap-1', orgId: ORG, customerId: 'c-4', code: 'Porta Isca 001', type: 'Porta-isca', location: 'Garagem G1', status: 'ativa', createdAt: daysFromNow(-180) },
+  { id: 'trap-2', orgId: ORG, customerId: 'c-4', code: 'Porta Isca 002', type: 'Porta-isca', location: 'Depósito', status: 'ativa', createdAt: daysFromNow(-180) },
+  { id: 'trap-3', orgId: ORG, customerId: 'c-4', code: 'Luminosa 001', type: 'Luminosa', location: 'Salão de festas', status: 'ativa', createdAt: daysFromNow(-120) },
+  { id: 'trap-4', orgId: ORG, customerId: 'c-4', code: 'Porta Isca 005', type: 'Porta-isca', location: 'Lixeira externa', status: 'ativa', createdAt: daysFromNow(-90) },
+  { id: 'trap-5', orgId: ORG, customerId: 'c-6', code: 'Porta Isca 001', type: 'Porta-isca', location: 'Estoque seco', status: 'ativa', createdAt: daysFromNow(-200) },
+  { id: 'trap-6', orgId: ORG, customerId: 'c-6', code: 'Placa Cola 001', type: 'Placa de cola', location: 'Câmara fria', status: 'substituida', createdAt: daysFromNow(-200) },
+];
+
+export const trapInspections: TrapInspection[] = [
+  { id: 'insp-1', trapId: 'trap-4', date: daysFromNow(-2), consumed: true, action: 'substituida', technicianId: 'u-t3', notes: 'Consumo alto próximo à lixeira externa.' },
+  { id: 'insp-2', trapId: 'trap-1', date: daysFromNow(-2), consumed: false, action: 'nenhuma', technicianId: 'u-t3' },
+  { id: 'insp-3', trapId: 'trap-2', date: daysFromNow(-30), consumed: true, action: 'nenhuma', technicianId: 'u-t3', notes: 'Isca com sinais de roedores.' },
+  { id: 'insp-4', trapId: 'trap-5', date: daysFromNow(-5), consumed: false, action: 'nenhuma', technicianId: 'u-t1' },
 ];
 
 export const orgProfile = {

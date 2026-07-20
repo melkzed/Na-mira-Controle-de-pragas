@@ -24,6 +24,7 @@ export const navItems: NavItem[] = [
 
   { to: '/clientes', label: 'Clientes', icon: 'Users', roles: ['admin', 'supervisor', 'atendimento', 'financeiro'], group: 'Comercial' },
   { to: '/crm', label: 'CRM', icon: 'Target', roles: ['admin', 'supervisor', 'atendimento'], group: 'Comercial' },
+  { to: '/monitoramento', label: 'Monitoramento', icon: 'Radar', roles: ['admin', 'supervisor', 'atendimento'], group: 'Operação' },
 
   { to: '/estoque', label: 'Estoque', icon: 'Boxes', roles: ['admin', 'supervisor', 'estoque'], group: 'Recursos' },
   { to: '/produtos', label: 'Produtos', icon: 'FlaskConical', roles: ['admin', 'supervisor', 'estoque'], group: 'Recursos' },

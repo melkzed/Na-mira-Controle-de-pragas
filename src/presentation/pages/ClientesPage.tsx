@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Building2, Download, Mail, MapPin, Pencil, Phone, Plus, Search, Trash2, User } from 'lucide-react';
+import { Building2, Download, Mail, MapPin, Pencil, Phone, Plus, Radar, Search, Trash2, User } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -184,7 +184,12 @@ function ClienteDetail({
           <Info label="Cliente desde" value={fmtDate(customer.createdAt)} />
         </div>
 
-        {customer.monitoringContracted && <Badge tone="info" dot>Monitoramento contratado (armadilhas / MIP)</Badge>}
+        {customer.monitoringContracted && (
+          <a href={`/monitoramento?client=${customer.id}`} className="flex items-center justify-between rounded-lg border border-info/30 bg-info-soft/50 px-3 py-2 text-sm transition hover:brightness-105">
+            <span className="flex items-center gap-2 font-medium text-info"><Radar size={15} /> Monitoramento contratado (armadilhas / MIP)</span>
+            <span className="text-xs text-info">Abrir →</span>
+          </a>
+        )}
 
         {customer.permanentNotes && (
           <div className="rounded-lg border border-warning/30 bg-warning-soft/60 p-3">

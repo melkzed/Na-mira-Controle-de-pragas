@@ -86,6 +86,30 @@ export interface Supplier {
   email?: string;
 }
 
+// ── Monitoramento de armadilhas (MIP) ───────────────────────────────────────
+export type TrapStatus = 'ativa' | 'extraviada' | 'substituida' | 'retirada';
+
+export interface TrapDevice {
+  id: string;
+  orgId: string;
+  customerId: string;
+  code: string; // identificação/numeração (ex.: "Porta Isca 005")
+  type: string; // Porta-isca, Luminosa, Cola, Mecânica, Feromônio...
+  location?: string; // ponto de instalação
+  status: TrapStatus;
+  createdAt: string;
+}
+
+export interface TrapInspection {
+  id: string;
+  trapId: string;
+  date: string; // ISO
+  consumed: boolean; // houve consumo?
+  action?: 'nenhuma' | 'substituida' | 'retirada' | 'reinstalada' | 'extraviada';
+  technicianId?: string;
+  notes?: string;
+}
+
 export interface ProductCategory {
   id: string;
   orgId: string;
