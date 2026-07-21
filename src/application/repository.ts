@@ -9,6 +9,8 @@
 import * as seed from '@/infrastructure/seed/data';
 import { useCustomersStore } from '@/store/customersStore';
 import { useProductsStore, useServiceTypesStore } from '@/store/entityStores';
+import { useAppointmentsStore } from '@/store/appointmentsStore';
+import { useStockStore } from '@/store/stockStore';
 import type {
   Appointment,
   Customer,
@@ -39,15 +41,14 @@ export function getServiceType(id?: string) {
 }
 
 export function centralBalance(productId: string): number {
-  return seed.stockBalances
-    .filter((b) => b.locationId === 'loc-central' && b.productId === productId)
-    .reduce((sum, b) => sum + b.quantity, 0);
+  return useStockStore.getState().balanceOf('loc-central', productId);
 }
 
 export function technicianBalances(locationId: string) {
-  return seed.stockBalances
+  return useStockStore.getState().balances
     .filter((b) => b.locationId === locationId)
-    .map((b) => ({ product: getProduct(b.productId)!, quantity: b.quantity }));
+    .map((b) => ({ product: getProduct(b.productId), quantity: b.quantity }))
+    .filter((x): x is { product: Product; quantity: number } => !!x.product);
 }
 
 export function lowStockProducts() {
@@ -58,7 +59,7 @@ export function lowStockProducts() {
 
 export function appointmentsByDay(iso: string): Appointment[] {
   const day = iso.slice(0, 10);
-  return seed.appointments
+  return useAppointmentsStore.getState().appointments
     .filter((a) => a.scheduledStart.slice(0, 10) === day)
     .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
 }
@@ -74,11 +75,11 @@ export function appointmentsForTechnician(
   dayIso: string,
 ): Appointment[] {
   const day = dayIso.slice(0, 10);
-  return seed.appointments
+  return useAppointmentsStore.getState().appointments
     .filter(
       (a) =>
         a.technicianId === technicianId &&
         a.scheduledStart.slice(0, 10) === day,
     )
-    .sort((a, b) => (a.routeOrder ?? 0) - (b.routeOrder ?? 0));
+    .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
 }

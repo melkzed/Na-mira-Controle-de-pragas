@@ -32,9 +32,9 @@ próprio.
 | Módulo | O que faz |
 | --- | --- |
 | **Dashboard** | +25 indicadores, gráficos animados, alertas e agenda do dia |
-| **Agenda** ⭐ | Visões Dia / Semana / Mês / Agenda / Mapa (estilo Google Calendar) |
-| **Roteirização** | Sequência otimizada de visitas, distância/tempo, integração de mapas |
-| **App do Técnico** | Painel de campo mobile-first: rota, checklist, estoque, iniciar/finalizar |
+| **Agenda** ⭐ | Visões Dia / Semana / Mês / Agenda (estilo Google Calendar); agendamento com **hora marcada** e recorrência |
+| **Roteirização** | **Mapa real** (coordenadas lat/lng) + **otimização de rota** por menor distância **respeitando janelas de horário** (hora marcada); deep-links Maps/Waze/Apple |
+| **App do Técnico** | Painel de campo mobile-first com abas **Visitas / Mapa / Produtos**: rota do dia otimizada, checklist, estoque e catálogo próprios, iniciar/finalizar |
 | **Clientes** | Cadastro PF/PJ completo, histórico, contratos, auto-save |
 | **CRM** | Funil de vendas em kanban (contato → orçamento → negociação → ganho) |
 | **Estoque** | Dois níveis: central + individual por técnico, com movimentações |
@@ -69,8 +69,10 @@ src/
 │   │   ├── ui/        # Card, Button, Badge, Table, Drawer, Field, ...
 │   │   └── layout/    # Sidebar, Topbar, AppLayout, CommandPalette
 │   └── pages/         # uma página por módulo
-├── store/             # estado global (Zustand): tema, usuário, notificações
-└── lib/               # utilitários (formatação, datas)
+├── store/             # estado global (Zustand): tema, usuário, notificações,
+│                      # agendamentos, clientes, produtos, toasts (persistidos)
+└── lib/               # utilitários: geo.ts (projeção + distância Haversine),
+                       # route.ts (otimização com janelas de horário), datas, PDF
 ```
 
 A camada de apresentação **nunca** conhece a fonte de dados: ela conversa com
@@ -183,15 +185,16 @@ Rodando sem backend (dados persistidos no navegador via localStorage):
 - [x] **Login e acesso por papel** (sessão persistente; técnico isolado no app de campo)
 - [x] **CRUD real** de Clientes, Agendamentos, CRM, Produtos, Financeiro, Equipamentos, Veículos
 - [x] Cliente com **validação** (CPF/CNPJ, e-mail), máscaras e **auto-save** de rascunho
-- [x] Agenda: novo atendimento, mudança de status, cancelar/excluir
+- [x] Agenda: novo atendimento (com **hora marcada** e recorrência), mudança de status, reagendar, cancelar/excluir
+- [x] **Roteirização** com mapa por coordenadas reais e **otimização respeitando janelas de horário**
 - [x] **PDF da Ordem de Serviço** (impressão) e **exportação CSV**
 - [x] **PWA** instalável (base offline) · **code splitting** · **error boundary**
-- [x] Paleta ⌘K por teclado · acessibilidade do Drawer
+- [x] Paleta ⌘K por teclado · **toasts** com desfazer · acessibilidade (teclado, `prefers-reduced-motion`) · **headers de segurança** (CSP/HSTS) no deploy
 
 ## 🗺️ Roadmap de integração (requer serviços externos)
 
 - [ ] Conectar `repository.ts` ao Supabase (Auth + Postgres + Storage) — RLS já pronta em [`db/rls.sql`](db/rls.sql)
-- [ ] Roteirização real (Google Maps Directions / Distance Matrix)
+- [ ] Distâncias/tempos reais de trânsito (Google Maps Directions / Distance Matrix) — a otimização por janelas já funciona com distância geodésica
 - [ ] Emissão de NFS-e via provedor municipal
 - [ ] Notificações reais (WhatsApp / push / e-mail)
 - [ ] App mobile nativo do técnico (offline-first)

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Check, FileText, MapPin, Plus, Radar, Trash2 } from 'lucide-react';
+import { Check, ClipboardList, FileText, MapPin, Plus, Radar, Trash2 } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
@@ -12,6 +12,7 @@ import { Stagger } from '../components/ui/misc';
 import { useCustomersStore } from '@/store/customersStore';
 import { useTrapsStore, type TrapInput } from '@/store/trapsStore';
 import { logChange } from '@/store/auditStore';
+import { toast } from '@/store/toastStore';
 import { technicians } from '@/infrastructure/seed/data';
 import type { TrapDevice, TrapStatus } from '@/domain/types';
 import { fmtDate } from '@/lib/date';
@@ -27,7 +28,7 @@ const STATUS_META: Record<TrapStatus, { label: string; tone: 'success' | 'danger
 export function MonitoramentoPage() {
   const [params, setParams] = useSearchParams();
   const customers = useCustomersStore((s) => s.customers);
-  const { traps, inspections, addTrap, removeTrap, addInspection } = useTrapsStore();
+  const { traps, inspections, addTrap, removeTrap, restoreTrap, addInspection } = useTrapsStore();
 
   const monitored = customers.filter((c) => c.monitoringContracted);
   const [customerId, setCustomerId] = useState(params.get('client') ?? monitored[0]?.id ?? '');
@@ -98,8 +99,8 @@ export function MonitoramentoPage() {
                 </div>
                 {li && <Badge tone={li.consumed ? 'danger' : 'success'} dot>{li.consumed ? 'Consumo' : 'Sem consumo'} · {fmtDate(li.date)}</Badge>}
                 <Badge tone={STATUS_META[t.status].tone}>{STATUS_META[t.status].label}</Badge>
-                <Button size="sm" variant="outline" leftIcon={<Check size={14} />} onClick={() => setInspectTrap(t)}>Inspeção</Button>
-                <button onClick={() => removeTrap(t.id)} className="text-muted-foreground hover:text-danger" title="Excluir"><Trash2 size={15} /></button>
+                <Button size="sm" variant="outline" leftIcon={<ClipboardList size={14} />} onClick={() => setInspectTrap(t)}>Inspeção</Button>
+                <button onClick={() => { removeTrap(t.id); toast(`Armadilha "${t.code}" excluída`, { tone: 'danger', action: { label: 'Desfazer', onClick: () => restoreTrap(t) } }); }} aria-label={`Excluir armadilha ${t.code}`} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-danger" title="Excluir"><Trash2 size={15} /></button>
               </div>
             );
           })}

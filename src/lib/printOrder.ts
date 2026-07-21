@@ -8,6 +8,7 @@ import { getCustomer, getProduct, getServiceType, getUser } from '@/application/
 import * as seed from '@/infrastructure/seed/data';
 import { formatDocument } from './utils';
 import { currentBatch } from './batches';
+import { toast } from '@/store/toastStore';
 
 function esc(s: unknown): string {
   return String(s ?? '')
@@ -140,7 +141,7 @@ export function printServiceOrder(so: ServiceOrder): void {
 
   const w = window.open('', '_blank', 'width=880,height=1000');
   if (!w) {
-    alert('Permita pop-ups para gerar o PDF da Ordem de Serviço.');
+    toast('Permita pop-ups para gerar o PDF da Ordem de Serviço.', { tone: 'warning' });
     return;
   }
   w.document.open();

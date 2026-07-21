@@ -8,8 +8,78 @@ import { Icon } from '../components/ui/Icon';
 import { Badge } from '../components/ui/Badge';
 import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getServiceType, getUser } from '@/application/repository';
-import { downloadCsv } from '@/lib/export';
+import { downloadCsv, downloadXls } from '@/lib/export';
+import { printDataReport, type ReportColumn } from '@/lib/printReports';
 import { fmtDate } from '@/lib/date';
+import { formatCurrency } from '@/lib/utils';
+
+interface ReportData {
+  columns: ReportColumn<any>[];
+  rows: any[];
+  summary: { label: string; value: string | number }[];
+}
+
+/** Monta o conjunto de dados do relatório solicitado (colunas + linhas + resumo). */
+function buildReport(group: string): ReportData {
+  if (group === 'Financeiro & Fiscal') {
+    const rows = seed.financeEntries;
+    const receita = rows.filter((e) => e.type === 'receita').reduce((s, e) => s + e.amount, 0);
+    const despesa = rows.filter((e) => e.type === 'despesa').reduce((s, e) => s + e.amount, 0);
+    return {
+      columns: [
+        { header: 'Descrição', value: (e) => e.description },
+        { header: 'Tipo', value: (e) => (e.type === 'receita' ? 'Receita' : 'Despesa') },
+        { header: 'Status', value: (e) => e.status },
+        { header: 'Valor (R$)', value: (e) => formatCurrency(e.amount), align: 'right' },
+        { header: 'Vencimento', value: (e) => (e.dueDate ? fmtDate(e.dueDate) : '') },
+      ],
+      rows,
+      summary: [
+        { label: 'Lançamentos', value: rows.length },
+        { label: 'Receitas', value: formatCurrency(receita) },
+        { label: 'Despesas', value: formatCurrency(despesa) },
+        { label: 'Saldo', value: formatCurrency(receita - despesa) },
+      ],
+    };
+  }
+  if (group === 'Equipes & Recursos') {
+    const rows = seed.products;
+    return {
+      columns: [
+        { header: 'Produto', value: (p) => p.name },
+        { header: 'Princípio ativo', value: (p) => p.activeIngredient ?? '' },
+        { header: 'Unidade', value: (p) => p.unit },
+        { header: 'Estoque mínimo', value: (p) => p.minQuantity, align: 'right' },
+        { header: 'Preço (R$)', value: (p) => formatCurrency(p.price), align: 'right' },
+      ],
+      rows,
+      summary: [
+        { label: 'Produtos', value: rows.length },
+        { label: 'Regulados', value: rows.filter((p) => p.isRegulated).length },
+      ],
+    };
+  }
+  // Operação (padrão): ordens de serviço
+  const rows = seed.serviceOrders;
+  const finalizadas = rows.filter((so) => so.status === 'concluida').length;
+  const totalMin = rows.reduce((s, so) => s + (so.totalMinutes ?? 0), 0);
+  return {
+    columns: [
+      { header: 'OS', value: (so) => `#${so.number}` },
+      { header: 'Cliente', value: (so) => getCustomer(so.customerId)?.name ?? '' },
+      { header: 'Serviço', value: (so) => getServiceType(so.serviceTypeId)?.name ?? '' },
+      { header: 'Técnico', value: (so) => getUser(so.technicianId)?.name ?? '' },
+      { header: 'Status', value: (so) => so.status },
+      { header: 'Duração (min)', value: (so) => so.totalMinutes ?? '', align: 'right' },
+    ],
+    rows,
+    summary: [
+      { label: 'Ordens', value: rows.length },
+      { label: 'Finalizadas', value: finalizadas },
+      { label: 'Tempo total', value: `${Math.round(totalMin / 60)}h` },
+    ],
+  };
+}
 
 const reports = [
   { group: 'Operação', items: [
@@ -40,36 +110,21 @@ const reports = [
 
 export function RelatoriosPage() {
   const [range, setRange] = useState('30d');
+  const rangeLabel: Record<string, string> = { '7d': 'Últimos 7 dias', '30d': 'Últimos 30 dias', '90d': 'Últimos 90 dias', year: 'Este ano' };
 
-  // Exporta um dataset representativo conforme o grupo do relatório.
-  const exportReport = (group: string, name: string) => {
-    const file = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    if (group === 'Financeiro & Fiscal') {
-      downloadCsv(file, seed.financeEntries, [
-        { header: 'Descrição', value: (e) => e.description },
-        { header: 'Tipo', value: (e) => e.type },
-        { header: 'Status', value: (e) => e.status },
-        { header: 'Valor', value: (e) => e.amount },
-        { header: 'Vencimento', value: (e) => (e.dueDate ? fmtDate(e.dueDate) : '') },
-      ]);
-    } else if (group === 'Equipes & Recursos') {
-      downloadCsv(file, seed.products, [
-        { header: 'Produto', value: (p) => p.name },
-        { header: 'Princípio ativo', value: (p) => p.activeIngredient ?? '' },
-        { header: 'Unidade', value: (p) => p.unit },
-        { header: 'Estoque mínimo', value: (p) => p.minQuantity },
-        { header: 'Preço', value: (p) => p.price },
-      ]);
-    } else {
-      downloadCsv(file, seed.serviceOrders, [
-        { header: 'OS', value: (so) => so.number },
-        { header: 'Cliente', value: (so) => getCustomer(so.customerId)?.name ?? '' },
-        { header: 'Serviço', value: (so) => getServiceType(so.serviceTypeId)?.name ?? '' },
-        { header: 'Técnico', value: (so) => getUser(so.technicianId)?.name ?? '' },
-        { header: 'Status', value: (so) => so.status },
-        { header: 'Duração (min)', value: (so) => so.totalMinutes ?? '' },
-      ]);
-    }
+  const fileName = (name: string) => name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-');
+
+  const exportPdf = (group: string, name: string) => {
+    const { columns, rows, summary } = buildReport(group);
+    printDataReport(name, `Relatório · ${rangeLabel[range]}`, columns, rows, summary);
+  };
+  const exportXls = (group: string, name: string) => {
+    const { columns, rows } = buildReport(group);
+    downloadXls(fileName(name), rows, columns, `${name} — ${rangeLabel[range]}`);
+  };
+  const exportCsv = (group: string, name: string) => {
+    const { columns, rows } = buildReport(group);
+    downloadCsv(fileName(name), rows, columns);
   };
 
   return (
@@ -107,9 +162,9 @@ export function RelatoriosPage() {
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5">
-                      <Button variant="outline" size="sm" leftIcon={<FileText size={13} />} onClick={() => window.print()}>PDF</Button>
-                      <Button variant="outline" size="sm" leftIcon={<FileSpreadsheet size={13} />} onClick={() => exportReport(section.group, r.name)}>Excel</Button>
-                      <Button variant="ghost" size="sm" leftIcon={<Download size={13} />} onClick={() => exportReport(section.group, r.name)}>CSV</Button>
+                      <Button variant="outline" size="sm" leftIcon={<FileText size={13} />} onClick={() => exportPdf(section.group, r.name)}>PDF</Button>
+                      <Button variant="outline" size="sm" leftIcon={<FileSpreadsheet size={13} />} onClick={() => exportXls(section.group, r.name)}>Excel</Button>
+                      <Button variant="ghost" size="sm" leftIcon={<Download size={13} />} onClick={() => exportCsv(section.group, r.name)}>CSV</Button>
                     </div>
                   </Card>
                 </motion.div>

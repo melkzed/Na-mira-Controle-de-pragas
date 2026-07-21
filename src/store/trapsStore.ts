@@ -15,6 +15,7 @@ interface TrapsState {
   addTrap: (input: TrapInput) => TrapDevice;
   updateTrap: (id: string, patch: Partial<TrapDevice>) => void;
   removeTrap: (id: string) => void;
+  restoreTrap: (trap: TrapDevice) => void;
   addInspection: (input: InspectionInput) => void;
 }
 
@@ -50,6 +51,11 @@ export const useTrapsStore = create<TrapsState>((set, get) => ({
     const insp = get().inspections.filter((i) => i.trapId !== id);
     save(TRAPS_KEY, next); save(INSP_KEY, insp);
     set({ traps: next, inspections: insp });
+  },
+  restoreTrap: (trap) => {
+    const next = [...get().traps, trap];
+    save(TRAPS_KEY, next);
+    set({ traps: next });
   },
   addInspection: (input) => {
     const inspection: TrapInspection = { id: uid('insp'), ...input };

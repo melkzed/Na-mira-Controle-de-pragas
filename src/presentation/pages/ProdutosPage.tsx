@@ -215,7 +215,7 @@ function ProductForm({ open, initial, onClose, onSave }: { open: boolean; initia
           <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Registrar lote {isEdit ? '(nova compra)' : 'inicial'}</p>
           <div className="grid grid-cols-3 gap-3">
             <Field label="Lote"><Input value={batchCode} onChange={(e) => setBatchCode(e.target.value)} placeholder="KO-2408" /></Field>
-            <Field label="Validade"><Input type="date" value={batchExpiry} onChange={(e) => setBatchExpiry(e.target.value)} /></Field>
+            <Field label="Validade"><Input type="date" value={batchExpiry} onChange={(e) => setBatchExpiry(e.target.value)} onFocus={(e) => e.currentTarget.showPicker?.()} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
             <Field label="Qtd."><Input type="number" min={0} value={batchQty} onChange={(e) => setBatchQty(e.target.value)} /></Field>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">O lote informado é adicionado ao histórico e passa a aparecer na Ordem de Serviço.</p>

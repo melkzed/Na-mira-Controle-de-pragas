@@ -1,12 +1,20 @@
 import { Suspense, useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, LogOut, Moon, ShieldCheck, Sun } from 'lucide-react';
+import { ArrowLeft, CalendarCheck, FlaskConical, LogOut, Map, Moon, ShieldCheck, Sun } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import { ROLE_META } from '@/domain/enums';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
 import { PageLoader } from '../RouteError';
+import { FieldTechProvider } from '../field/FieldTech';
+import { cn } from '@/lib/utils';
+
+const FIELD_TABS = [
+  { to: '/campo', label: 'Visitas', icon: CalendarCheck, end: true },
+  { to: '/campo/mapa', label: 'Mapa', icon: Map, end: false },
+  { to: '/campo/produtos', label: 'Produtos', icon: FlaskConical, end: false },
+];
 
 /**
  * Layout do App do Técnico — chrome enxuto, mobile-first, sem menu
@@ -86,11 +94,39 @@ export function FieldLayout() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-4 py-6">
-        <Suspense fallback={<PageLoader />}>
-          <Outlet />
-        </Suspense>
-      </main>
+      <FieldTechProvider>
+        <main className="flex-1 overflow-y-auto px-4 py-6 pb-24">
+          <Suspense fallback={<PageLoader />}>
+            <Outlet />
+          </Suspense>
+        </main>
+
+        {/* Navegação inferior — acesso do técnico: visitas, mapa e produtos */}
+        <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border glass" aria-label="Navegação do App do Técnico">
+          <div className="mx-auto flex max-w-md items-stretch">
+            {FIELD_TABS.map((tab) => (
+              <NavLink
+                key={tab.to}
+                to={tab.to}
+                end={tab.end}
+                className={({ isActive }) =>
+                  cn(
+                    'flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors',
+                    isActive ? 'text-brand' : 'text-muted-foreground hover:text-foreground',
+                  )
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <tab.icon size={20} strokeWidth={isActive ? 2.4 : 2} />
+                    {tab.label}
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
+        </nav>
+      </FieldTechProvider>
     </div>
   );
 }

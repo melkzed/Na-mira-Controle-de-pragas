@@ -20,6 +20,15 @@ export function CommandPalette() {
         e.preventDefault();
         setCommandOpen(!commandOpen);
       }
+      // Tecla "/" abre a busca — desde que o usuário não esteja digitando num campo.
+      if (e.key === '/' && !commandOpen) {
+        const el = e.target as HTMLElement | null;
+        const tag = el?.tagName;
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT' && !el?.isContentEditable) {
+          e.preventDefault();
+          setCommandOpen(true);
+        }
+      }
       if (e.key === 'Escape') setCommandOpen(false);
     };
     window.addEventListener('keydown', handler);

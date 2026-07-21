@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, Lock } from 'lucide-react';
 import { Drawer } from './ui/Drawer';
 import { Button } from './ui/Button';
 import { Field, Input, Select, Textarea } from './ui/Field';
@@ -38,6 +38,7 @@ export function AppointmentForm({
   const [priority, setPriority] = useState<AppointmentPriority>('normal');
   const [start, setStart] = useState('');
   const [duration, setDuration] = useState(90);
+  const [fixedTime, setFixedTime] = useState(false);
   const [notes, setNotes] = useState('');
   const [recurrence, setRecurrence] = useState<'none' | 'semanal' | 'quinzenal' | 'mensal'>('none');
   const [occurrences, setOccurrences] = useState(4);
@@ -57,6 +58,7 @@ export function AppointmentForm({
     setTechnicianId(seed.technicians[0]?.id ?? '');
     setPriority('normal');
     setDuration(seed.serviceTypes[0]?.defaultDurationMin ?? 90);
+    setFixedTime(false);
     setNotes('');
     setRecurrence('none');
     setOccurrences(4);
@@ -102,6 +104,7 @@ export function AppointmentForm({
         address,
         latitude: cust?.latitude,
         longitude: cust?.longitude,
+        fixedTime: fixedTime || undefined,
         notes: notes.trim() || undefined,
         routeOrder: 1,
         products,
@@ -166,12 +169,20 @@ export function AppointmentForm({
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Data e hora" required>
-            <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
+            <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} />
           </Field>
           <Field label="Duração (min)">
             <Input type="number" min={15} step={15} value={duration} onChange={(e) => setDuration(Number(e.target.value) || 0)} />
           </Field>
         </div>
+
+        <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${fixedTime ? 'border-brand/40 bg-brand-soft/40' : 'border-border bg-muted/30 hover:bg-muted/50'}`}>
+          <input type="checkbox" checked={fixedTime} onChange={(e) => setFixedTime(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-border text-brand" />
+          <span className="leading-snug">
+            <span className="flex items-center gap-1.5 text-sm font-medium text-foreground"><Lock size={13} className={fixedTime ? 'text-brand' : 'text-muted-foreground'} /> Hora marcada</span>
+            <span className="text-xs text-muted-foreground">O cliente exige este horário. A otimização de rota mantém a visita dentro do horário; sem marcar, ela pode ser reordenada para encurtar o trajeto.</span>
+          </span>
+        </label>
 
         <Field label="Prioridade">
           <Segmented

@@ -64,7 +64,11 @@ export function CrmPage() {
                       transition={{ delay: Math.min(i * 0.04, 0.3) }}
                       whileHover={{ y: -2 }}
                       onClick={() => setSelected(lead)}
-                      className="group cursor-pointer rounded-xl border border-border bg-surface p-3 shadow-soft"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Abrir lead ${lead.name}`}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(lead); } }}
+                      className="group cursor-pointer rounded-xl border border-border bg-surface p-3 shadow-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
                     >
                       <p className="text-sm font-semibold text-foreground">{lead.name}</p>
                       {lead.company && <p className="text-xs text-muted-foreground">{lead.company}</p>}

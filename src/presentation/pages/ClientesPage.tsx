@@ -82,7 +82,9 @@ export function ClientesPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((c, i) => (
             <motion.div key={c.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.03, 0.3) }}>
-              <Card hover className="cursor-pointer p-4" onClick={() => setSelected(c)}>
+              <Card hover className="cursor-pointer p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60" onClick={() => setSelected(c)}
+                role="button" tabIndex={0} aria-label={`Abrir cliente ${c.name}`}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(c); } }}>
                 <div className="flex items-start gap-3">
                   <Avatar name={c.name} size="md" />
                   <div className="min-w-0 flex-1">

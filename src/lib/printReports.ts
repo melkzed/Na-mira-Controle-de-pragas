@@ -8,6 +8,7 @@ import type { Customer, NonConformity, TrapDevice, TrapInspection } from '@/doma
 import { getUser } from '@/application/repository';
 import * as seed from '@/infrastructure/seed/data';
 import { formatDocument } from './utils';
+import { toast } from '@/store/toastStore';
 
 export const NC_CATEGORY_LABEL: Record<NonConformity['category'], string> = {
   fresta: 'Fresta',
@@ -64,7 +65,7 @@ function header(subtitle: string): string {
 function openPrint(title: string, body: string): void {
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/><title>${esc(title)}</title><style>${SHELL_CSS}</style></head><body><div class="doc">${body}<div class="foot">Documento gerado por Na Mira · Controle de Pragas</div></div><script>window.onload=function(){setTimeout(function(){window.print();},150);};</script></body></html>`;
   const w = window.open('', '_blank', 'width=900,height=1000');
-  if (!w) { alert('Permita pop-ups para gerar o PDF.'); return; }
+  if (!w) { toast('Permita pop-ups para gerar o PDF.', { tone: 'warning' }); return; }
   w.document.open(); w.document.write(html); w.document.close();
 }
 
@@ -75,6 +76,34 @@ function customerBlock(c?: Customer): string {
     <div><span>Endereço:</span> ${esc([c?.street, c?.district, c?.city].filter(Boolean).join(', '))}</div>
     <div><span>Telefone:</span> ${esc(c?.phone ?? '—')}</div>
   </div>`;
+}
+
+export interface ReportColumn<T> { header: string; value: (row: T) => unknown; align?: 'left' | 'right' }
+
+/**
+ * PDF genérico de relatório: monta a tabela do relatório solicitado (com resumo
+ * opcional) e abre a impressão — não é um "print da tela".
+ */
+export function printDataReport<T>(
+  title: string,
+  subtitle: string,
+  columns: ReportColumn<T>[],
+  rows: T[],
+  summary?: { label: string; value: string | number }[],
+): void {
+  const cards = summary && summary.length
+    ? `<h2>Resumo</h2><div class="cards">${summary.map((s) => `<div class="card"><div class="n">${esc(s.value)}</div><div class="l">${esc(s.label)}</div></div>`).join('')}</div>`
+    : '';
+  const head = `<tr>${columns.map((c) => `<th style="${c.align === 'right' ? 'text-align:right' : ''}">${esc(c.header)}</th>`).join('')}</tr>`;
+  const body = rows.length
+    ? rows.map((r) => `<tr>${columns.map((c) => `<td style="${c.align === 'right' ? 'text-align:right' : ''}">${esc(c.value(r))}</td>`).join('')}</tr>`).join('')
+    : `<tr><td colspan="${columns.length}" style="color:#94a3b8">Sem dados no período.</td></tr>`;
+  const html = `${header(subtitle)}
+    <h2 style="margin-top:22px">${esc(title)}</h2>
+    ${cards}
+    <h2>Detalhamento (${rows.length})</h2>
+    <table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  openPrint(`${title} · Na Mira`, html);
 }
 
 export function printTrapReport(customer: Customer, traps: TrapDevice[], inspections: TrapInspection[]): void {

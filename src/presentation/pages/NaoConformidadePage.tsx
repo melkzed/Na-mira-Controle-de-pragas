@@ -14,6 +14,7 @@ import { useNonConformitiesStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
 import { useAppStore } from '@/store/appStore';
 import { logChange } from '@/store/auditStore';
+import { toast } from '@/store/toastStore';
 import type { AppointmentPriority } from '@/domain/enums';
 import type { NonConformity, NonConformityCategory, NonConformityStatus } from '@/domain/types';
 import { fmtDate } from '@/lib/date';
@@ -79,7 +80,7 @@ export function NaoConformidadePage() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <PriorityBadge priority={nc.priority} />
-                  <button onClick={() => remove(nc.id)} className="text-muted-foreground hover:text-danger" title="Excluir"><Trash2 size={15} /></button>
+                  <button onClick={() => { remove(nc.id); toast('Não conformidade excluída', { tone: 'danger', action: { label: 'Desfazer', onClick: () => add(nc) } }); }} aria-label="Excluir não conformidade" className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-danger" title="Excluir"><Trash2 size={15} /></button>
                 </div>
               </div>
               <p className="mt-2 text-sm text-foreground">{nc.description}</p>

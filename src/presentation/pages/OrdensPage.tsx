@@ -16,6 +16,7 @@ import { printServiceOrder } from '@/lib/printOrder';
 import { currentBatch } from '@/lib/batches';
 import { useInvoicesStore } from '@/store/invoicesStore';
 import { logChange } from '@/store/auditStore';
+import { toast } from '@/store/toastStore';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { FileCode, Receipt } from 'lucide-react';
 
@@ -168,7 +169,7 @@ function FiscalSection({ so }: { so: ServiceOrder }) {
           <div className="mt-2 flex gap-2">
             <Button size="sm" variant="outline" leftIcon={<Download size={14} />} onClick={() => printNfse(invoice, customer)}>PDF</Button>
             <Button size="sm" variant="outline" leftIcon={<FileCode size={14} />} onClick={() => downloadNfseXml(invoice, customer)}>XML</Button>
-            <Button size="sm" variant="ghost" onClick={() => alert('NFS-e enviada ao cliente (simulação).')}>Enviar ao cliente</Button>
+            <Button size="sm" variant="ghost" onClick={() => toast('NFS-e enviada ao cliente (simulação).', { tone: 'success' })}>Enviar ao cliente</Button>
           </div>
         </div>
       ) : (

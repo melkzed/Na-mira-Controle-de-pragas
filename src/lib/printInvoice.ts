@@ -6,6 +6,7 @@
 import type { Customer, Invoice } from '@/domain/types';
 import * as seed from '@/infrastructure/seed/data';
 import { formatCurrency, formatDocument } from './utils';
+import { toast } from '@/store/toastStore';
 
 function esc(s: unknown): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -60,7 +61,7 @@ export function printNfse(invoice: Invoice, customer?: Customer): void {
   </div>
   <script>window.onload=function(){setTimeout(function(){window.print();},150);};</script></body></html>`;
   const w = window.open('', '_blank', 'width=880,height=1000');
-  if (!w) { alert('Permita pop-ups para gerar o PDF da NFS-e.'); return; }
+  if (!w) { toast('Permita pop-ups para gerar o PDF da NFS-e.', { tone: 'warning' }); return; }
   w.document.open(); w.document.write(html); w.document.close();
 }
 
