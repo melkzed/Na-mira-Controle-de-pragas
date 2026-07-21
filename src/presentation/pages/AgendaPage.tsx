@@ -63,9 +63,9 @@ export function AgendaPage() {
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => move(-1)}><ChevronLeft size={16} /></Button>
+          <Button variant="outline" size="icon" onClick={() => move(-1)} aria-label="Período anterior"><ChevronLeft size={16} /></Button>
           <Button variant="outline" size="sm" onClick={() => setRef(new Date())}>Hoje</Button>
-          <Button variant="outline" size="icon" onClick={() => move(1)}><ChevronRight size={16} /></Button>
+          <Button variant="outline" size="icon" onClick={() => move(1)} aria-label="Próximo período"><ChevronRight size={16} /></Button>
           <span className="ml-2 text-sm font-semibold capitalize text-foreground">
             {view === 'semana' ? weekRangeLabel(ref) : format(ref, "MMMM 'de' yyyy", { locale: ptBR })}
           </span>

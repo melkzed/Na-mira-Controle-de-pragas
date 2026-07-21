@@ -1,12 +1,19 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { RouterProvider } from 'react-router-dom';
+import { MotionConfig } from 'framer-motion';
 import { router } from './App';
+import { Toaster } from './presentation/components/ui/Toaster';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <RouterProvider router={router} />
+    {/* reducedMotion="user" faz todas as animações respeitarem o
+        prefers-reduced-motion do sistema operacional. */}
+    <MotionConfig reducedMotion="user">
+      <RouterProvider router={router} />
+      <Toaster />
+    </MotionConfig>
   </React.StrictMode>,
 );
 

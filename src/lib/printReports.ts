@@ -8,6 +8,7 @@ import type { Customer, NonConformity, TrapDevice, TrapInspection } from '@/doma
 import { getUser } from '@/application/repository';
 import * as seed from '@/infrastructure/seed/data';
 import { formatDocument } from './utils';
+import { toast } from '@/store/toastStore';
 
 export const NC_CATEGORY_LABEL: Record<NonConformity['category'], string> = {
   fresta: 'Fresta',
@@ -64,7 +65,7 @@ function header(subtitle: string): string {
 function openPrint(title: string, body: string): void {
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/><title>${esc(title)}</title><style>${SHELL_CSS}</style></head><body><div class="doc">${body}<div class="foot">Documento gerado por Na Mira · Controle de Pragas</div></div><script>window.onload=function(){setTimeout(function(){window.print();},150);};</script></body></html>`;
   const w = window.open('', '_blank', 'width=900,height=1000');
-  if (!w) { alert('Permita pop-ups para gerar o PDF.'); return; }
+  if (!w) { toast('Permita pop-ups para gerar o PDF.', { tone: 'warning' }); return; }
   w.document.open(); w.document.write(html); w.document.close();
 }
 

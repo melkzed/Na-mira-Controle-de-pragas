@@ -26,7 +26,7 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border glass px-4 sm:px-6">
-      <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenu}>
+      <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenu} aria-label="Abrir menu">
         <Menu size={20} />
       </Button>
 

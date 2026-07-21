@@ -55,9 +55,16 @@ export function Table<T>({
               <tr
                 key={keyField(row)}
                 onClick={() => onRowClick?.(row)}
+                {...(onRowClick && {
+                  role: 'button',
+                  tabIndex: 0,
+                  onKeyDown: (e: React.KeyboardEvent) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(row); }
+                  },
+                })}
                 className={cn(
                   'border-b border-border/60 transition-colors last:border-0',
-                  onRowClick && 'cursor-pointer hover:bg-muted/40',
+                  onRowClick && 'cursor-pointer hover:bg-muted/40 focus:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
                 )}
               >
                 {columns.map((c) => (

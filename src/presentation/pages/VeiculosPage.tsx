@@ -11,6 +11,7 @@ import { getUser } from '@/application/repository';
 import { users } from '@/infrastructure/seed/data';
 import { useVehiclesStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
+import { toast } from '@/store/toastStore';
 import type { Vehicle } from '@/domain/types';
 import { formatNumber } from '@/lib/utils';
 
@@ -30,7 +31,7 @@ export function VeiculosPage() {
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-soft text-brand"><Truck size={22} /></div>
                 <div className="flex items-center gap-2">
                   <Badge tone={v.inOperation ? 'brand' : 'neutral'} dot>{v.inOperation ? 'Em operação' : 'Na base'}</Badge>
-                  <button onClick={() => remove(v.id)} className="text-muted-foreground opacity-0 transition hover:text-danger group-hover:opacity-100" title="Excluir"><Trash2 size={15} /></button>
+                  <button onClick={() => { remove(v.id); toast('Veículo excluído', { tone: 'danger', action: { label: 'Desfazer', onClick: () => add(v) } }); }} aria-label={`Excluir veículo ${v.plate}`} className="rounded-md p-1 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-danger group-hover:opacity-100" title="Excluir"><Trash2 size={15} /></button>
                 </div>
               </div>
               <p className="mt-3 text-lg font-bold tracking-tight text-foreground">{v.plate}</p>
