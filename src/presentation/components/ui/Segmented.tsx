@@ -1,7 +1,11 @@
-import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
-/** Controle segmentado com indicador deslizante (layout animation). */
+/**
+ * Controle segmentado com indicador (fundo animado por CSS).
+ * Não usa `layoutId`/shared-layout do Framer de propósito: um layoutId dentro
+ * de uma subárvore que sai por AnimatePresence (ex.: dentro de um Drawer) trava
+ * o onExitComplete e deixa o backdrop preso capturando cliques.
+ */
 export function Segmented<T extends string>({
   value,
   onChange,
@@ -22,18 +26,11 @@ export function Segmented<T extends string>({
             key={opt.value}
             onClick={() => onChange(opt.value)}
             className={cn(
-              'relative rounded-lg font-medium transition-colors',
+              'relative rounded-lg font-medium transition-all duration-200',
               size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-3.5 py-1.5 text-sm',
-              active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+              active ? 'bg-surface text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground',
             )}
           >
-            {active && (
-              <motion.span
-                layoutId="segmented-active"
-                className="absolute inset-0 rounded-lg bg-surface shadow-soft"
-                transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-              />
-            )}
             <span className="relative z-10">{opt.label}</span>
           </button>
         );

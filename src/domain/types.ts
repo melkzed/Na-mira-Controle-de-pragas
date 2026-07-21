@@ -267,6 +267,8 @@ export interface Appointment {
   /** Hora marcada — a otimização mantém a visita dentro da janela agendada. */
   fixedTime?: boolean;
   notes?: string;
+  /** Observação do técnico registrada em campo (aparece no sistema da empresa). */
+  technicianNotes?: string;
   routeOrder?: number;
   products: AppointmentProduct[];
   /** Agrupa as ocorrências de uma mesma recorrência (cada uma é independente). */

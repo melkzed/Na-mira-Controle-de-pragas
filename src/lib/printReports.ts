@@ -78,6 +78,34 @@ function customerBlock(c?: Customer): string {
   </div>`;
 }
 
+export interface ReportColumn<T> { header: string; value: (row: T) => unknown; align?: 'left' | 'right' }
+
+/**
+ * PDF genérico de relatório: monta a tabela do relatório solicitado (com resumo
+ * opcional) e abre a impressão — não é um "print da tela".
+ */
+export function printDataReport<T>(
+  title: string,
+  subtitle: string,
+  columns: ReportColumn<T>[],
+  rows: T[],
+  summary?: { label: string; value: string | number }[],
+): void {
+  const cards = summary && summary.length
+    ? `<h2>Resumo</h2><div class="cards">${summary.map((s) => `<div class="card"><div class="n">${esc(s.value)}</div><div class="l">${esc(s.label)}</div></div>`).join('')}</div>`
+    : '';
+  const head = `<tr>${columns.map((c) => `<th style="${c.align === 'right' ? 'text-align:right' : ''}">${esc(c.header)}</th>`).join('')}</tr>`;
+  const body = rows.length
+    ? rows.map((r) => `<tr>${columns.map((c) => `<td style="${c.align === 'right' ? 'text-align:right' : ''}">${esc(c.value(r))}</td>`).join('')}</tr>`).join('')
+    : `<tr><td colspan="${columns.length}" style="color:#94a3b8">Sem dados no período.</td></tr>`;
+  const html = `${header(subtitle)}
+    <h2 style="margin-top:22px">${esc(title)}</h2>
+    ${cards}
+    <h2>Detalhamento (${rows.length})</h2>
+    <table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  openPrint(`${title} · Na Mira`, html);
+}
+
 export function printTrapReport(customer: Customer, traps: TrapDevice[], inspections: TrapInspection[]): void {
   const lastInsp = (trapId: string) => inspections.filter((i) => i.trapId === trapId).sort((a, b) => (a.date > b.date ? -1 : 1))[0];
   const withConsumption = traps.filter((t) => lastInsp(t.id)?.consumed).length;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Plus, Trash2 } from 'lucide-react';
+import { Check, Plus, Trash2, X } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -20,6 +20,30 @@ const statusMeta: Record<EquipmentStatus, { label: string; tone: any }> = {
   manutencao: { label: 'Manutenção', tone: 'warning' },
   inativo: { label: 'Inativo', tone: 'neutral' },
 };
+
+// Categorias de equipamento — base + personalizadas (persistidas no navegador).
+const BASE_KINDS = ['Pulverizador', 'Bomba', 'Nebulizador', 'EPI', 'Ferramenta'];
+const KINDS_KEY = 'namira-equip-kinds';
+function loadKinds(): string[] {
+  try {
+    const raw = localStorage.getItem(KINDS_KEY);
+    const extra = raw ? (JSON.parse(raw) as string[]) : [];
+    return [...BASE_KINDS, ...extra.filter((k) => !BASE_KINDS.includes(k))];
+  } catch {
+    return BASE_KINDS;
+  }
+}
+function saveKind(kind: string) {
+  try {
+    const raw = localStorage.getItem(KINDS_KEY);
+    const extra = raw ? (JSON.parse(raw) as string[]) : [];
+    if (!BASE_KINDS.includes(kind) && !extra.includes(kind)) {
+      localStorage.setItem(KINDS_KEY, JSON.stringify([...extra, kind]));
+    }
+  } catch {
+    /* ignora */
+  }
+}
 
 export function EquipamentosPage() {
   const { items, add, remove } = useEquipmentStore();
@@ -53,10 +77,23 @@ function EquipmentForm({ open, onClose, onSave }: { open: boolean; onClose: () =
   const [status, setStatus] = useState<EquipmentStatus>('disponivel');
   const [assignedTo, setAssignedTo] = useState('');
   const [touched, setTouched] = useState(false);
+  const [kinds, setKinds] = useState<string[]>(BASE_KINDS);
+  const [addingKind, setAddingKind] = useState(false);
+  const [newKind, setNewKind] = useState('');
 
   useEffect(() => {
-    if (open) { setName(''); setCode(''); setAssetNumber(''); setKind('Pulverizador'); setStatus('disponivel'); setAssignedTo(''); setTouched(false); }
+    if (open) { setName(''); setCode(''); setAssetNumber(''); setKinds(loadKinds()); setKind('Pulverizador'); setStatus('disponivel'); setAssignedTo(''); setTouched(false); setAddingKind(false); setNewKind(''); }
   }, [open]);
+
+  const confirmNewKind = () => {
+    const k = newKind.trim();
+    if (!k) return;
+    saveKind(k);
+    setKinds((prev) => (prev.includes(k) ? prev : [...prev, k]));
+    setKind(k);
+    setAddingKind(false);
+    setNewKind('');
+  };
 
   const submit = () => {
     setTouched(true);
@@ -71,7 +108,20 @@ function EquipmentForm({ open, onClose, onSave }: { open: boolean; onClose: () =
         <Field label="Nome" required className="col-span-2"><Input value={name} onChange={(e) => setName(e.target.value)} />{touched && !name.trim() && <span className="mt-1 block text-xs text-danger">Informe o nome.</span>}</Field>
         <Field label="Código"><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="PC-01" /></Field>
         <Field label="Nº patrimônio"><Input value={assetNumber} onChange={(e) => setAssetNumber(e.target.value)} placeholder="PAT-1001" /></Field>
-        <Field label="Tipo"><Select value={kind} onChange={(e) => setKind(e.target.value)}>{['Pulverizador', 'Bomba', 'Nebulizador', 'EPI', 'Ferramenta'].map((k) => <option key={k}>{k}</option>)}</Select></Field>
+        <Field label="Tipo / Categoria">
+          {addingKind ? (
+            <div className="flex gap-2">
+              <Input value={newKind} autoFocus onChange={(e) => setNewKind(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); confirmNewKind(); } }} placeholder="Nova categoria" />
+              <Button type="button" variant="outline" size="icon" onClick={confirmNewKind} disabled={!newKind.trim()} aria-label="Salvar categoria"><Check size={16} /></Button>
+              <Button type="button" variant="ghost" size="icon" onClick={() => { setAddingKind(false); setNewKind(''); }} aria-label="Cancelar"><X size={16} /></Button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Select value={kind} onChange={(e) => setKind(e.target.value)}>{kinds.map((k) => <option key={k}>{k}</option>)}</Select>
+              <Button type="button" variant="outline" size="icon" onClick={() => setAddingKind(true)} title="Adicionar categoria" aria-label="Adicionar categoria"><Plus size={16} /></Button>
+            </div>
+          )}
+        </Field>
         <Field label="Status"><Select value={status} onChange={(e) => setStatus(e.target.value as EquipmentStatus)}>{(Object.keys(statusMeta) as EquipmentStatus[]).map((s) => <option key={s} value={s}>{statusMeta[s].label}</option>)}</Select></Field>
         <Field label="Responsável" className="col-span-2"><Select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}><option value="">—</option>{users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></Field>
       </div>

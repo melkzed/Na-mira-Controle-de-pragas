@@ -135,6 +135,45 @@ export function AgendaPage() {
   );
 }
 
+/**
+ * Empacota os atendimentos de um dia em colunas: eventos que se sobrepõem no
+ * tempo ficam lado a lado (não empilham nem vazam para fora da célula).
+ */
+function packDay(dayAppts: Appointment[]): { a: Appointment; col: number; cols: number }[] {
+  const items = dayAppts
+    .map((a) => {
+      const s = parseISO(a.scheduledStart);
+      const start = s.getHours() * 60 + s.getMinutes();
+      return { a, start, end: start + (a.estimatedMinutes ?? 60) };
+    })
+    .sort((x, y) => x.start - y.start || x.end - y.end);
+
+  const result: { a: Appointment; col: number; cols: number }[] = [];
+  let cluster: typeof items = [];
+  let clusterEnd = -1;
+
+  const flush = () => {
+    const colEnds: number[] = [];
+    const placed = cluster.map((it) => {
+      let col = colEnds.findIndex((end) => end <= it.start);
+      if (col === -1) { col = colEnds.length; colEnds.push(it.end); }
+      else colEnds[col] = it.end;
+      return { a: it.a, col };
+    });
+    const cols = colEnds.length;
+    placed.forEach(({ a, col }) => result.push({ a, col, cols }));
+    cluster = [];
+  };
+
+  for (const it of items) {
+    if (cluster.length && it.start >= clusterEnd) flush();
+    cluster.push(it);
+    clusterEnd = cluster.length === 1 ? it.end : Math.max(clusterEnd, it.end);
+  }
+  if (cluster.length) flush();
+  return result;
+}
+
 // ── Semana (grade de horários) ───────────────────────────────────────────────
 function WeekView({ refDate, appts, onSelect }: { refDate: Date; appts: Appointment[]; onSelect: (a: Appointment) => void }) {
   const days = weekDays(refDate);
@@ -162,15 +201,16 @@ function WeekView({ refDate, appts, onSelect }: { refDate: Date; appts: Appointm
               ))}
             </div>
             {days.map((d) => {
-              const dayAppts = appts.filter((a) => isSameDay(parseISO(a.scheduledStart), d));
+              const laid = packDay(appts.filter((a) => isSameDay(parseISO(a.scheduledStart), d)));
               return (
                 <div key={d.toISOString()} className="relative border-l border-border">
                   {HOURS.map((h) => <div key={h} className="h-16 border-b border-border/60" />)}
-                  {dayAppts.map((a) => {
+                  {laid.map(({ a, col, cols }) => {
                     const start = parseISO(a.scheduledStart);
                     const top = (start.getHours() - 7 + start.getMinutes() / 60) * 64;
                     const height = ((a.estimatedMinutes ?? 60) / 60) * 64;
                     const st = getServiceType(a.serviceTypeId);
+                    const widthPct = 100 / cols;
                     return (
                       <motion.button
                         key={a.id}
@@ -178,8 +218,15 @@ function WeekView({ refDate, appts, onSelect }: { refDate: Date; appts: Appointm
                         animate={{ opacity: 1, scale: 1 }}
                         whileHover={{ scale: 1.02, zIndex: 20 }}
                         onClick={() => onSelect(a)}
-                        className="absolute left-1 right-1 overflow-hidden rounded-lg border-l-[3px] px-2 py-1 text-left shadow-soft"
-                        style={{ top, height: Math.max(height - 4, 26), background: `${st?.color}1a`, borderColor: st?.color }}
+                        className="absolute overflow-hidden rounded-lg border-l-[3px] px-1.5 py-1 text-left shadow-soft"
+                        style={{
+                          top,
+                          height: Math.max(height - 4, 26),
+                          left: `calc(${col * widthPct}% + 2px)`,
+                          width: `calc(${widthPct}% - 4px)`,
+                          background: `${st?.color}1a`,
+                          borderColor: st?.color,
+                        }}
                       >
                         <p className="truncate text-[11px] font-semibold text-foreground">{fmtTime(a.scheduledStart)} {getCustomer(a.customerId)?.name}</p>
                         <p className="truncate text-[10px] text-muted-foreground">{st?.name}</p>
@@ -392,6 +439,12 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
         </Section>
 
         <Section title="Endereço"><p className="text-sm text-foreground">{appt.address}</p></Section>
+        {appt.technicianNotes && (
+          <div className="rounded-lg border border-brand/30 bg-brand-soft/40 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-brand">Observação do técnico (campo)</p>
+            <p className="mt-0.5 text-sm text-foreground">{appt.technicianNotes}</p>
+          </div>
+        )}
         {cust?.permanentNotes && (
           <div className="rounded-lg border border-warning/30 bg-warning-soft/60 p-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-warning">Observações do contrato</p>
