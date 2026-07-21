@@ -5,6 +5,7 @@ import { Button } from './ui/Button';
 import { Field, Input, Select, Textarea } from './ui/Field';
 import { Segmented } from './ui/Segmented';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
+import { logChange } from '@/store/auditStore';
 import { useCustomersStore } from '@/store/customersStore';
 import { useServiceTypesStore } from '@/store/entityStores';
 import { getProduct } from '@/application/repository';
@@ -108,6 +109,7 @@ export function AppointmentForm({
         recurrenceRule: recurrence !== 'none' ? recurrence : undefined,
       });
     }
+    logChange('criação', 'agendamento', recurrence !== 'none' ? `${total} visitas recorrentes (${recurrence}) · ${cust?.name ?? ''}` : `Visita agendada · ${cust?.name ?? ''}`);
     onSaved();
   };
 

@@ -26,6 +26,7 @@ const FinanceiroPage = named(() => import('./presentation/pages/FinanceiroPage')
 const FiscalPage = named(() => import('./presentation/pages/FiscalPage'), 'FiscalPage');
 const RelatoriosPage = named(() => import('./presentation/pages/RelatoriosPage'), 'RelatoriosPage');
 const ConfigPage = named(() => import('./presentation/pages/ConfigPage'), 'ConfigPage');
+const HistoricoPage = named(() => import('./presentation/pages/HistoricoPage'), 'HistoricoPage');
 const CampoPage = named(() => import('./presentation/pages/CampoPage'), 'CampoPage');
 const NotFoundPage = named(() => import('./presentation/pages/NotFoundPage'), 'NotFoundPage');
 
@@ -67,6 +68,7 @@ export const router = createBrowserRouter([
       { path: 'financeiro', element: <FinanceiroPage /> },
       { path: 'fiscal', element: <FiscalPage /> },
       { path: 'relatorios', element: <RelatoriosPage /> },
+      { path: 'historico', element: <HistoricoPage /> },
       { path: 'config', element: <ConfigPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],

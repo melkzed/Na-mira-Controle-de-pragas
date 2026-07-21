@@ -11,6 +11,7 @@ import { StatCard } from '../components/StatCard';
 import { Stagger } from '../components/ui/misc';
 import { useCustomersStore } from '@/store/customersStore';
 import { useTrapsStore, type TrapInput } from '@/store/trapsStore';
+import { logChange } from '@/store/auditStore';
 import { technicians } from '@/infrastructure/seed/data';
 import type { TrapDevice, TrapStatus } from '@/domain/types';
 import { fmtDate } from '@/lib/date';
@@ -105,8 +106,8 @@ export function MonitoramentoPage() {
         </CardBody>
       </Card>
 
-      <TrapForm open={formOpen} onClose={() => setFormOpen(false)} onSave={(input) => { addTrap({ ...input, customerId }); setFormOpen(false); }} />
-      <InspectionForm trap={inspectTrap} onClose={() => setInspectTrap(null)} onSave={(data) => { addInspection(data); setInspectTrap(null); }} />
+      <TrapForm open={formOpen} onClose={() => setFormOpen(false)} onSave={(input) => { addTrap({ ...input, customerId }); logChange('criação', 'armadilha', `${input.code} · ${customer?.name ?? ''}`); setFormOpen(false); }} />
+      <InspectionForm trap={inspectTrap} onClose={() => setInspectTrap(null)} onSave={(data) => { const t = inspectTrap; addInspection(data); logChange('inspeção', 'armadilha', `${t?.code ?? ''} · ${data.consumed ? 'consumo' : 'sem consumo'}${data.action && data.action !== 'nenhuma' ? ` · ${data.action}` : ''}`, t?.id); setInspectTrap(null); }} />
     </div>
   );
 }

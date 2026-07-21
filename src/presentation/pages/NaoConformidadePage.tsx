@@ -13,6 +13,7 @@ import { useCustomersStore } from '@/store/customersStore';
 import { useNonConformitiesStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
 import { useAppStore } from '@/store/appStore';
+import { logChange } from '@/store/auditStore';
 import type { AppointmentPriority } from '@/domain/enums';
 import type { NonConformity, NonConformityCategory, NonConformityStatus } from '@/domain/types';
 import { fmtDate } from '@/lib/date';
@@ -102,7 +103,7 @@ export function NaoConformidadePage() {
       <NcForm
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        onSave={(data) => { add({ ...data, id: uid('nc'), orgId: 'org-namira', customerId, createdBy: currentUser?.id, createdAt: new Date().toISOString() }); setFormOpen(false); }}
+        onSave={(data) => { add({ ...data, id: uid('nc'), orgId: 'org-namira', customerId, createdBy: currentUser?.id, createdAt: new Date().toISOString() }); logChange('criação', 'não conformidade', `${NC_CATEGORY_LABEL[data.category]} · ${customer?.name ?? ''}`); setFormOpen(false); }}
       />
     </div>
   );

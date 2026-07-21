@@ -12,6 +12,7 @@ import { Input } from '../components/ui/Field';
 import { CustomerForm } from '../components/CustomerForm';
 import { ServiceOrderStatusBadge } from '../components/StatusBadge';
 import { useCustomersStore } from '@/store/customersStore';
+import { logChange } from '@/store/auditStore';
 import { getServiceType, serviceOrdersForCustomer } from '@/application/repository';
 import type { Customer } from '@/domain/types';
 import { formatDocument } from '@/lib/utils';
@@ -35,7 +36,7 @@ export function ClientesPage() {
 
   const openNew = () => { setEditing(null); setFormOpen(true); };
   const openEdit = (c: Customer) => { setEditing(c); setFormOpen(true); setSelected(null); };
-  const handleDelete = (c: Customer) => { remove(c.id); setSelected(null); };
+  const handleDelete = (c: Customer) => { remove(c.id); logChange('exclusão', 'cliente', `Cliente excluído · ${c.name}`, c.id); setSelected(null); };
 
   const exportCsv = () => {
     downloadCsv('clientes', filtered, [
@@ -114,7 +115,7 @@ export function ClientesPage() {
         open={formOpen}
         initial={editing}
         onClose={() => setFormOpen(false)}
-        onSaved={(c) => { setFormOpen(false); setSelected(c); }}
+        onSaved={(c, isNew) => { setFormOpen(false); setSelected(c); logChange(isNew ? 'criação' : 'alteração', 'cliente', `${isNew ? 'Cliente cadastrado' : 'Cadastro alterado'} · ${c.name}`, c.id); }}
       />
     </div>
   );

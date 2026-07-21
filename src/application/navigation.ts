@@ -35,6 +35,7 @@ export const navItems: NavItem[] = [
   { to: '/financeiro', label: 'Financeiro', icon: 'Wallet', roles: ['admin', 'financeiro'], group: 'Gestão' },
   { to: '/fiscal', label: 'Fiscal', icon: 'FileText', roles: ['admin', 'financeiro'], group: 'Gestão' },
   { to: '/relatorios', label: 'Relatórios', icon: 'BarChart3', roles: ADMIN.concat('financeiro'), group: 'Gestão' },
+  { to: '/historico', label: 'Histórico', icon: 'History', roles: ADMIN, group: 'Gestão' },
   { to: '/config', label: 'Configurações', icon: 'Settings', roles: ['admin'], group: 'Gestão' },
 
   { to: '/campo', label: 'App do Técnico', icon: 'Smartphone', roles: ALL, group: 'Campo' },

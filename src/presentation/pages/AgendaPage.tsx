@@ -14,6 +14,7 @@ import { AppointmentForm } from '../components/AppointmentForm';
 import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getServiceType, getUser } from '@/application/repository';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
+import { logChange } from '@/store/auditStore';
 import { APPOINTMENT_STATUS_META, type AppointmentStatus } from '@/domain/enums';
 import type { Appointment } from '@/domain/types';
 import { addDays, fmtTime, isSameDay, isToday, parseISO, weekDays, weekRangeLabel } from '@/lib/date';
@@ -345,7 +346,10 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
   const tech = getUser(appt?.technicianId);
   if (!appt) return null;
 
-  const confirmVisit = () => update(appt.id, { status: 'confirmado', confirmedAt: new Date().toISOString() });
+  const confirmVisit = () => {
+    update(appt.id, { status: 'confirmado', confirmedAt: new Date().toISOString() });
+    logChange('confirmação', 'agendamento', `Visita confirmada · ${cust?.name ?? ''}`, appt.id);
+  };
 
   return (
     <Drawer open={!!appt} onClose={() => { setRescheduling(false); onClose(); }} title={cust?.name ?? 'Atendimento'} subtitle={st?.name}>
@@ -403,9 +407,9 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
             <Button leftIcon={<MapPin size={15} />} variant="outline">Abrir no mapa / navegação</Button>
             <div className="grid grid-cols-2 gap-2">
               <Button variant="secondary" onClick={() => setRescheduling(true)}>Reagendar / técnico</Button>
-              <Button variant="outline" onClick={() => setStatus(appt.id, 'cancelado')}>Cancelar visita</Button>
+              <Button variant="outline" onClick={() => { setStatus(appt.id, 'cancelado'); logChange('cancelamento', 'agendamento', `Visita cancelada · ${cust?.name ?? ''}`, appt.id); }}>Cancelar visita</Button>
             </div>
-            <Button variant="danger" onClick={() => { removeAppt(appt.id); onClose(); }}>Excluir</Button>
+            <Button variant="danger" onClick={() => { removeAppt(appt.id); logChange('exclusão', 'agendamento', `Visita excluída · ${cust?.name ?? ''}`, appt.id); onClose(); }}>Excluir</Button>
           </div>
         )}
       </div>
@@ -432,6 +436,8 @@ function RescheduleForm({ appt, onDone }: { appt: Appointment; onDone: () => voi
       technicianId: technicianId || undefined,
       status: 'reagendado',
     });
+    const techChanged = technicianId !== appt.technicianId;
+    logChange('reagendamento', 'agendamento', `Visita reagendada${techChanged ? ' (técnico alterado)' : ''} · ${getCustomer(appt.customerId)?.name ?? ''}`, appt.id);
     onDone();
   };
 
