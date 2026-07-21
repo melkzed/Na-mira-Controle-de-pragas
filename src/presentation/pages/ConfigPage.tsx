@@ -1,10 +1,13 @@
+import { X } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
+import { Select } from '../components/ui/Field';
 import { Table, type Column } from '../components/ui/Table';
 import * as seed from '@/infrastructure/seed/data';
+import { useProductsStore, useServiceTypesStore } from '@/store/entityStores';
 import { ROLE_META, type UserRole } from '@/domain/enums';
 import type { User } from '@/domain/types';
 
@@ -79,7 +82,59 @@ export function ConfigPage() {
           </div>
         </CardBody>
       </Card>
+
+      <ServiceDefaultsPanel />
     </div>
+  );
+}
+
+/** Cadastro de produtos padrão por tipo de serviço (#6). */
+function ServiceDefaultsPanel() {
+  const { items: serviceTypes, update } = useServiceTypesStore();
+  const products = useProductsStore((s) => s.items);
+  const prodName = (id: string) => products.find((p) => p.id === id)?.name ?? id;
+  const prodUnit = (id: string) => products.find((p) => p.id === id)?.unit ?? '';
+
+  const addProduct = (stId: string, productId: string) => {
+    if (!productId) return;
+    const st = serviceTypes.find((s) => s.id === stId);
+    const list = st?.defaultProducts ?? [];
+    if (list.some((d) => d.productId === productId)) return;
+    update(stId, { defaultProducts: [...list, { productId, qty: 1 }] });
+  };
+  const removeProduct = (stId: string, productId: string) => {
+    const st = serviceTypes.find((s) => s.id === stId);
+    update(stId, { defaultProducts: (st?.defaultProducts ?? []).filter((d) => d.productId !== productId) });
+  };
+
+  return (
+    <Card className="mt-4">
+      <CardHeader title="Tipos de serviço · produtos padrão" subtitle="Pré-preenchem a Ordem de Serviço; o técnico ajusta o que usou" />
+      <CardBody className="space-y-3">
+        {serviceTypes.map((st) => (
+          <div key={st.id} className="rounded-xl border border-border p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: st.color }} />
+              <span className="text-sm font-semibold text-foreground">{st.name}</span>
+              <span className="text-xs text-muted-foreground">· {st.defaultDurationMin}min</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(st.defaultProducts ?? []).map((dp) => (
+                <span key={dp.productId} className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs text-foreground">
+                  {prodName(dp.productId)} · {dp.qty} {prodUnit(dp.productId)}
+                  <button onClick={() => removeProduct(st.id, dp.productId)} className="text-muted-foreground hover:text-danger"><X size={12} /></button>
+                </span>
+              ))}
+              {(st.defaultProducts ?? []).length === 0 && <span className="text-xs text-muted-foreground">Nenhum produto padrão.</span>}
+              <Select value="" onChange={(e) => addProduct(st.id, e.target.value)} className="h-7 w-auto text-xs">
+                <option value="">+ produto</option>
+                {products.filter((p) => !(st.defaultProducts ?? []).some((d) => d.productId === p.id)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </Select>
+            </div>
+          </div>
+        ))}
+      </CardBody>
+    </Card>
   );
 }
 

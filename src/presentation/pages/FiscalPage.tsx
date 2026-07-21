@@ -5,9 +5,12 @@ import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Table, type Column } from '../components/ui/Table';
 import * as seed from '@/infrastructure/seed/data';
-import { getUser } from '@/application/repository';
-import type { License } from '@/domain/types';
-import { daysUntil } from '@/lib/utils';
+import { getCustomer, getUser } from '@/application/repository';
+import { useInvoicesStore } from '@/store/invoicesStore';
+import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
+import { Download, FileCode } from 'lucide-react';
+import type { Invoice, License } from '@/domain/types';
+import { daysUntil, formatCurrency } from '@/lib/utils';
 import { fmtDate } from '@/lib/date';
 
 export function FiscalPage() {
@@ -68,11 +71,38 @@ export function FiscalPage() {
       </div>
 
       <div className="mt-6">
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Notas Fiscais de Serviço (NFS-e)</h2>
+        <NotasFiscais />
+      </div>
+
+      <div className="mt-6">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Licenças, alvarás e responsáveis técnicos</h2>
         <Table columns={columns} rows={seed.licenses} keyField={(l) => l.id} />
       </div>
     </div>
   );
+}
+
+function NotasFiscais() {
+  const invoices = useInvoicesStore((s) => s.invoices);
+  const columns: Column<Invoice>[] = [
+    { key: 'num', header: 'Nota', render: (i) => <span className="font-semibold">#{i.number} <span className="text-xs text-muted-foreground">{i.series}</span></span> },
+    { key: 'cust', header: 'Tomador', render: (i) => getCustomer(i.customerId ?? '')?.name ?? i.description },
+    { key: 'date', header: 'Emissão', render: (i) => fmtDate(i.issuedAt) },
+    { key: 'iss', header: 'ISS', align: 'right', render: (i) => formatCurrency(i.taxAmount) },
+    { key: 'amount', header: 'Valor', align: 'right', render: (i) => <span className="font-semibold">{formatCurrency(i.amount)}</span> },
+    { key: 'status', header: 'Status', align: 'right', render: (i) => <Badge tone={i.status === 'emitida' ? 'success' : 'danger'} dot>{i.status === 'emitida' ? 'Emitida' : 'Cancelada'}</Badge> },
+    { key: 'act', header: '', align: 'right', render: (i) => {
+      const c = getCustomer(i.customerId ?? '');
+      return (
+        <div className="flex justify-end gap-1">
+          <button onClick={() => printNfse(i, c)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="PDF"><Download size={15} /></button>
+          <button onClick={() => downloadNfseXml(i, c)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="XML"><FileCode size={15} /></button>
+        </div>
+      );
+    } },
+  ];
+  return <Table columns={columns} rows={invoices} keyField={(i) => i.id} empty="Nenhuma nota emitida. Emita a partir de uma Ordem de Serviço concluída." />;
 }
 
 function Row({ label, value }: { label: string; value?: string }) {

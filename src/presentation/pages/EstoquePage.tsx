@@ -10,6 +10,7 @@ import { Table, type Column } from '../components/ui/Table';
 import { Avatar } from '../components/ui/Avatar';
 import * as seed from '@/infrastructure/seed/data';
 import { centralBalance, getUser, technicianBalances } from '@/application/repository';
+import { useProductsStore } from '@/store/entityStores';
 import type { Product } from '@/domain/types';
 import { formatNumber, daysUntil } from '@/lib/utils';
 import { fmtDate } from '@/lib/date';
@@ -50,6 +51,7 @@ export function EstoquePage() {
 }
 
 function CentralStock() {
+  const products = useProductsStore((s) => s.items);
   const columns: Column<Product>[] = [
     { key: 'name', header: 'Produto', render: (p) => (
       <div><p className="font-medium">{p.name}</p><p className="text-xs text-muted-foreground">{p.activeIngredient ?? p.manufacturer}</p></div>
@@ -70,7 +72,7 @@ function CentralStock() {
       return qty <= p.minQuantity ? <Badge tone="danger" dot>Repor</Badge> : qty <= p.minQuantity * 1.5 ? <Badge tone="warning" dot>Baixo</Badge> : <Badge tone="success" dot>OK</Badge>;
     } },
   ];
-  return <Table columns={columns} rows={seed.products} keyField={(p) => p.id} />;
+  return <Table columns={columns} rows={products} keyField={(p) => p.id} />;
 }
 
 function TechStock() {
@@ -103,18 +105,21 @@ function TechStock() {
 }
 
 function BatchStock() {
-  const rows = seed.batchExpiry.map((b) => ({ ...b, product: seed.products.find((p) => p.id === b.productId)! }));
+  const products = useProductsStore((s) => s.items);
+  const rows = products
+    .flatMap((product) => (product.batches ?? []).map((batch) => ({ product, batch })))
+    .sort((a, b) => (a.batch.expiresAt ?? '') < (b.batch.expiresAt ?? '') ? -1 : 1);
   const columns: Column<(typeof rows)[number]>[] = [
     { key: 'product', header: 'Produto', render: (r) => <span className="font-medium">{r.product.name}</span> },
-    { key: 'batch', header: 'Lote', render: (r) => <span className="text-muted-foreground">{r.batchCode}</span> },
-    { key: 'qty', header: 'Qtd.', render: (r) => `${r.qty} ${r.product.unit}` },
-    { key: 'exp', header: 'Validade', render: (r) => fmtDate(r.expiresAt) },
+    { key: 'batch', header: 'Lote', render: (r) => <span className="text-muted-foreground">{r.batch.code}</span> },
+    { key: 'qty', header: 'Qtd.', render: (r) => `${r.batch.quantity} ${r.product.unit}` },
+    { key: 'exp', header: 'Validade', render: (r) => r.batch.expiresAt ? fmtDate(r.batch.expiresAt) : '—' },
     { key: 'status', header: 'Situação', align: 'right', render: (r) => {
-      const d = daysUntil(r.expiresAt) ?? 0;
+      const d = daysUntil(r.batch.expiresAt) ?? 999;
       if (d < 0) return <Badge tone="danger" dot><TriangleAlert size={11} className="mr-1" />Vencido</Badge>;
       if (d <= 30) return <Badge tone="warning" dot>Vence em {d}d</Badge>;
       return <Badge tone="success" dot>Válido</Badge>;
     } },
   ];
-  return <Table columns={columns} rows={rows} keyField={(r) => `${r.productId}-${r.batchCode}`} />;
+  return <Table columns={columns} rows={rows} keyField={(r) => `${r.product.id}-${r.batch.id}`} empty="Nenhum lote cadastrado." />;
 }

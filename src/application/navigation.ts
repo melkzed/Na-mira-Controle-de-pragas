@@ -24,6 +24,8 @@ export const navItems: NavItem[] = [
 
   { to: '/clientes', label: 'Clientes', icon: 'Users', roles: ['admin', 'supervisor', 'atendimento', 'financeiro'], group: 'Comercial' },
   { to: '/crm', label: 'CRM', icon: 'Target', roles: ['admin', 'supervisor', 'atendimento'], group: 'Comercial' },
+  { to: '/monitoramento', label: 'Monitoramento', icon: 'Radar', roles: ['admin', 'supervisor', 'atendimento'], group: 'Operação' },
+  { to: '/nao-conformidade', label: 'Não Conformidade', icon: 'TriangleAlert', roles: ['admin', 'supervisor', 'atendimento'], group: 'Operação' },
 
   { to: '/estoque', label: 'Estoque', icon: 'Boxes', roles: ['admin', 'supervisor', 'estoque'], group: 'Recursos' },
   { to: '/produtos', label: 'Produtos', icon: 'FlaskConical', roles: ['admin', 'supervisor', 'estoque'], group: 'Recursos' },
@@ -33,6 +35,7 @@ export const navItems: NavItem[] = [
   { to: '/financeiro', label: 'Financeiro', icon: 'Wallet', roles: ['admin', 'financeiro'], group: 'Gestão' },
   { to: '/fiscal', label: 'Fiscal', icon: 'FileText', roles: ['admin', 'financeiro'], group: 'Gestão' },
   { to: '/relatorios', label: 'Relatórios', icon: 'BarChart3', roles: ADMIN.concat('financeiro'), group: 'Gestão' },
+  { to: '/historico', label: 'Histórico', icon: 'History', roles: ADMIN, group: 'Gestão' },
   { to: '/config', label: 'Configurações', icon: 'Settings', roles: ['admin'], group: 'Gestão' },
 
   { to: '/campo', label: 'App do Técnico', icon: 'Smartphone', roles: ALL, group: 'Campo' },

@@ -11,16 +11,20 @@ import type {
   Customer,
   Equipment,
   FinanceEntry,
+  Invoice,
   License,
   Pest,
   Product,
   ProductCategory,
   ServiceOrder,
   ServiceType,
+  NonConformity,
   StockBalance,
   StockLocation,
   Supplier,
   Team,
+  TrapDevice,
+  TrapInspection,
   User,
   Vehicle,
 } from '@/domain/types';
@@ -65,11 +69,11 @@ export const teams: Team[] = [
 
 // ── Catálogos ───────────────────────────────────────────────────────────────
 export const serviceTypes: ServiceType[] = [
-  { id: 'st-ded', orgId: ORG, name: 'Dedetização', defaultDurationMin: 90, defaultPrice: 320, color: '#10b981' },
-  { id: 'st-des', orgId: ORG, name: 'Desratização', defaultDurationMin: 75, defaultPrice: 280, color: '#6366f1' },
-  { id: 'st-san', orgId: ORG, name: 'Sanitização', defaultDurationMin: 60, defaultPrice: 240, color: '#0ea5e9' },
-  { id: 'st-cup', orgId: ORG, name: 'Descupinização', defaultDurationMin: 120, defaultPrice: 540, color: '#f59e0b' },
-  { id: 'st-esc', orgId: ORG, name: 'Escorpião/Aranha', defaultDurationMin: 80, defaultPrice: 360, color: '#ef4444' },
+  { id: 'st-ded', orgId: ORG, name: 'Dedetização', defaultDurationMin: 90, defaultPrice: 320, color: '#10b981', defaultProducts: [{ productId: 'prod-1', qty: 1 }, { productId: 'prod-3', qty: 2 }, { productId: 'prod-7', qty: 1 }] },
+  { id: 'st-des', orgId: ORG, name: 'Desratização', defaultDurationMin: 75, defaultPrice: 280, color: '#6366f1', defaultProducts: [{ productId: 'prod-2', qty: 2 }, { productId: 'prod-7', qty: 1 }] },
+  { id: 'st-san', orgId: ORG, name: 'Sanitização', defaultDurationMin: 60, defaultPrice: 240, color: '#0ea5e9', defaultProducts: [{ productId: 'prod-5', qty: 3 }, { productId: 'prod-6', qty: 1 }] },
+  { id: 'st-cup', orgId: ORG, name: 'Descupinização', defaultDurationMin: 120, defaultPrice: 540, color: '#f59e0b', defaultProducts: [{ productId: 'prod-4', qty: 1 }] },
+  { id: 'st-esc', orgId: ORG, name: 'Escorpião/Aranha', defaultDurationMin: 80, defaultPrice: 360, color: '#ef4444', defaultProducts: [{ productId: 'prod-1', qty: 1 }] },
 ];
 
 export const pests: Pest[] = [
@@ -97,11 +101,11 @@ export const productCategories: ProductCategory[] = [
 ];
 
 export const products: Product[] = [
-  { id: 'prod-1', orgId: ORG, name: 'K-Othrine SC 25', categoryId: 'cat-ins', manufacturer: 'Bayer', supplierId: 'sup-1', registrationCode: 'MS 3.0294.0001', activeIngredient: 'Deltametrina', applicationType: 'Pulverização', dosage: '20ml/L', unit: 'L', minQuantity: 5, price: 189.9, isRegulated: true, isActive: true, storageLocation: 'A1' },
-  { id: 'prod-2', orgId: ORG, name: 'Klerat Blocos', categoryId: 'cat-rod', manufacturer: 'Syngenta', supplierId: 'sup-1', registrationCode: 'MS 2.0154.0002', activeIngredient: 'Brodifacoum', applicationType: 'Isca', dosage: '1 bloco/PEA', unit: 'kg', minQuantity: 3, price: 96.5, isRegulated: true, isActive: true, storageLocation: 'B2' },
-  { id: 'prod-3', orgId: ORG, name: 'Fipronil Gel Barata', categoryId: 'cat-ins', manufacturer: 'BASF', supplierId: 'sup-2', registrationCode: 'MS 3.1055.0007', activeIngredient: 'Fipronil', applicationType: 'Gel', dosage: 'pontos de 0,5g', unit: 'un', minQuantity: 10, price: 74.0, isRegulated: true, isActive: true, storageLocation: 'A3' },
+  { id: 'prod-1', orgId: ORG, name: 'K-Othrine SC 25', categoryId: 'cat-ins', manufacturer: 'Bayer', supplierId: 'sup-1', registrationCode: 'MS 3.0294.0001', activeIngredient: 'Deltametrina', applicationType: 'Pulverização', dosage: '20ml/L', unit: 'L', minQuantity: 5, price: 189.9, isRegulated: true, isActive: true, storageLocation: 'A1', batches: [{ id: 'b-1a', code: 'KO-2408', expiresAt: daysFromNow(52), quantity: 10, receivedAt: daysFromNow(-20) }, { id: 'b-1b', code: 'KO-2312', expiresAt: daysFromNow(140), quantity: 6, receivedAt: daysFromNow(-70) }] },
+  { id: 'prod-2', orgId: ORG, name: 'Klerat Blocos', categoryId: 'cat-rod', manufacturer: 'Syngenta', supplierId: 'sup-1', registrationCode: 'MS 2.0154.0002', activeIngredient: 'Brodifacoum', applicationType: 'Isca', dosage: '1 bloco/PEA', unit: 'kg', minQuantity: 3, price: 96.5, isRegulated: true, isActive: true, storageLocation: 'B2', batches: [{ id: 'b-2a', code: 'KL-2401', expiresAt: daysFromNow(9), quantity: 2, receivedAt: daysFromNow(-90) }] },
+  { id: 'prod-3', orgId: ORG, name: 'Fipronil Gel Barata', categoryId: 'cat-ins', manufacturer: 'BASF', supplierId: 'sup-2', registrationCode: 'MS 3.1055.0007', activeIngredient: 'Fipronil', applicationType: 'Gel', dosage: 'pontos de 0,5g', unit: 'un', minQuantity: 10, price: 74.0, isRegulated: true, isActive: true, storageLocation: 'A3', batches: [{ id: 'b-3a', code: 'FG-2405', expiresAt: daysFromNow(18), quantity: 6, receivedAt: daysFromNow(-30) }, { id: 'b-3b', code: 'FG-2502', expiresAt: daysFromNow(150), quantity: 18, receivedAt: daysFromNow(-5) }] },
   { id: 'prod-4', orgId: ORG, name: 'Premise 200 SC', categoryId: 'cat-cup', manufacturer: 'Bayer', supplierId: 'sup-1', registrationCode: 'MS 3.0294.0033', activeIngredient: 'Imidacloprido', applicationType: 'Injeção', dosage: '10ml/L', unit: 'L', minQuantity: 4, price: 264.0, isRegulated: true, isActive: true, storageLocation: 'C1' },
-  { id: 'prod-5', orgId: ORG, name: 'Quaternário de Amônio 5ª', categoryId: 'cat-san', manufacturer: 'Start Química', supplierId: 'sup-2', activeIngredient: 'Cloreto de benzalcônio', applicationType: 'Atomização', dosage: '10ml/L', unit: 'L', minQuantity: 8, price: 58.0, isRegulated: false, isActive: true, storageLocation: 'D2' },
+  { id: 'prod-5', orgId: ORG, name: 'Quaternário de Amônio 5ª', categoryId: 'cat-san', manufacturer: 'Start Química', supplierId: 'sup-2', activeIngredient: 'Cloreto de benzalcônio', applicationType: 'Atomização', dosage: '10ml/L', unit: 'L', minQuantity: 8, price: 58.0, isRegulated: false, isActive: true, storageLocation: 'D2', batches: [{ id: 'b-5a', code: 'QA-2312', expiresAt: daysFromNow(-4), quantity: 4, receivedAt: daysFromNow(-200) }, { id: 'b-5b', code: 'QA-2504', expiresAt: daysFromNow(200), quantity: 30, receivedAt: daysFromNow(-10) }] },
   { id: 'prod-6', orgId: ORG, name: 'Máscara PFF2 (cx 50)', categoryId: 'cat-epi', manufacturer: '3M', supplierId: 'sup-2', unit: 'cx', minQuantity: 2, price: 120.0, isRegulated: false, isActive: true, storageLocation: 'E1' },
   { id: 'prod-7', orgId: ORG, name: 'Luva Nitrílica (par)', categoryId: 'cat-epi', manufacturer: 'Volk', supplierId: 'sup-2', unit: 'par', minQuantity: 20, price: 9.5, isRegulated: false, isActive: true, storageLocation: 'E2' },
 ];
@@ -163,9 +167,9 @@ export const customers: Customer[] = [
   { id: 'c-1', orgId: ORG, type: 'pj', name: 'Padaria Pão Quente', companyName: 'Pão Quente Ltda', document: '12.345.678/0001-99', phone: '(11) 3011-1000', whatsapp: '(11) 99011-1000', email: 'contato@paoquente.com', city: 'São Paulo', state: 'SP', district: 'Pinheiros', street: 'Rua dos Pinheiros', number: '820', cep: '05422-001', latitude: -23.5629, longitude: -46.6825, propertyType: 'Comercial', areaM2: 220, tags: ['Contrato mensal', 'Alimentício'], isActive: true, createdAt: daysFromNow(-210) },
   { id: 'c-2', orgId: ORG, type: 'pf', name: 'Helena Martins', document: '123.456.789-00', phone: '(11) 98123-4567', whatsapp: '(11) 98123-4567', city: 'São Paulo', state: 'SP', district: 'Vila Mariana', street: 'Rua Domingos de Morais', number: '2100', cep: '04010-100', latitude: -23.5895, longitude: -46.6345, propertyType: 'Residencial', areaM2: 90, tags: ['Residencial'], isActive: true, createdAt: daysFromNow(-120) },
   { id: 'c-3', orgId: ORG, type: 'pj', name: 'Restaurante Sabor & Cia', companyName: 'Sabor e Cia Alimentos', document: '22.333.444/0001-55', phone: '(11) 3222-3333', whatsapp: '(11) 99222-3333', email: 'gerencia@saborcia.com', city: 'São Paulo', state: 'SP', district: 'Moema', street: 'Av. Ibirapuera', number: '1500', cep: '04029-000', latitude: -23.6009, longitude: -46.6555, propertyType: 'Comercial', areaM2: 340, tags: ['Contrato trimestral', 'Alimentício'], isActive: true, createdAt: daysFromNow(-320) },
-  { id: 'c-4', orgId: ORG, type: 'pj', name: 'Condomínio Villa Verde', companyName: 'Cond. Villa Verde', document: '33.444.555/0001-66', phone: '(11) 3444-5555', email: 'sindico@villaverde.com', city: 'São Paulo', state: 'SP', district: 'Morumbi', street: 'Av. Giovanni Gronchi', number: '3000', cep: '05724-000', latitude: -23.6178, longitude: -46.7256, propertyType: 'Condomínio', areaM2: 1800, tags: ['Contrato mensal', 'Condomínio'], isActive: true, createdAt: daysFromNow(-400) },
+  { id: 'c-4', orgId: ORG, type: 'pj', name: 'Condomínio Villa Verde', companyName: 'Cond. Villa Verde', document: '33.444.555/0001-66', phone: '(11) 3444-5555', email: 'sindico@villaverde.com', city: 'São Paulo', state: 'SP', district: 'Morumbi', street: 'Av. Giovanni Gronchi', number: '3000', cep: '05724-000', latitude: -23.6178, longitude: -46.7256, propertyType: 'Condomínio', areaM2: 1800, tags: ['Contrato mensal', 'Condomínio'], monitoringContracted: true, permanentNotes: 'Acessar pela portaria lateral. Avisar o zelador antes de chegar. Uso de EPI obrigatório nas áreas comuns.', isActive: true, createdAt: daysFromNow(-400) },
   { id: 'c-5', orgId: ORG, type: 'pf', name: 'Carlos Eduardo Lima', document: '987.654.321-00', phone: '(11) 97654-3210', whatsapp: '(11) 97654-3210', city: 'São Paulo', state: 'SP', district: 'Tatuapé', street: 'Rua Tuiuti', number: '540', cep: '03307-000', latitude: -23.5401, longitude: -46.5766, propertyType: 'Residencial', areaM2: 120, tags: ['Residencial'], isActive: true, createdAt: daysFromNow(-60) },
-  { id: 'c-6', orgId: ORG, type: 'pj', name: 'Mercado Bom Preço', companyName: 'Bom Preço Varejo', document: '44.555.666/0001-77', phone: '(11) 3555-6666', email: 'compras@bompreco.com', city: 'São Paulo', state: 'SP', district: 'Santana', street: 'Av. Cruzeiro do Sul', number: '2200', cep: '02031-000', latitude: -23.5028, longitude: -46.6256, propertyType: 'Comercial', areaM2: 680, tags: ['Contrato mensal', 'Varejo'], isActive: true, createdAt: daysFromNow(-500) },
+  { id: 'c-6', orgId: ORG, type: 'pj', name: 'Mercado Bom Preço', companyName: 'Bom Preço Varejo', document: '44.555.666/0001-77', phone: '(11) 3555-6666', email: 'compras@bompreco.com', city: 'São Paulo', state: 'SP', district: 'Santana', street: 'Av. Cruzeiro do Sul', number: '2200', cep: '02031-000', latitude: -23.5028, longitude: -46.6256, propertyType: 'Comercial', areaM2: 680, tags: ['Contrato mensal', 'Varejo'], monitoringContracted: true, permanentNotes: 'Serviço somente após as 22h (fora do horário comercial). Retirar produtos do estoque de alimentos.', isActive: true, createdAt: daysFromNow(-500) },
   { id: 'c-7', orgId: ORG, type: 'pj', name: 'Escola Crescer', companyName: 'Instituto Crescer', document: '55.666.777/0001-88', phone: '(11) 3666-7777', email: 'adm@escolacrescer.com', city: 'São Paulo', state: 'SP', district: 'Perdizes', street: 'Rua Cardoso de Almeida', number: '900', cep: '05013-000', latitude: -23.5345, longitude: -46.6789, propertyType: 'Institucional', areaM2: 950, tags: ['Contrato semestral', 'Educação'], isActive: true, createdAt: daysFromNow(-280) },
   { id: 'c-8', orgId: ORG, type: 'pf', name: 'Fernanda Rocha', document: '111.222.333-44', phone: '(11) 96123-9876', whatsapp: '(11) 96123-9876', city: 'São Paulo', state: 'SP', district: 'Lapa', street: 'Rua Guaicurus', number: '150', cep: '05033-000', latitude: -23.5245, longitude: -46.7012, propertyType: 'Residencial', areaM2: 75, tags: ['Residencial'], isActive: true, createdAt: daysFromNow(-30) },
 ];
@@ -280,6 +284,44 @@ export const crmLeads: CrmLead[] = [
   { id: 'l-4', orgId: ORG, name: 'Academia Corpo & Movimento', company: 'C&M Fitness', phone: '(11) 3010-2020', source: 'Anúncio', stage: 'follow_up', estimatedValue: 1200, ownerId: 'u-sup', nextActionAt: daysFromNow(3), createdAt: daysFromNow(-14) },
   { id: 'l-5', orgId: ORG, name: 'Farmácia Vida', company: 'Vida Drogaria', phone: '(11) 3020-3030', source: 'Indicação', stage: 'ganho', estimatedValue: 1600, ownerId: 'u-admin', createdAt: daysFromNow(-20) },
   { id: 'l-6', orgId: ORG, name: 'Loja de Móveis Conforto', company: 'Conforto Móveis', phone: '(11) 3040-5050', source: 'Site', stage: 'perdido', estimatedValue: 900, ownerId: 'u-sup', notes: 'Optou por concorrente.', createdAt: daysFromNow(-25) },
+];
+
+// ── Monitoramento de armadilhas (clientes com monitoramento contratado) ──────
+export const trapDevices: TrapDevice[] = [
+  { id: 'trap-1', orgId: ORG, customerId: 'c-4', code: 'Porta Isca 001', type: 'Porta-isca', location: 'Garagem G1', status: 'ativa', createdAt: daysFromNow(-180) },
+  { id: 'trap-2', orgId: ORG, customerId: 'c-4', code: 'Porta Isca 002', type: 'Porta-isca', location: 'Depósito', status: 'ativa', createdAt: daysFromNow(-180) },
+  { id: 'trap-3', orgId: ORG, customerId: 'c-4', code: 'Luminosa 001', type: 'Luminosa', location: 'Salão de festas', status: 'ativa', createdAt: daysFromNow(-120) },
+  { id: 'trap-4', orgId: ORG, customerId: 'c-4', code: 'Porta Isca 005', type: 'Porta-isca', location: 'Lixeira externa', status: 'ativa', createdAt: daysFromNow(-90) },
+  { id: 'trap-5', orgId: ORG, customerId: 'c-6', code: 'Porta Isca 001', type: 'Porta-isca', location: 'Estoque seco', status: 'ativa', createdAt: daysFromNow(-200) },
+  { id: 'trap-6', orgId: ORG, customerId: 'c-6', code: 'Placa Cola 001', type: 'Placa de cola', location: 'Câmara fria', status: 'substituida', createdAt: daysFromNow(-200) },
+];
+
+export const nonConformities: NonConformity[] = [
+  { id: 'nc-1', orgId: ORG, customerId: 'c-4', date: daysFromNow(-2), category: 'fresta', description: 'Fresta na porta de acesso ao depósito, permitindo entrada de roedores.', priority: 'alta', correctiveAction: 'Instalar rodo/veda-porta e telamento na saída de ar.', status: 'aberta', createdBy: 'u-t3', createdAt: daysFromNow(-2) },
+  { id: 'nc-2', orgId: ORG, customerId: 'c-6', date: daysFromNow(-6), category: 'armazenamento_incorreto', description: 'Produtos armazenados diretamente no piso, sem paletes.', priority: 'normal', correctiveAction: 'Utilizar estrados/paletes e afastar 30cm das paredes.', status: 'em_andamento', createdBy: 'u-t1', createdAt: daysFromNow(-6) },
+  { id: 'nc-3', orgId: ORG, customerId: 'c-3', date: daysFromNow(-10), category: 'limpeza_inadequada', description: 'Acúmulo de resíduos orgânicos atrás dos equipamentos da cozinha.', priority: 'urgente', correctiveAction: 'Higienização diária e reforço na coleta de resíduos.', status: 'resolvida', createdBy: 'u-t4', createdAt: daysFromNow(-10) },
+];
+
+export const trapInspections: TrapInspection[] = [
+  { id: 'insp-1', trapId: 'trap-4', date: daysFromNow(-2), consumed: true, action: 'substituida', technicianId: 'u-t3', notes: 'Consumo alto próximo à lixeira externa.' },
+  { id: 'insp-2', trapId: 'trap-1', date: daysFromNow(-2), consumed: false, action: 'nenhuma', technicianId: 'u-t3' },
+  { id: 'insp-3', trapId: 'trap-2', date: daysFromNow(-30), consumed: true, action: 'nenhuma', technicianId: 'u-t3', notes: 'Isca com sinais de roedores.' },
+  { id: 'insp-4', trapId: 'trap-5', date: daysFromNow(-5), consumed: false, action: 'nenhuma', technicianId: 'u-t1' },
+];
+
+// ── Notas Fiscais de Serviço (exemplos) ─────────────────────────────────────
+export const invoicesSeed: Invoice[] = [
+  { id: 'inv-1', orgId: ORG, number: 1042, series: 'RPS-1', serviceOrderId: 'so-1', customerId: 'c-1', description: 'Dedetização · Padaria Pão Quente', amount: 320, taxAmount: 9.6, status: 'emitida', issuedAt: daysFromNow(-1) },
+  { id: 'inv-2', orgId: ORG, number: 1043, series: 'RPS-1', serviceOrderId: 'so-2', customerId: 'c-3', description: 'Sanitização · Restaurante Sabor & Cia', amount: 240, taxAmount: 7.2, status: 'emitida', issuedAt: daysFromNow(-1) },
+];
+
+// ── Histórico / auditoria (exemplos iniciais) ───────────────────────────────
+export const auditSeed = [
+  { id: 'aud-s1', userId: 'u-sup', userName: 'Rafael Nunes', action: 'confirmação', entityType: 'agendamento', description: 'Visita confirmada · Padaria Pão Quente', createdAt: daysFromNow(0) },
+  { id: 'aud-s2', userId: 'u-t3', userName: 'Paula Freitas', action: 'inspeção', entityType: 'armadilha', description: 'Inspeção registrada · Porta Isca 005 (consumo)', createdAt: daysFromNow(-2) },
+  { id: 'aud-s3', userId: 'u-admin', userName: 'Marina Duarte', action: 'reagendamento', entityType: 'agendamento', description: 'Visita reagendada · Helena Martins', createdAt: daysFromNow(-1) },
+  { id: 'aud-s4', userId: 'u-fin', userName: 'Camila Reis', action: 'criação', entityType: 'financeiro', description: 'Lançamento criado · Contrato mensal Villa Verde', createdAt: daysFromNow(-2) },
+  { id: 'aud-s5', userId: 'u-t3', userName: 'Paula Freitas', action: 'criação', entityType: 'não conformidade', description: 'Não conformidade registrada · Fresta (Villa Verde)', createdAt: daysFromNow(-2) },
 ];
 
 export const orgProfile = {

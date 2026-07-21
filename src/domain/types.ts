@@ -65,6 +65,13 @@ export interface Customer {
   propertyType?: string;
   areaM2?: number;
   notes?: string;
+  /** Observações permanentes do contrato — aparecem na OS, agenda e app do técnico. */
+  permanentNotes?: string;
+  /** Cliente possui contrato de monitoramento (habilita armadilhas/MIP). */
+  monitoringContracted?: boolean;
+  /** Situação cadastral e CNAE (preenchidos via consulta ao CNPJ). */
+  registrationStatus?: string;
+  economicActivity?: string;
   tags: string[];
   isActive: boolean;
   createdAt: string;
@@ -79,10 +86,68 @@ export interface Supplier {
   email?: string;
 }
 
+// ── Monitoramento de armadilhas (MIP) ───────────────────────────────────────
+export type TrapStatus = 'ativa' | 'extraviada' | 'substituida' | 'retirada';
+
+export interface TrapDevice {
+  id: string;
+  orgId: string;
+  customerId: string;
+  code: string; // identificação/numeração (ex.: "Porta Isca 005")
+  type: string; // Porta-isca, Luminosa, Cola, Mecânica, Feromônio...
+  location?: string; // ponto de instalação
+  status: TrapStatus;
+  createdAt: string;
+}
+
+export interface TrapInspection {
+  id: string;
+  trapId: string;
+  date: string; // ISO
+  consumed: boolean; // houve consumo?
+  action?: 'nenhuma' | 'substituida' | 'retirada' | 'reinstalada' | 'extraviada';
+  technicianId?: string;
+  notes?: string;
+}
+
+// ── Não conformidade ────────────────────────────────────────────────────────
+export type NonConformityCategory =
+  | 'fresta'
+  | 'falha_estrutural'
+  | 'limpeza_inadequada'
+  | 'armazenamento_incorreto'
+  | 'outra';
+
+export type NonConformityStatus = 'aberta' | 'em_andamento' | 'resolvida';
+
+export interface NonConformity {
+  id: string;
+  orgId: string;
+  customerId: string;
+  date: string; // ISO
+  category: NonConformityCategory;
+  description: string;
+  priority: AppointmentPriority;
+  correctiveAction?: string;
+  status: NonConformityStatus;
+  photos?: { name: string; dataUrl: string }[];
+  createdBy?: string;
+  createdAt: string;
+}
+
 export interface ProductCategory {
   id: string;
   orgId: string;
   name: string;
+}
+
+/** Lote de um produto (rastreabilidade: código, validade, quantidade). */
+export interface Batch {
+  id: string;
+  code: string;
+  expiresAt?: string; // ISO date (yyyy-mm-dd)
+  quantity: number;
+  receivedAt: string; // ISO date
 }
 
 export interface Product {
@@ -102,6 +167,8 @@ export interface Product {
   storageLocation?: string;
   isRegulated: boolean;
   isActive: boolean;
+  /** Histórico de lotes — o lote "atual" é o de validade mais próxima com saldo. */
+  batches?: Batch[];
 }
 
 export interface ProductBatch {
@@ -172,6 +239,8 @@ export interface ServiceType {
   defaultDurationMin: number;
   defaultPrice: number;
   color: string;
+  /** Produtos padrão do serviço — pré-preenchem a OS; o técnico ajusta o que usou. */
+  defaultProducts?: { productId: string; qty: number }[];
 }
 
 export interface AppointmentProduct {
@@ -198,6 +267,12 @@ export interface Appointment {
   notes?: string;
   routeOrder?: number;
   products: AppointmentProduct[];
+  /** Agrupa as ocorrências de uma mesma recorrência (cada uma é independente). */
+  recurrenceId?: string;
+  /** Rótulo da recorrência: 'semanal' | 'quinzenal' | 'mensal'. */
+  recurrenceRule?: string;
+  /** Data/hora em que a visita foi confirmada (pelo cliente/atendimento). */
+  confirmedAt?: string;
 }
 
 export interface ServiceOrderProduct {
@@ -246,6 +321,20 @@ export interface FinanceEntry {
   dueDate?: string;
   paidAt?: string;
   createdAt: string;
+}
+
+export interface Invoice {
+  id: string;
+  orgId: string;
+  number: number;
+  series: string;
+  serviceOrderId?: string;
+  customerId?: string;
+  description: string;
+  amount: number;
+  taxAmount: number;
+  status: 'emitida' | 'cancelada';
+  issuedAt: string;
 }
 
 export interface License {

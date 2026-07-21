@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, MapPin, Plus } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, MapPin, Plus } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
@@ -9,9 +9,17 @@ import { Avatar } from '../components/ui/Avatar';
 import { Drawer } from '../components/ui/Drawer';
 import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { Badge } from '../components/ui/Badge';
+import { Select } from '../components/ui/Field';
+import { AppointmentForm } from '../components/AppointmentForm';
 import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getServiceType, getUser } from '@/application/repository';
-import type { Appointment } from '@/domain/types';
+import { useAppointmentsStore } from '@/store/appointmentsStore';
+import { logChange } from '@/store/auditStore';
+import { useMessagesStore } from '@/store/messagesStore';
+import { buildWhatsMessage, WHATS_TYPE_LABEL } from '@/lib/whatsapp';
+import { MessageCircle } from 'lucide-react';
+import { APPOINTMENT_STATUS_META, type AppointmentStatus } from '@/domain/enums';
+import type { Appointment, Customer } from '@/domain/types';
 import { addDays, fmtTime, isSameDay, isToday, parseISO, weekDays, weekRangeLabel } from '@/lib/date';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -23,13 +31,22 @@ const HOURS = Array.from({ length: 12 }, (_, i) => i + 7); // 07h–18h
 export function AgendaPage() {
   const [view, setView] = useState<View>('semana');
   const [ref, setRef] = useState(new Date());
-  const [selected, setSelected] = useState<Appointment | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [techFilter, setTechFilter] = useState<string>('todos');
+  const [statusFilter, setStatusFilter] = useState<string>('todos');
+  const [formOpen, setFormOpen] = useState(false);
 
+  const allAppointments = useAppointmentsStore((s) => s.appointments);
   const appts = useMemo(
-    () => seed.appointments.filter((a) => techFilter === 'todos' || a.technicianId === techFilter),
-    [techFilter],
+    () => allAppointments.filter(
+      (a) => (techFilter === 'todos' || a.technicianId === techFilter) &&
+             (statusFilter === 'todos' || a.status === statusFilter),
+    ),
+    [allAppointments, techFilter, statusFilter],
   );
+  const awaitingCount = allAppointments.filter((a) => a.status === 'agendado').length;
+  const selected = allAppointments.find((a) => a.id === selectedId) ?? null;
+  const setSelected = (a: Appointment | null) => setSelectedId(a?.id ?? null);
 
   const move = (dir: number) => {
     const days = view === 'mes' ? 30 : view === 'dia' || view === 'agenda' ? 1 : 7;
@@ -41,7 +58,7 @@ export function AgendaPage() {
       <PageHeader
         title="Agenda"
         description="Módulo central de agendamento e gestão de equipes em campo"
-        actions={<Button leftIcon={<Plus size={16} />}>Novo agendamento</Button>}
+        actions={<Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Novo agendamento</Button>}
       />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -54,6 +71,17 @@ export function AgendaPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="h-9 rounded-lg border border-input bg-surface px-3 text-sm text-foreground"
+          >
+            <option value="todos">Todos os status</option>
+            <option value="agendado">Aguardando confirmação</option>
+            <option value="confirmado">Confirmadas</option>
+            <option value="reagendado">Reagendadas</option>
+            <option value="cancelado">Canceladas</option>
+          </select>
           <select
             value={techFilter}
             onChange={(e) => setTechFilter(e.target.value)}
@@ -79,6 +107,17 @@ export function AgendaPage() {
         </div>
       </div>
 
+      {awaitingCount > 0 && statusFilter !== 'agendado' && (
+        <button
+          onClick={() => setStatusFilter('agendado')}
+          className="mb-4 flex w-full items-center gap-2 rounded-xl border border-warning/40 bg-warning-soft/60 px-4 py-2.5 text-left text-sm text-foreground transition hover:brightness-105"
+        >
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-warning text-white text-xs font-bold">{awaitingCount}</span>
+          <span className="flex-1"><b>{awaitingCount} visita(s)</b> aguardando confirmação do cliente.</span>
+          <span className="text-xs font-medium text-warning">Ver →</span>
+        </button>
+      )}
+
       {view === 'semana' && <WeekView refDate={ref} appts={appts} onSelect={setSelected} />}
       {view === 'dia' && <DayView refDate={ref} appts={appts} onSelect={setSelected} />}
       {view === 'mes' && <MonthView refDate={ref} appts={appts} onSelect={setSelected} />}
@@ -86,6 +125,12 @@ export function AgendaPage() {
       {view === 'mapa' && <MapView appts={appts} onSelect={setSelected} />}
 
       <AppointmentDrawer appt={selected} onClose={() => setSelected(null)} />
+      <AppointmentForm
+        open={formOpen}
+        defaultDate={view === 'dia' ? ref : undefined}
+        onClose={() => setFormOpen(false)}
+        onSaved={() => setFormOpen(false)}
+      />
     </div>
   );
 }
@@ -294,19 +339,59 @@ function ApptRow({ a, onSelect, compact }: { a: Appointment; onSelect: (a: Appoi
 }
 
 function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClose: () => void }) {
+  const setStatus = useAppointmentsStore((s) => s.setStatus);
+  const update = useAppointmentsStore((s) => s.update);
+  const removeAppt = useAppointmentsStore((s) => s.remove);
+  const [rescheduling, setRescheduling] = useState(false);
+
+  const cust = appt ? getCustomer(appt.customerId) : undefined;
+  const st = getServiceType(appt?.serviceTypeId);
+  const tech = getUser(appt?.technicianId);
   if (!appt) return null;
-  const cust = getCustomer(appt.customerId);
-  const st = getServiceType(appt.serviceTypeId);
-  const tech = getUser(appt.technicianId);
+
+  const confirmVisit = () => {
+    update(appt.id, { status: 'confirmado', confirmedAt: new Date().toISOString() });
+    logChange('confirmação', 'agendamento', `Visita confirmada · ${cust?.name ?? ''}`, appt.id);
+  };
+
   return (
-    <Drawer open={!!appt} onClose={onClose} title={cust?.name ?? 'Atendimento'} subtitle={st?.name}>
+    <Drawer open={!!appt} onClose={() => { setRescheduling(false); onClose(); }} title={cust?.name ?? 'Atendimento'} subtitle={st?.name}>
       <div className="space-y-5">
         <div className="flex flex-wrap gap-2">
           <AppointmentStatusBadge status={appt.status} />
           <PriorityBadge priority={appt.priority} />
           <Badge tone="neutral">{fmtTime(appt.scheduledStart)}–{fmtTime(appt.scheduledEnd)}</Badge>
+          {appt.recurrenceRule && <Badge tone="info">Recorrente · {appt.recurrenceRule}</Badge>}
         </div>
+
+        {/* Confirmação da visita */}
+        {appt.status === 'agendado' && (
+          <div className="rounded-xl border border-warning/40 bg-warning-soft/50 p-3">
+            <p className="text-sm text-foreground">Esta visita <b>aguarda confirmação</b> do cliente.</p>
+            <Button size="sm" className="mt-2" leftIcon={<Check size={14} />} onClick={confirmVisit}>Confirmar visita</Button>
+          </div>
+        )}
+        {appt.confirmedAt && appt.status === 'confirmado' && (
+          <p className="text-xs text-success">✓ Confirmada em {new Date(appt.confirmedAt).toLocaleString('pt-BR')}</p>
+        )}
+
+        {cust && <WhatsAppPanel appt={appt} cust={cust} serviceName={st?.name} onClientConfirm={confirmVisit} />}
+
+        <Section title="Status do atendimento">
+          <Select value={appt.status} onChange={(e) => setStatus(appt.id, e.target.value as AppointmentStatus)}>
+            {(Object.keys(APPOINTMENT_STATUS_META) as AppointmentStatus[]).map((s) => (
+              <option key={s} value={s}>{APPOINTMENT_STATUS_META[s].label}</option>
+            ))}
+          </Select>
+        </Section>
+
         <Section title="Endereço"><p className="text-sm text-foreground">{appt.address}</p></Section>
+        {cust?.permanentNotes && (
+          <div className="rounded-lg border border-warning/30 bg-warning-soft/60 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-warning">Observações do contrato</p>
+            <p className="mt-0.5 text-sm text-foreground">{cust.permanentNotes}</p>
+          </div>
+        )}
         {tech && <Section title="Técnico responsável"><div className="flex items-center gap-2"><Avatar name={tech.name} size="sm" /><span className="text-sm text-foreground">{tech.name}</span></div></Section>}
         <Section title="Contato">
           <p className="text-sm text-foreground">{cust?.phone}</p>
@@ -318,15 +403,121 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
           <Info label="Área" value={cust?.areaM2 ? `${cust.areaM2} m²` : '—'} />
           <Info label="Ordem na rota" value={`${appt.routeOrder ?? '—'}`} />
         </div>
-        <div className="flex flex-col gap-2 pt-2">
-          <Button leftIcon={<MapPin size={15} />} variant="outline">Abrir no mapa / navegação</Button>
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="secondary">Reagendar</Button>
-            <Button>Gerar OS</Button>
+
+        {/* Reagendar / alterar técnico (permitido a qualquer momento) */}
+        {rescheduling ? (
+          <RescheduleForm appt={appt} onDone={() => setRescheduling(false)} />
+        ) : (
+          <div className="flex flex-col gap-2 pt-2">
+            <Button leftIcon={<MapPin size={15} />} variant="outline">Abrir no mapa / navegação</Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="secondary" onClick={() => setRescheduling(true)}>Reagendar / técnico</Button>
+              <Button variant="outline" onClick={() => { setStatus(appt.id, 'cancelado'); logChange('cancelamento', 'agendamento', `Visita cancelada · ${cust?.name ?? ''}`, appt.id); }}>Cancelar visita</Button>
+            </div>
+            <Button variant="danger" onClick={() => { removeAppt(appt.id); logChange('exclusão', 'agendamento', `Visita excluída · ${cust?.name ?? ''}`, appt.id); onClose(); }}>Excluir</Button>
           </div>
-        </div>
+        )}
       </div>
     </Drawer>
+  );
+}
+
+/** Reagendamento: altera data/hora/técnico e marca a visita como reagendada. */
+function RescheduleForm({ appt, onDone }: { appt: Appointment; onDone: () => void }) {
+  const update = useAppointmentsStore((s) => s.update);
+  const toLocal = (iso: string) => {
+    const d = new Date(iso); const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const [start, setStart] = useState(toLocal(appt.scheduledStart));
+  const [technicianId, setTechnicianId] = useState(appt.technicianId ?? '');
+
+  const save = () => {
+    const startDate = new Date(start);
+    const endDate = new Date(startDate.getTime() + (appt.estimatedMinutes ?? 60) * 60000);
+    update(appt.id, {
+      scheduledStart: startDate.toISOString(),
+      scheduledEnd: endDate.toISOString(),
+      technicianId: technicianId || undefined,
+      status: 'reagendado',
+    });
+    const techChanged = technicianId !== appt.technicianId;
+    logChange('reagendamento', 'agendamento', `Visita reagendada${techChanged ? ' (técnico alterado)' : ''} · ${getCustomer(appt.customerId)?.name ?? ''}`, appt.id);
+    onDone();
+  };
+
+  return (
+    <div className="rounded-xl border border-border bg-muted/30 p-3">
+      <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Reagendar visita</p>
+      <div className="space-y-3">
+        <label className="block text-xs font-medium text-muted-foreground">Nova data e hora
+          <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-input bg-surface px-2 text-sm text-foreground" />
+        </label>
+        <label className="block text-xs font-medium text-muted-foreground">Técnico responsável
+          <Select value={technicianId} onChange={(e) => setTechnicianId(e.target.value)} className="mt-1">
+            {seed.technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </Select>
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onDone}>Cancelar</Button>
+          <Button size="sm" leftIcon={<Check size={14} />} onClick={save}>Salvar reagendamento</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Painel de WhatsApp (simulação) — envio de confirmação/lembrete/conclusão,
+ *  confirmação de entrega e simulação da resposta do cliente. */
+function WhatsAppPanel({ appt, cust, serviceName, onClientConfirm }: { appt: Appointment; cust: Customer; serviceName?: string; onClientConfirm: () => void }) {
+  const { messages, send, setStatus } = useMessagesStore();
+  const apptMessages = messages.filter((m) => m.appointmentId === appt.id);
+  const pendingConfirmation = apptMessages.find((m) => m.type === 'confirmacao' && m.status !== 'confirmada');
+
+  const dispatch = (type: 'confirmacao' | 'lembrete' | 'conclusao') => {
+    const body = buildWhatsMessage(type, cust, appt, serviceName);
+    send({ appointmentId: appt.id, customerId: cust.id, phone: cust.whatsapp ?? cust.phone, type, body });
+    logChange('mensagem', 'whatsapp', `${WHATS_TYPE_LABEL[type]} enviada · ${cust.name}`, appt.id);
+  };
+
+  const simulateClientConfirm = () => {
+    if (pendingConfirmation) setStatus(pendingConfirmation.id, 'confirmada');
+    onClientConfirm();
+  };
+
+  const statusTone = (s: string) => (s === 'confirmada' ? 'success' : s === 'entregue' || s === 'lida' ? 'info' : 'neutral');
+
+  return (
+    <div className="rounded-xl border border-success/30 bg-success-soft/30 p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <MessageCircle size={15} className="text-success" />
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-success">WhatsApp</p>
+        <Badge tone="neutral" className="text-[10px]">simulação</Badge>
+      </div>
+      <p className="mb-2 text-xs text-muted-foreground">{cust.whatsapp ?? cust.phone ?? 'Sem número cadastrado'}</p>
+      <div className="grid grid-cols-3 gap-1.5">
+        <Button size="sm" variant="outline" onClick={() => dispatch('confirmacao')}>Confirmação</Button>
+        <Button size="sm" variant="outline" onClick={() => dispatch('lembrete')}>Lembrete</Button>
+        <Button size="sm" variant="outline" onClick={() => dispatch('conclusao')}>Conclusão</Button>
+      </div>
+
+      {apptMessages.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          {apptMessages.slice(0, 3).map((m) => (
+            <div key={m.id} className="flex items-center justify-between rounded-lg bg-surface px-2.5 py-1.5">
+              <span className="text-xs text-foreground">{WHATS_TYPE_LABEL[m.type]} · {new Date(m.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+              <Badge tone={statusTone(m.status)} dot className="text-[10px] capitalize">{m.status}</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {pendingConfirmation && appt.status === 'agendado' && (
+        <Button size="sm" variant="secondary" className="mt-2 w-full" leftIcon={<Check size={14} />} onClick={simulateClientConfirm}>
+          Simular resposta do cliente: confirmar
+        </Button>
+      )}
+    </div>
   );
 }
 

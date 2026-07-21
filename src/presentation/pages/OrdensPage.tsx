@@ -11,9 +11,28 @@ import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getProduct, getServiceType, getUser } from '@/application/repository';
 import type { ServiceOrder } from '@/domain/types';
 import { fmtDate } from '@/lib/date';
+import { downloadCsv } from '@/lib/export';
+import { printServiceOrder } from '@/lib/printOrder';
+import { currentBatch } from '@/lib/batches';
+import { useInvoicesStore } from '@/store/invoicesStore';
+import { logChange } from '@/store/auditStore';
+import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
+import { FileCode, Receipt } from 'lucide-react';
 
 export function OrdensPage() {
   const [selected, setSelected] = useState<ServiceOrder | null>(null);
+
+  const exportCsv = () => {
+    downloadCsv('ordens-de-servico', seed.serviceOrders, [
+      { header: 'OS', value: (so) => so.number },
+      { header: 'Cliente', value: (so) => getCustomer(so.customerId)?.name ?? '' },
+      { header: 'Serviço', value: (so) => getServiceType(so.serviceTypeId)?.name ?? '' },
+      { header: 'Técnico', value: (so) => getUser(so.technicianId)?.name ?? '' },
+      { header: 'Status', value: (so) => so.status },
+      { header: 'Duração (min)', value: (so) => so.totalMinutes ?? '' },
+      { header: 'Criada em', value: (so) => fmtDate(so.createdAt) },
+    ]);
+  };
 
   const columns: Column<ServiceOrder>[] = [
     { key: 'num', header: 'OS', render: (so) => <span className="font-semibold">#{so.number}</span> },
@@ -33,7 +52,12 @@ export function OrdensPage() {
       <PageHeader
         title="Ordens de Serviço"
         description={`${seed.serviceOrders.length} ordens registradas`}
-        actions={<Button leftIcon={<Plus size={16} />}>Nova OS</Button>}
+        actions={
+          <>
+            <Button variant="outline" leftIcon={<Download size={16} />} onClick={exportCsv}>Exportar CSV</Button>
+            <Button leftIcon={<Plus size={16} />}>Nova OS</Button>
+          </>
+        }
       />
       <Table columns={columns} rows={seed.serviceOrders} keyField={(so) => so.id} onRowClick={setSelected} />
 
@@ -43,7 +67,7 @@ export function OrdensPage() {
         title={`Ordem de Serviço #${selected?.number}`}
         subtitle={selected ? getCustomer(selected.customerId)?.name : ''}
         width="max-w-xl"
-        footer={<div className="flex justify-end gap-2"><Button variant="outline" leftIcon={<Download size={15} />}>Gerar PDF</Button><Button>Editar</Button></div>}
+        footer={<div className="flex justify-end gap-2"><Button variant="outline" leftIcon={<Download size={15} />} onClick={() => selected && printServiceOrder(selected)}>Gerar PDF</Button><Button>Editar</Button></div>}
       >
         {selected && (
           <div className="space-y-5">
@@ -69,15 +93,24 @@ export function OrdensPage() {
 
             <Section title="Produtos utilizados">
               <div className="space-y-2">
-                {selected.products.map((p) => (
-                  <div key={p.productId} className="flex items-center justify-between rounded-lg border border-border p-2.5">
-                    <span className="text-sm text-foreground">{getProduct(p.productId)?.name}</span>
-                    <Badge tone="brand">{p.usedQty} {getProduct(p.productId)?.unit}</Badge>
-                  </div>
-                ))}
+                {selected.products.map((p) => {
+                  const prod = getProduct(p.productId);
+                  const batch = currentBatch(prod);
+                  return (
+                    <div key={p.productId} className="flex items-center justify-between rounded-lg border border-border p-2.5">
+                      <div>
+                        <span className="text-sm text-foreground">{prod?.name}</span>
+                        {batch && <p className="text-xs text-muted-foreground">Lote {batch.code}{batch.expiresAt ? ` · val. ${new Date(batch.expiresAt).toLocaleDateString('pt-BR')}` : ''}</p>}
+                      </div>
+                      <Badge tone="brand">{p.usedQty} {prod?.unit}</Badge>
+                    </div>
+                  );
+                })}
                 {selected.products.length === 0 && <span className="text-sm text-muted-foreground">Nenhum produto lançado.</span>}
               </div>
             </Section>
+
+            <FiscalSection so={selected} />
 
             <Section title="Assinaturas">
               <div className="grid grid-cols-2 gap-3">
@@ -97,6 +130,51 @@ export function OrdensPage() {
         )}
       </Drawer>
     </div>
+  );
+}
+
+/** Emissão de NFS-e a partir da OS concluída (fluxo: concluída → emitir → XML/PDF). */
+function FiscalSection({ so }: { so: ServiceOrder }) {
+  const { invoices, emit } = useInvoicesStore();
+  const invoice = invoices.find((i) => i.serviceOrderId === so.id);
+  const customer = getCustomer(so.customerId);
+  const svc = getServiceType(so.serviceTypeId);
+
+  const doEmit = () => {
+    const amount = svc?.defaultPrice ?? 300;
+    const inv = emit({
+      serviceOrderId: so.id,
+      customerId: so.customerId,
+      description: `${svc?.name ?? 'Serviço'} · ${customer?.name ?? ''}`,
+      amount,
+      taxAmount: Math.round(amount * 0.03 * 100) / 100,
+    });
+    logChange('emissão', 'fiscal', `NFS-e #${inv.number} emitida · ${customer?.name ?? ''}`, so.id);
+  };
+
+  return (
+    <Section title="Fiscal (NFS-e)">
+      {so.status !== 'concluida' ? (
+        <p className="text-sm text-muted-foreground">A emissão da NFS-e fica disponível após a conclusão do serviço.</p>
+      ) : invoice ? (
+        <div className="rounded-lg border border-border p-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">NFS-e #{invoice.number} · {invoice.series}</p>
+              <p className="text-xs text-muted-foreground">Emitida em {new Date(invoice.issuedAt).toLocaleDateString('pt-BR')} · {invoice.status}</p>
+            </div>
+            <Badge tone={invoice.status === 'emitida' ? 'success' : 'danger'} dot>{invoice.status === 'emitida' ? 'Emitida' : 'Cancelada'}</Badge>
+          </div>
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" variant="outline" leftIcon={<Download size={14} />} onClick={() => printNfse(invoice, customer)}>PDF</Button>
+            <Button size="sm" variant="outline" leftIcon={<FileCode size={14} />} onClick={() => downloadNfseXml(invoice, customer)}>XML</Button>
+            <Button size="sm" variant="ghost" onClick={() => alert('NFS-e enviada ao cliente (simulação).')}>Enviar ao cliente</Button>
+          </div>
+        </div>
+      ) : (
+        <Button leftIcon={<Receipt size={15} />} onClick={doEmit}>Emitir NFS-e em um clique</Button>
+      )}
+    </Section>
   );
 }
 
