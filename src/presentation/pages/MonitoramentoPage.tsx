@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Check, FileText, MapPin, Plus, Radar, Trash2 } from 'lucide-react';
+import { Check, ClipboardList, FileText, MapPin, Plus, Radar, Trash2 } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
@@ -98,7 +98,7 @@ export function MonitoramentoPage() {
                 </div>
                 {li && <Badge tone={li.consumed ? 'danger' : 'success'} dot>{li.consumed ? 'Consumo' : 'Sem consumo'} · {fmtDate(li.date)}</Badge>}
                 <Badge tone={STATUS_META[t.status].tone}>{STATUS_META[t.status].label}</Badge>
-                <Button size="sm" variant="outline" leftIcon={<Check size={14} />} onClick={() => setInspectTrap(t)}>Inspeção</Button>
+                <Button size="sm" variant="outline" leftIcon={<ClipboardList size={14} />} onClick={() => setInspectTrap(t)}>Inspeção</Button>
                 <button onClick={() => removeTrap(t.id)} className="text-muted-foreground hover:text-danger" title="Excluir"><Trash2 size={15} /></button>
               </div>
             );

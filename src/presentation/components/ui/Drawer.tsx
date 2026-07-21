@@ -24,15 +24,20 @@ export function Drawer({
 }) {
   const panelRef = useRef<HTMLElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
+  // Mantém o onClose atual sem entrar nas dependências do efeito — evitar isso
+  // é essencial: se o efeito re-executasse a cada render, o foco seria roubado
+  // do campo a cada tecla digitada ("escreve uma letra e trava").
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
     restoreRef.current = document.activeElement as HTMLElement;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     document.addEventListener('keydown', onKey);
-    // Move o foco para o painel (após a animação iniciar).
+    // Foca o painel uma vez, ao abrir (após a animação iniciar).
     const t = setTimeout(() => panelRef.current?.focus(), 60);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -42,7 +47,7 @@ export function Drawer({
       document.body.style.overflow = prevOverflow;
       restoreRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   return (
     <AnimatePresence>

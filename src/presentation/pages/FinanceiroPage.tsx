@@ -149,7 +149,7 @@ function FinanceForm({ open, defaultType, onClose, onSave }: { open: boolean; de
         <Field label="Descrição" required><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Contrato mensal · Cliente X" /></Field>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Valor (R$)" required><Input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
-          <Field label="Vencimento"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
+          <Field label="Vencimento"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
           <Field label="Status" className="col-span-2">
             <Select value={status} onChange={(e) => setStatus(e.target.value as FinanceEntryStatus)}>
               {(['pendente', 'pago', 'atrasado', 'cancelado'] as FinanceEntryStatus[]).map((s) => <option key={s} value={s}>{statusMeta[s].label}</option>)}

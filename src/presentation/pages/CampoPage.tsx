@@ -13,7 +13,7 @@ import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge
 import { appointmentsForTechnician, getCustomer, getProduct, getServiceType, technicianBalances } from '@/application/repository';
 import { technicians } from '@/infrastructure/seed/data';
 import { useProductsStore } from '@/store/entityStores';
-import { Plus, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Select } from '../components/ui/Field';
 import type { Appointment } from '@/domain/types';
 import { fmtTime } from '@/lib/date';
@@ -167,12 +167,11 @@ function AppliedProducts({ appt }: { appt: Appointment }) {
           );
         })}
       </div>
-      <div className="mt-2 flex items-center gap-2">
-        <Select value={adding} onChange={(e) => addRow(e.target.value)} className="h-8 text-sm">
+      <div className="mt-2">
+        <Select value={adding} onChange={(e) => addRow(e.target.value)} className="h-9 text-sm">
           <option value="">+ Adicionar outro produto…</option>
           {allProducts.filter((p) => !rows.some((r) => r.productId === p.id)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </Select>
-        <Plus size={15} className="shrink-0 text-muted-foreground" />
       </div>
     </div>
   );

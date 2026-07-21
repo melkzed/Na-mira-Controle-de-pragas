@@ -166,7 +166,7 @@ export function AppointmentForm({
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Data e hora" required>
-            <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
+            <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} />
           </Field>
           <Field label="Duração (min)">
             <Input type="number" min={15} step={15} value={duration} onChange={(e) => setDuration(Number(e.target.value) || 0)} />
