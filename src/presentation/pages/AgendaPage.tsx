@@ -15,8 +15,11 @@ import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getServiceType, getUser } from '@/application/repository';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { logChange } from '@/store/auditStore';
+import { useMessagesStore } from '@/store/messagesStore';
+import { buildWhatsMessage, WHATS_TYPE_LABEL } from '@/lib/whatsapp';
+import { MessageCircle } from 'lucide-react';
 import { APPOINTMENT_STATUS_META, type AppointmentStatus } from '@/domain/enums';
-import type { Appointment } from '@/domain/types';
+import type { Appointment, Customer } from '@/domain/types';
 import { addDays, fmtTime, isSameDay, isToday, parseISO, weekDays, weekRangeLabel } from '@/lib/date';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -372,6 +375,8 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
           <p className="text-xs text-success">✓ Confirmada em {new Date(appt.confirmedAt).toLocaleString('pt-BR')}</p>
         )}
 
+        {cust && <WhatsAppPanel appt={appt} cust={cust} serviceName={st?.name} onClientConfirm={confirmVisit} />}
+
         <Section title="Status do atendimento">
           <Select value={appt.status} onChange={(e) => setStatus(appt.id, e.target.value as AppointmentStatus)}>
             {(Object.keys(APPOINTMENT_STATUS_META) as AppointmentStatus[]).map((s) => (
@@ -458,6 +463,60 @@ function RescheduleForm({ appt, onDone }: { appt: Appointment; onDone: () => voi
           <Button size="sm" leftIcon={<Check size={14} />} onClick={save}>Salvar reagendamento</Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Painel de WhatsApp (simulação) — envio de confirmação/lembrete/conclusão,
+ *  confirmação de entrega e simulação da resposta do cliente. */
+function WhatsAppPanel({ appt, cust, serviceName, onClientConfirm }: { appt: Appointment; cust: Customer; serviceName?: string; onClientConfirm: () => void }) {
+  const { messages, send, setStatus } = useMessagesStore();
+  const apptMessages = messages.filter((m) => m.appointmentId === appt.id);
+  const pendingConfirmation = apptMessages.find((m) => m.type === 'confirmacao' && m.status !== 'confirmada');
+
+  const dispatch = (type: 'confirmacao' | 'lembrete' | 'conclusao') => {
+    const body = buildWhatsMessage(type, cust, appt, serviceName);
+    send({ appointmentId: appt.id, customerId: cust.id, phone: cust.whatsapp ?? cust.phone, type, body });
+    logChange('mensagem', 'whatsapp', `${WHATS_TYPE_LABEL[type]} enviada · ${cust.name}`, appt.id);
+  };
+
+  const simulateClientConfirm = () => {
+    if (pendingConfirmation) setStatus(pendingConfirmation.id, 'confirmada');
+    onClientConfirm();
+  };
+
+  const statusTone = (s: string) => (s === 'confirmada' ? 'success' : s === 'entregue' || s === 'lida' ? 'info' : 'neutral');
+
+  return (
+    <div className="rounded-xl border border-success/30 bg-success-soft/30 p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <MessageCircle size={15} className="text-success" />
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-success">WhatsApp</p>
+        <Badge tone="neutral" className="text-[10px]">simulação</Badge>
+      </div>
+      <p className="mb-2 text-xs text-muted-foreground">{cust.whatsapp ?? cust.phone ?? 'Sem número cadastrado'}</p>
+      <div className="grid grid-cols-3 gap-1.5">
+        <Button size="sm" variant="outline" onClick={() => dispatch('confirmacao')}>Confirmação</Button>
+        <Button size="sm" variant="outline" onClick={() => dispatch('lembrete')}>Lembrete</Button>
+        <Button size="sm" variant="outline" onClick={() => dispatch('conclusao')}>Conclusão</Button>
+      </div>
+
+      {apptMessages.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          {apptMessages.slice(0, 3).map((m) => (
+            <div key={m.id} className="flex items-center justify-between rounded-lg bg-surface px-2.5 py-1.5">
+              <span className="text-xs text-foreground">{WHATS_TYPE_LABEL[m.type]} · {new Date(m.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+              <Badge tone={statusTone(m.status)} dot className="text-[10px] capitalize">{m.status}</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {pendingConfirmation && appt.status === 'agendado' && (
+        <Button size="sm" variant="secondary" className="mt-2 w-full" leftIcon={<Check size={14} />} onClick={simulateClientConfirm}>
+          Simular resposta do cliente: confirmar
+        </Button>
+      )}
     </div>
   );
 }
