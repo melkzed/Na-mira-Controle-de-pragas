@@ -10,17 +10,26 @@ import { users } from '@/infrastructure/seed/data';
 /** Senha única de demonstração para todos os usuários de exemplo. */
 export const DEMO_PASSWORD = 'namira123';
 
+/**
+ * Credenciais específicas (contas reais). Têm senha própria, distinta da senha
+ * de demonstração, e não aparecem no acesso rápido da tela de login.
+ */
+const ACCOUNT_PASSWORDS: Record<string, string> = {
+  'namiracomercial@gmail.com': 'vanessa@adm',
+};
+
 export interface AuthResult {
   user: User | null;
   error?: 'invalid_email' | 'invalid_password';
 }
 
 export function authenticate(email: string, password: string): AuthResult {
-  const user = users.find(
-    (u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.isActive,
-  );
+  const normalized = email.trim().toLowerCase();
+  const user = users.find((u) => u.email.toLowerCase() === normalized && u.isActive);
   if (!user) return { user: null, error: 'invalid_email' };
-  if (password !== DEMO_PASSWORD) return { user: null, error: 'invalid_password' };
+  // Contas com senha própria exigem essa senha; as demais aceitam a senha demo.
+  const expected = ACCOUNT_PASSWORDS[normalized] ?? DEMO_PASSWORD;
+  if (password !== expected) return { user: null, error: 'invalid_password' };
   return { user };
 }
 

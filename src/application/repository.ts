@@ -11,6 +11,7 @@ import { useCustomersStore } from '@/store/customersStore';
 import { useProductsStore, useServiceTypesStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useStockStore } from '@/store/stockStore';
+import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import type {
   Appointment,
   Customer,
@@ -65,7 +66,7 @@ export function appointmentsByDay(iso: string): Appointment[] {
 }
 
 export function serviceOrdersForCustomer(customerId: string): ServiceOrder[] {
-  return seed.serviceOrders
+  return useServiceOrdersStore.getState().orders
     .filter((so) => so.customerId === customerId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
