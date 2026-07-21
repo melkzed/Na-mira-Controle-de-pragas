@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { CalendarClock, Clock, MapPin, Navigation, Route as RouteIcon, Sparkles } from 'lucide-react';
+import { CalendarClock, Clock, Lock, MapPin, Navigation, Route as RouteIcon, Sparkles, TriangleAlert } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
@@ -9,13 +9,23 @@ import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { appointmentsForTechnician, getCustomer, getServiceType } from '@/application/repository';
 import { technicians } from '@/infrastructure/seed/data';
 import { fmtTime } from '@/lib/date';
-import { appleMapsLink, googleMapsRoute, haversineKm, optimizeOrder, routeDistanceKm, wazeLink } from '@/lib/geo';
+import { appleMapsLink, googleMapsRoute, wazeLink } from '@/lib/geo';
+import { AVG_SPEED_KMH, fmtMinutes, minutesOfDay, planRoute, simulateRoute, type TimedStop } from '@/lib/route';
+import type { Appointment } from '@/domain/types';
 
-/** Velocidade média urbana estimada (km/h) para converter distância em tempo. */
-const AVG_SPEED_KMH = 22;
 const hasGeo = (a: { latitude?: number; longitude?: number }) => a.latitude != null && a.longitude != null;
+const isLocked = (a: Appointment) => a.status === 'finalizado' || a.status === 'em_atendimento' || a.status === 'em_deslocamento';
 
-/** Roteirização — melhor sequência de visitas por técnico (menor deslocamento). */
+const toTimed = (a: Appointment): TimedStop => ({
+  lat: a.latitude!,
+  lng: a.longitude!,
+  serviceMin: a.estimatedMinutes ?? 60,
+  windowStart: a.fixedTime ? minutesOfDay(a.scheduledStart) : undefined,
+  windowEnd: a.fixedTime ? minutesOfDay(a.scheduledEnd) : undefined,
+  locked: isLocked(a),
+});
+
+/** Roteirização — melhor sequência respeitando janelas de horário (hora marcada). */
 export function RotasPage() {
   const [techId, setTechId] = useState(technicians[0].id);
   const [optimized, setOptimized] = useState(true);
@@ -23,31 +33,26 @@ export function RotasPage() {
   const tech = technicians.find((t) => t.id === techId)!;
   const scheduled = appointmentsForTechnician(techId, todayIso);
 
-  const { ordered, totalKm, savedKm } = useMemo(() => {
+  const { orderedGeo, sim, savedKm, totalKm, totalMin, lateCount } = useMemo(() => {
     const withGeo = scheduled.filter(hasGeo);
-    const withoutGeo = scheduled.filter((a) => !hasGeo(a));
-    const pts = withGeo.map((a) => ({ lat: a.latitude!, lng: a.longitude! }));
-    const schedKm = routeDistanceKm(pts);
-    const optIdx = optimizeOrder(pts, 0);
-    const optKm = routeDistanceKm(optIdx.map((i) => pts[i]));
-    const orderedGeo = optimized ? optIdx.map((i) => withGeo[i]) : withGeo;
+    const timed = withGeo.map(toTimed);
+    const dayStart = withGeo.length ? minutesOfDay(withGeo[0].scheduledStart) : 8 * 60;
+    const identity = timed.map((_, i) => i);
+    const scheduledSim = simulateRoute(timed, identity, dayStart);
+    const plan = planRoute(timed, dayStart);
+    const activeOrder = optimized ? plan.order : identity;
+    const activeSim = optimized ? plan : scheduledSim;
+    const serviceMin = timed.reduce((s, t) => s + t.serviceMin, 0);
     return {
-      ordered: [...orderedGeo, ...withoutGeo],
-      totalKm: optimized ? optKm : schedKm,
-      savedKm: schedKm - optKm,
+      orderedGeo: activeOrder.map((i) => withGeo[i]),
+      sim: activeSim,
+      savedKm: scheduledSim.distanceKm - plan.distanceKm,
+      totalKm: activeSim.distanceKm,
+      totalMin: Math.round((activeSim.distanceKm / AVG_SPEED_KMH) * 60 + serviceMin),
+      lateCount: activeSim.late.filter(Boolean).length,
     };
   }, [scheduled, optimized]);
 
-  const legs = ordered.map((a, i) => {
-    if (i === 0 || !hasGeo(a) || !hasGeo(ordered[i - 1])) return 0;
-    const prev = ordered[i - 1];
-    return haversineKm({ lat: prev.latitude!, lng: prev.longitude! }, { lat: a.latitude!, lng: a.longitude! });
-  });
-  const driveMin = Math.round((totalKm / AVG_SPEED_KMH) * 60);
-  const serviceMin = ordered.reduce((s, a) => s + (a.estimatedMinutes ?? 0), 0);
-  const totalMin = driveMin + serviceMin;
-
-  const orderedGeo = ordered.filter(hasGeo);
   const mapStops: RouteStop[] = orderedGeo.map((a) => ({
     id: a.id,
     label: getCustomer(a.customerId)?.name ?? 'Cliente',
@@ -59,13 +64,13 @@ export function RotasPage() {
   }));
   const routePoints = orderedGeo.map((a) => ({ lat: a.latitude!, lng: a.longitude! }));
   const openRoute = (url: string) => window.open(url, '_blank', 'noopener');
-  const canOptimize = ordered.filter(hasGeo).length >= 3;
+  const canOptimize = orderedGeo.length >= 3;
 
   return (
     <div>
       <PageHeader
         title="Roteirização"
-        description="Melhor sequência de visitas, distância e tempo entre atendimentos"
+        description="Melhor sequência de visitas respeitando os horários marcados"
         actions={
           <Button
             variant={optimized ? 'outline' : 'primary'}
@@ -84,7 +89,7 @@ export function RotasPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <MetricCard icon="MapPin" label="Paradas" value={`${ordered.length}`} />
+        <MetricCard icon="MapPin" label="Paradas" value={`${orderedGeo.length}`} />
         <MetricCard icon="Route" label="Distância total" value={`${totalKm.toFixed(1)} km`} />
         <MetricCard icon="Clock" label="Tempo estimado" value={`${Math.floor(totalMin / 60)}h${String(totalMin % 60).padStart(2, '0')}`} />
         <MetricCard icon="Fuel" label="Consumo est." value={`${(totalKm / 10).toFixed(1)} L`} />
@@ -94,10 +99,12 @@ export function RotasPage() {
         <Card className="lg:col-span-2">
           <CardHeader
             title={`Rota de ${tech.name}`}
-            subtitle={optimized ? 'Melhor sequência por menor deslocamento' : 'Na ordem dos horários agendados'}
+            subtitle={optimized ? 'Menor deslocamento respeitando hora marcada' : 'Na ordem dos horários agendados'}
             action={
               optimized
-                ? <Badge tone="success" dot>{canOptimize && savedKm > 0.05 ? `Otimizada · −${savedKm.toFixed(1)} km` : 'Otimizada'}</Badge>
+                ? (lateCount > 0
+                    ? <Badge tone="danger" dot>{lateCount} fora da janela</Badge>
+                    : <Badge tone="success" dot>{canOptimize && savedKm > 0.05 ? `Otimizada · −${savedKm.toFixed(1)} km` : 'Otimizada'}</Badge>)
                 : <Badge tone="neutral" dot>Agendada</Badge>
             }
           />
@@ -105,38 +112,43 @@ export function RotasPage() {
             {optimized && canOptimize && (
               <p className="mb-3 flex items-start gap-1.5 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                 <Sparkles size={13} className="mt-0.5 shrink-0 text-brand" />
-                Sequência sugerida pelo menor trajeto. Ajuste a ordem manualmente se houver horários fixos com o cliente.
+                Mantém as visitas com <Lock size={11} className="inline" /> hora marcada dentro do horário e as visitas em andamento na frente; otimiza o restante pelo menor trajeto.
               </p>
             )}
             <div className="relative pl-2">
-              {ordered.map((a, i) => {
+              {orderedGeo.map((a, i) => {
                 const cust = getCustomer(a.customerId);
                 const st = getServiceType(a.serviceTypeId);
+                const late = sim.late[i];
                 return (
                   <div key={a.id} className="relative flex gap-4 pb-6 last:pb-0">
                     {/* linha do tempo */}
-                    {i < ordered.length - 1 && <span className="absolute left-[15px] top-8 h-full w-px bg-border" />}
+                    {i < orderedGeo.length - 1 && <span className="absolute left-[15px] top-8 h-full w-px bg-border" />}
                     <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: i * 0.08, type: 'spring' }} className="z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white shadow-soft" style={{ background: st?.color }}>
                       {i + 1}
                     </motion.div>
-                    <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }} className="flex-1 rounded-xl border border-border p-3">
-                      <div className="flex items-start justify-between">
-                        <div>
+                    <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }} className={`flex-1 rounded-xl border p-3 ${late ? 'border-danger/40 bg-danger-soft/30' : 'border-border'}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
                           <p className="text-sm font-semibold text-foreground">{cust?.name}</p>
-                          <p className="text-xs text-muted-foreground"><MapPin size={11} className="mr-1 inline" />{a.address}</p>
+                          <p className="truncate text-xs text-muted-foreground"><MapPin size={11} className="mr-1 inline" />{a.address}</p>
                         </div>
-                        <Badge tone="neutral">{fmtTime(a.scheduledStart)}</Badge>
+                        {a.fixedTime
+                          ? <Badge tone={late ? 'danger' : 'brand'}><Lock size={10} className="mr-1" />{fmtTime(a.scheduledStart)}</Badge>
+                          : <Badge tone="neutral">{fmtTime(a.scheduledStart)}</Badge>}
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         <span>{st?.name}</span>
                         <span>· {a.estimatedMinutes}min atend.</span>
-                        {i > 0 && legs[i] > 0 && <span className="flex items-center gap-1 text-brand"><Navigation size={11} />{legs[i].toFixed(1)} km · {Math.round((legs[i] / AVG_SPEED_KMH) * 60)} min até aqui</span>}
+                        {i > 0 && sim.legKm[i] > 0 && <span className="flex items-center gap-1 text-brand"><Navigation size={11} />{sim.legKm[i].toFixed(1)} km · {Math.round((sim.legKm[i] / AVG_SPEED_KMH) * 60)} min</span>}
+                        {optimized && <span>· início ~{fmtMinutes(sim.startMin[i])}</span>}
+                        {late && <span className="flex items-center gap-1 font-medium text-danger"><TriangleAlert size={11} />fora da janela</span>}
                       </div>
                     </motion.div>
                   </div>
                 );
               })}
-              {ordered.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Sem visitas para hoje.</p>}
+              {orderedGeo.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Sem visitas para hoje.</p>}
             </div>
           </CardBody>
         </Card>
