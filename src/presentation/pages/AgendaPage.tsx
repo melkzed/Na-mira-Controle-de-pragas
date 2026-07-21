@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, ChevronLeft, ChevronRight, MapPin, Plus } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Lock, MapPin, Plus } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
@@ -361,8 +361,14 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
           <AppointmentStatusBadge status={appt.status} />
           <PriorityBadge priority={appt.priority} />
           <Badge tone="neutral">{fmtTime(appt.scheduledStart)}–{fmtTime(appt.scheduledEnd)}</Badge>
+          {appt.fixedTime && <Badge tone="brand"><Lock size={10} className="mr-1" />Hora marcada</Badge>}
           {appt.recurrenceRule && <Badge tone="info">Recorrente · {appt.recurrenceRule}</Badge>}
         </div>
+
+        <label className={`flex cursor-pointer items-center gap-2.5 rounded-xl border p-3 transition ${appt.fixedTime ? 'border-brand/40 bg-brand-soft/40' : 'border-border bg-muted/30 hover:bg-muted/50'}`}>
+          <input type="checkbox" checked={!!appt.fixedTime} onChange={(e) => update(appt.id, { fixedTime: e.target.checked || undefined })} className="h-4 w-4 rounded border-border text-brand" />
+          <span className="flex items-center gap-1.5 text-sm text-foreground"><Lock size={13} className={appt.fixedTime ? 'text-brand' : 'text-muted-foreground'} /> Hora marcada <span className="text-xs text-muted-foreground">— mantém o horário na otimização de rota</span></span>
+        </label>
 
         {/* Confirmação da visita */}
         {appt.status === 'agendado' && (

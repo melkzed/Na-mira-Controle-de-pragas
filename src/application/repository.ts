@@ -9,6 +9,7 @@
 import * as seed from '@/infrastructure/seed/data';
 import { useCustomersStore } from '@/store/customersStore';
 import { useProductsStore, useServiceTypesStore } from '@/store/entityStores';
+import { useAppointmentsStore } from '@/store/appointmentsStore';
 import type {
   Appointment,
   Customer,
@@ -58,7 +59,7 @@ export function lowStockProducts() {
 
 export function appointmentsByDay(iso: string): Appointment[] {
   const day = iso.slice(0, 10);
-  return seed.appointments
+  return useAppointmentsStore.getState().appointments
     .filter((a) => a.scheduledStart.slice(0, 10) === day)
     .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
 }
@@ -74,11 +75,11 @@ export function appointmentsForTechnician(
   dayIso: string,
 ): Appointment[] {
   const day = dayIso.slice(0, 10);
-  return seed.appointments
+  return useAppointmentsStore.getState().appointments
     .filter(
       (a) =>
         a.technicianId === technicianId &&
         a.scheduledStart.slice(0, 10) === day,
     )
-    .sort((a, b) => (a.routeOrder ?? 0) - (b.routeOrder ?? 0));
+    .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
 }
