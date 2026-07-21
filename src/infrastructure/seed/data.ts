@@ -214,6 +214,8 @@ export const appointments: Appointment[] = [
   A('a-1', 'c-1', 'st-ded', 'u-t1', 0, 8, 90, 'finalizado', 'normal', 1),
   A('a-2', 'c-3', 'st-des', 'u-t1', 0, 10, 75, 'em_atendimento', 'alta', 2),
   A('a-3', 'c-6', 'st-san', 'u-t1', 0, 14, 60, 'confirmado', 'normal', 3),
+  A('a-3b', 'c-8', 'st-ded', 'u-t1', 0, 16, 60, 'agendado', 'normal', 4),
+  A('a-3c', 'c-5', 'st-des', 'u-t1', 0, 17, 60, 'agendado', 'baixa', 5),
   A('a-4', 'c-4', 'st-cup', 'u-t3', 0, 9, 120, 'em_deslocamento', 'urgente', 1),
   A('a-5', 'c-7', 'st-ded', 'u-t3', 0, 14, 90, 'agendado', 'normal', 2),
   A('a-6', 'c-2', 'st-esc', 'u-t2', 0, 11, 80, 'confirmado', 'alta', 1),
