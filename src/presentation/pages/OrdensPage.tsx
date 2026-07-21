@@ -1,30 +1,40 @@
-import { useState } from 'react';
-import { Download, FileSignature, Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Check, Download, FileSignature, Plus } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Drawer } from '../components/ui/Drawer';
 import { Avatar } from '../components/ui/Avatar';
+import { Field, Input, Select, Textarea } from '../components/ui/Field';
 import { Table, type Column } from '../components/ui/Table';
 import { ServiceOrderStatusBadge } from '../components/StatusBadge';
 import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getProduct, getServiceType, getUser } from '@/application/repository';
 import type { ServiceOrder } from '@/domain/types';
+import type { ServiceOrderStatus } from '@/domain/enums';
 import { fmtDate } from '@/lib/date';
 import { downloadCsv } from '@/lib/export';
 import { printServiceOrder } from '@/lib/printOrder';
 import { currentBatch } from '@/lib/batches';
 import { useInvoicesStore } from '@/store/invoicesStore';
+import { useServiceOrdersStore, type ServiceOrderInput } from '@/store/serviceOrdersStore';
+import { useCustomersStore } from '@/store/customersStore';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { FileCode, Receipt } from 'lucide-react';
 
+const OS_STATUS_LABEL: Record<ServiceOrderStatus, string> = {
+  rascunho: 'Rascunho', em_andamento: 'Em andamento', concluida: 'Concluída', cancelada: 'Cancelada',
+};
+
 export function OrdensPage() {
+  const orders = useServiceOrdersStore((s) => s.orders);
   const [selected, setSelected] = useState<ServiceOrder | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   const exportCsv = () => {
-    downloadCsv('ordens-de-servico', seed.serviceOrders, [
+    downloadCsv('ordens-de-servico', orders, [
       { header: 'OS', value: (so) => so.number },
       { header: 'Cliente', value: (so) => getCustomer(so.customerId)?.name ?? '' },
       { header: 'Serviço', value: (so) => getServiceType(so.serviceTypeId)?.name ?? '' },
@@ -52,15 +62,17 @@ export function OrdensPage() {
     <div>
       <PageHeader
         title="Ordens de Serviço"
-        description={`${seed.serviceOrders.length} ordens registradas`}
+        description={`${orders.length} ordens registradas`}
         actions={
           <>
             <Button variant="outline" leftIcon={<Download size={16} />} onClick={exportCsv}>Exportar CSV</Button>
-            <Button leftIcon={<Plus size={16} />}>Nova OS</Button>
+            <Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Nova OS</Button>
           </>
         }
       />
-      <Table columns={columns} rows={seed.serviceOrders} keyField={(so) => so.id} onRowClick={setSelected} />
+      <Table columns={columns} rows={orders} keyField={(so) => so.id} onRowClick={setSelected} />
+
+      <NovaOsForm open={formOpen} onClose={() => setFormOpen(false)} onCreated={(so) => { setFormOpen(false); setSelected(so); }} />
 
       <Drawer
         open={!!selected}
@@ -131,6 +143,85 @@ export function OrdensPage() {
         )}
       </Drawer>
     </div>
+  );
+}
+
+/** Formulário de nova Ordem de Serviço. */
+function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (so: ServiceOrder) => void }) {
+  const add = useServiceOrdersStore((s) => s.add);
+  const customers = useCustomersStore((s) => s.customers);
+  const [customerId, setCustomerId] = useState('');
+  const [serviceTypeId, setServiceTypeId] = useState(seed.serviceTypes[0]?.id ?? '');
+  const [technicianId, setTechnicianId] = useState(seed.technicians[0]?.id ?? '');
+  const [status, setStatus] = useState<ServiceOrderStatus>('em_andamento');
+  const [areaTreated, setAreaTreated] = useState('');
+  const [duration, setDuration] = useState('');
+  const [procedures, setProcedures] = useState('');
+  const [pestIds, setPestIds] = useState<string[]>([]);
+  const [touched, setTouched] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setCustomerId(customers[0]?.id ?? '');
+      setServiceTypeId(seed.serviceTypes[0]?.id ?? '');
+      setTechnicianId(seed.technicians[0]?.id ?? '');
+      setStatus('em_andamento'); setAreaTreated(''); setDuration(''); setProcedures(''); setPestIds([]); setTouched(false);
+    }
+  }, [open, customers]);
+
+  const togglePest = (id: string) => setPestIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+
+  const submit = () => {
+    setTouched(true);
+    if (!customerId) return;
+    const input: ServiceOrderInput = {
+      customerId,
+      serviceTypeId,
+      technicianId: technicianId || undefined,
+      status,
+      areaTreated: areaTreated.trim() || undefined,
+      procedures: procedures.trim() || undefined,
+      totalMinutes: duration ? Number(duration) : undefined,
+      startedAt: status !== 'rascunho' ? new Date().toISOString() : undefined,
+      finishedAt: status === 'concluida' ? new Date().toISOString() : undefined,
+      pestIds,
+      products: [],
+      hasCustomerSignature: false,
+    };
+    const so = add(input);
+    logChange('criação', 'ordem de serviço', `OS #${so.number} · ${getCustomer(customerId)?.name ?? ''}`, so.id);
+    toast(`OS #${so.number} criada.`, { tone: 'success' });
+    onCreated(so);
+  };
+
+  return (
+    <Drawer open={open} onClose={onClose} title="Nova Ordem de Serviço" subtitle="Registro de atendimento" width="max-w-xl"
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!customerId}>Criar OS</Button></div>}>
+      <div className="space-y-4">
+        <Field label="Cliente" required>
+          <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+            <option value="">Selecione…</option>
+            {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+          {touched && !customerId && <span className="mt-1 block text-xs text-danger">Selecione um cliente.</span>}
+        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Tipo de serviço"><Select value={serviceTypeId} onChange={(e) => setServiceTypeId(e.target.value)}>{seed.serviceTypes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+          <Field label="Técnico"><Select value={technicianId} onChange={(e) => setTechnicianId(e.target.value)}>{seed.technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
+          <Field label="Status"><Select value={status} onChange={(e) => setStatus(e.target.value as ServiceOrderStatus)}>{(Object.keys(OS_STATUS_LABEL) as ServiceOrderStatus[]).map((s) => <option key={s} value={s}>{OS_STATUS_LABEL[s]}</option>)}</Select></Field>
+          <Field label="Duração (min)"><Input type="number" min={0} value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="—" /></Field>
+          <Field label="Área atendida" className="col-span-2"><Input value={areaTreated} onChange={(e) => setAreaTreated(e.target.value)} placeholder="Ex.: cozinha, estoque, área externa" /></Field>
+        </div>
+        <Field label="Pragas combatidas">
+          <div className="flex flex-wrap gap-1.5">
+            {seed.pests.map((p) => (
+              <button key={p.id} type="button" onClick={() => togglePest(p.id)} className={`rounded-full border px-2.5 py-1 text-xs transition ${pestIds.includes(p.id) ? 'border-warning bg-warning-soft text-warning' : 'border-border text-muted-foreground hover:bg-muted'}`}>{p.name}</button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Procedimentos realizados"><Textarea value={procedures} onChange={(e) => setProcedures(e.target.value)} placeholder="Descreva o que foi feito no atendimento…" /></Field>
+      </div>
+    </Drawer>
   );
 }
 

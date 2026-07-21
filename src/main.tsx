@@ -11,7 +11,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     {/* reducedMotion="user" faz todas as animações respeitarem o
         prefers-reduced-motion do sistema operacional. */}
     <MotionConfig reducedMotion="user">
-      <RouterProvider router={router} />
+      <RouterProvider router={router} future={{ v7_startTransition: true }} />
       <Toaster />
     </MotionConfig>
   </React.StrictMode>,

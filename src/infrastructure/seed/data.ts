@@ -51,6 +51,7 @@ function daysFromNow(n: number): string {
 
 // ── Usuários / equipe ──────────────────────────────────────────────────────
 export const users: User[] = [
+  { id: 'u-owner', orgId: ORG, name: 'Vanessa · Na Mira', email: 'namiracomercial@gmail.com', role: 'admin', isActive: true, phone: '(11) 99999-0000' },
   { id: 'u-admin', orgId: ORG, name: 'Marina Duarte', email: 'marina@namira.com', role: 'admin', isActive: true, phone: '(11) 99999-0001' },
   { id: 'u-sup', orgId: ORG, name: 'Rafael Nunes', email: 'rafael@namira.com', role: 'supervisor', isActive: true, phone: '(11) 99999-0002' },
   { id: 'u-fin', orgId: ORG, name: 'Camila Reis', email: 'camila@namira.com', role: 'financeiro', isActive: true, phone: '(11) 99999-0003' },
