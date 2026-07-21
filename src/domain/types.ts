@@ -323,6 +323,20 @@ export interface FinanceEntry {
   createdAt: string;
 }
 
+export interface Invoice {
+  id: string;
+  orgId: string;
+  number: number;
+  series: string;
+  serviceOrderId?: string;
+  customerId?: string;
+  description: string;
+  amount: number;
+  taxAmount: number;
+  status: 'emitida' | 'cancelada';
+  issuedAt: string;
+}
+
 export interface License {
   id: string;
   orgId: string;

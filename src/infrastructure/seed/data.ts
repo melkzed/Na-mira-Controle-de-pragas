@@ -11,6 +11,7 @@ import type {
   Customer,
   Equipment,
   FinanceEntry,
+  Invoice,
   License,
   Pest,
   Product,
@@ -306,6 +307,12 @@ export const trapInspections: TrapInspection[] = [
   { id: 'insp-2', trapId: 'trap-1', date: daysFromNow(-2), consumed: false, action: 'nenhuma', technicianId: 'u-t3' },
   { id: 'insp-3', trapId: 'trap-2', date: daysFromNow(-30), consumed: true, action: 'nenhuma', technicianId: 'u-t3', notes: 'Isca com sinais de roedores.' },
   { id: 'insp-4', trapId: 'trap-5', date: daysFromNow(-5), consumed: false, action: 'nenhuma', technicianId: 'u-t1' },
+];
+
+// ── Notas Fiscais de Serviço (exemplos) ─────────────────────────────────────
+export const invoicesSeed: Invoice[] = [
+  { id: 'inv-1', orgId: ORG, number: 1042, series: 'RPS-1', serviceOrderId: 'so-1', customerId: 'c-1', description: 'Dedetização · Padaria Pão Quente', amount: 320, taxAmount: 9.6, status: 'emitida', issuedAt: daysFromNow(-1) },
+  { id: 'inv-2', orgId: ORG, number: 1043, series: 'RPS-1', serviceOrderId: 'so-2', customerId: 'c-3', description: 'Sanitização · Restaurante Sabor & Cia', amount: 240, taxAmount: 7.2, status: 'emitida', issuedAt: daysFromNow(-1) },
 ];
 
 // ── Histórico / auditoria (exemplos iniciais) ───────────────────────────────

@@ -14,6 +14,10 @@ import { fmtDate } from '@/lib/date';
 import { downloadCsv } from '@/lib/export';
 import { printServiceOrder } from '@/lib/printOrder';
 import { currentBatch } from '@/lib/batches';
+import { useInvoicesStore } from '@/store/invoicesStore';
+import { logChange } from '@/store/auditStore';
+import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
+import { FileCode, Receipt } from 'lucide-react';
 
 export function OrdensPage() {
   const [selected, setSelected] = useState<ServiceOrder | null>(null);
@@ -106,6 +110,8 @@ export function OrdensPage() {
               </div>
             </Section>
 
+            <FiscalSection so={selected} />
+
             <Section title="Assinaturas">
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border p-4">
@@ -124,6 +130,51 @@ export function OrdensPage() {
         )}
       </Drawer>
     </div>
+  );
+}
+
+/** Emissão de NFS-e a partir da OS concluída (fluxo: concluída → emitir → XML/PDF). */
+function FiscalSection({ so }: { so: ServiceOrder }) {
+  const { invoices, emit } = useInvoicesStore();
+  const invoice = invoices.find((i) => i.serviceOrderId === so.id);
+  const customer = getCustomer(so.customerId);
+  const svc = getServiceType(so.serviceTypeId);
+
+  const doEmit = () => {
+    const amount = svc?.defaultPrice ?? 300;
+    const inv = emit({
+      serviceOrderId: so.id,
+      customerId: so.customerId,
+      description: `${svc?.name ?? 'Serviço'} · ${customer?.name ?? ''}`,
+      amount,
+      taxAmount: Math.round(amount * 0.03 * 100) / 100,
+    });
+    logChange('emissão', 'fiscal', `NFS-e #${inv.number} emitida · ${customer?.name ?? ''}`, so.id);
+  };
+
+  return (
+    <Section title="Fiscal (NFS-e)">
+      {so.status !== 'concluida' ? (
+        <p className="text-sm text-muted-foreground">A emissão da NFS-e fica disponível após a conclusão do serviço.</p>
+      ) : invoice ? (
+        <div className="rounded-lg border border-border p-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">NFS-e #{invoice.number} · {invoice.series}</p>
+              <p className="text-xs text-muted-foreground">Emitida em {new Date(invoice.issuedAt).toLocaleDateString('pt-BR')} · {invoice.status}</p>
+            </div>
+            <Badge tone={invoice.status === 'emitida' ? 'success' : 'danger'} dot>{invoice.status === 'emitida' ? 'Emitida' : 'Cancelada'}</Badge>
+          </div>
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" variant="outline" leftIcon={<Download size={14} />} onClick={() => printNfse(invoice, customer)}>PDF</Button>
+            <Button size="sm" variant="outline" leftIcon={<FileCode size={14} />} onClick={() => downloadNfseXml(invoice, customer)}>XML</Button>
+            <Button size="sm" variant="ghost" onClick={() => alert('NFS-e enviada ao cliente (simulação).')}>Enviar ao cliente</Button>
+          </div>
+        </div>
+      ) : (
+        <Button leftIcon={<Receipt size={15} />} onClick={doEmit}>Emitir NFS-e em um clique</Button>
+      )}
+    </Section>
   );
 }
 
