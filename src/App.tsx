@@ -28,6 +28,8 @@ const RelatoriosPage = named(() => import('./presentation/pages/RelatoriosPage')
 const ConfigPage = named(() => import('./presentation/pages/ConfigPage'), 'ConfigPage');
 const HistoricoPage = named(() => import('./presentation/pages/HistoricoPage'), 'HistoricoPage');
 const CampoPage = named(() => import('./presentation/pages/CampoPage'), 'CampoPage');
+const CampoMapaPage = named(() => import('./presentation/pages/CampoMapaPage'), 'CampoMapaPage');
+const CampoProdutosPage = named(() => import('./presentation/pages/CampoProdutosPage'), 'CampoProdutosPage');
 const NotFoundPage = named(() => import('./presentation/pages/NotFoundPage'), 'NotFoundPage');
 
 export const router = createBrowserRouter([
@@ -41,7 +43,11 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
     errorElement: <RouteError />,
-    children: [{ index: true, element: <CampoPage /> }],
+    children: [
+      { index: true, element: <CampoPage /> },
+      { path: 'mapa', element: <CampoMapaPage /> },
+      { path: 'produtos', element: <CampoProdutosPage /> },
+    ],
   },
 
   {

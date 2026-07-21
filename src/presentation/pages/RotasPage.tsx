@@ -5,9 +5,11 @@ import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
+import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { appointmentsForTechnician, getCustomer, getServiceType } from '@/application/repository';
 import { technicians } from '@/infrastructure/seed/data';
 import { fmtTime } from '@/lib/date';
+import { appleMapsLink, googleMapsRoute, wazeLink } from '@/lib/geo';
 
 /** Roteirização — sequência otimizada de visitas por técnico. */
 export function RotasPage() {
@@ -20,6 +22,19 @@ export function RotasPage() {
   const legs = stops.map((_, i) => (i === 0 ? { km: 0, min: 0 } : { km: 3 + (i % 3) * 2.4, min: 9 + (i % 3) * 6 }));
   const totalKm = legs.reduce((s, l) => s + l.km, 0);
   const totalMin = legs.reduce((s, l) => s + l.min, 0) + stops.reduce((s, a) => s + (a.estimatedMinutes ?? 0), 0);
+
+  const geoStops = stops.filter((a) => a.latitude != null && a.longitude != null);
+  const mapStops: RouteStop[] = geoStops.map((a) => ({
+    id: a.id,
+    label: getCustomer(a.customerId)?.name ?? 'Cliente',
+    lat: a.latitude!,
+    lng: a.longitude!,
+    color: getServiceType(a.serviceTypeId)?.color,
+    done: a.status === 'finalizado',
+    sub: fmtTime(a.scheduledStart),
+  }));
+  const routePoints = geoStops.map((a) => ({ lat: a.latitude!, lng: a.longitude! }));
+  const openRoute = (url: string) => window.open(url, '_blank', 'noopener');
 
   return (
     <div>
@@ -80,17 +95,13 @@ export function RotasPage() {
         </Card>
 
         <Card>
-          <CardHeader title="Mapa da rota" subtitle="Integração Google Maps / Waze" />
+          <CardHeader title="Mapa da rota" subtitle="Coordenadas reais · abrir no navegador de mapas" />
           <CardBody>
-            <div className="dot-grid relative h-72 overflow-hidden rounded-xl bg-muted/30">
-              {stops.map((a, i) => (
-                <span key={a.id} className="absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-brand text-xs font-bold text-brand-foreground shadow-elevated ring-2 ring-surface" style={{ top: `${15 + i * 16}%`, left: `${20 + (i % 3) * 25}%` }}>{i + 1}</span>
-              ))}
-            </div>
+            <RouteMap stops={mapStops} height={288} />
             <div className="mt-3 grid grid-cols-3 gap-2">
-              <Button variant="outline" size="sm">Maps</Button>
-              <Button variant="outline" size="sm">Waze</Button>
-              <Button variant="outline" size="sm">Apple</Button>
+              <Button variant="outline" size="sm" disabled={routePoints.length === 0} onClick={() => openRoute(googleMapsRoute(routePoints))}>Maps</Button>
+              <Button variant="outline" size="sm" disabled={routePoints.length === 0} onClick={() => openRoute(wazeLink(routePoints[routePoints.length - 1]))}>Waze</Button>
+              <Button variant="outline" size="sm" disabled={routePoints.length === 0} onClick={() => openRoute(appleMapsLink(routePoints[routePoints.length - 1]))}>Apple</Button>
             </div>
           </CardBody>
         </Card>

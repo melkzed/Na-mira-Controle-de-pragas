@@ -11,14 +11,14 @@ import { Badge } from '../components/ui/Badge';
 import { Progress } from '../components/ui/misc';
 import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { appointmentsForTechnician, getCustomer, getProduct, getServiceType, technicianBalances } from '@/application/repository';
-import { technicians } from '@/infrastructure/seed/data';
 import { useProductsStore } from '@/store/entityStores';
 import { X } from 'lucide-react';
 import { Select } from '../components/ui/Field';
 import type { Appointment } from '@/domain/types';
 import { fmtTime } from '@/lib/date';
 import { cn } from '@/lib/utils';
-import { useAppStore } from '@/store/appStore';
+import { wazeLink } from '@/lib/geo';
+import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
 
 /**
  * Painel do Técnico — experiência dedicada de campo (mobile-first).
@@ -27,10 +27,7 @@ import { useAppStore } from '@/store/appStore';
  * técnico através do seletor.
  */
 export function CampoPage() {
-  const currentUser = useAppStore((s) => s.currentUser);
-  const isTech = currentUser?.role === 'tecnico';
-  const [previewId, setPreviewId] = useState(technicians[0].id);
-  const techId = isTech && currentUser ? currentUser.id : previewId;
+  const { techId, techName } = useFieldTech();
 
   const todayIso = new Date().toISOString();
   const appts = useMemo(() => appointmentsForTechnician(techId, todayIso), [techId, todayIso]);
@@ -38,34 +35,21 @@ export function CampoPage() {
   const active = appts.find((a) => a.id === activeId) ?? appts[0];
   const loc = `loc-${techId.replace('u-', '')}`;
   const stock = technicianBalances(loc);
-  const tech = technicians.find((t) => t.id === techId) ?? { id: techId, name: currentUser?.name ?? 'Técnico' };
 
   const doneCount = appts.filter((a) => a.status === 'finalizado').length;
 
   return (
     <div className="mx-auto max-w-md">
-      {/* Seletor de pré-visualização — visível apenas para gestores/staff */}
-      {!isTech && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 p-3">
-          <span className="text-xs font-medium text-muted-foreground">Pré-visualizar como:</span>
-          <select
-            value={previewId}
-            onChange={(e) => { setPreviewId(e.target.value); setActiveId(null); }}
-            className="h-8 flex-1 rounded-lg border border-input bg-surface px-2 text-sm"
-          >
-            {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-        </div>
-      )}
+      <PreviewBanner />
 
       <div>
         {/* Cabeçalho do técnico */}
         <Card className="mb-4 overflow-hidden">
           <div className="bg-gradient-to-br from-brand to-emerald-600 p-5 text-white">
             <div className="flex items-center gap-3">
-              <Avatar name={tech.name} size="lg" className="ring-white/30" />
+              <Avatar name={techName} size="lg" className="ring-white/30" />
               <div>
-                <p className="text-lg font-bold">Olá, {tech.name.split(' ')[0]}</p>
+                <p className="text-lg font-bold">Olá, {techName.split(' ')[0]}</p>
                 <p className="text-sm text-white/80">{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
               </div>
             </div>
@@ -227,8 +211,16 @@ function NextVisit({ appt }: { appt: Appointment }) {
         )}
 
         <div className="grid grid-cols-2 gap-2">
-          <Button variant="outline" size="sm" leftIcon={<Navigation size={15} />}>Navegar</Button>
-          <Button variant="outline" size="sm" leftIcon={<PhoneCall size={15} />}>Ligar</Button>
+          <Button
+            variant="outline" size="sm" leftIcon={<Navigation size={15} />}
+            disabled={appt.latitude == null || appt.longitude == null}
+            onClick={() => appt.latitude != null && appt.longitude != null && window.open(wazeLink({ lat: appt.latitude, lng: appt.longitude }), '_blank', 'noopener')}
+          >Navegar</Button>
+          <Button
+            variant="outline" size="sm" leftIcon={<PhoneCall size={15} />}
+            disabled={!cust?.phone}
+            onClick={() => cust?.phone && window.open(`tel:${cust.phone.replace(/[^\d+]/g, '')}`)}
+          >Ligar</Button>
         </div>
 
         {/* Checklist pré-atendimento */}
