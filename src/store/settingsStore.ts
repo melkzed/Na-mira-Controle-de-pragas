@@ -1,30 +1,63 @@
 import { create } from 'zustand';
 import { orgProfile } from '@/infrastructure/seed/data';
+import { DEFAULT_TAX_CONFIG, type TaxRegime } from '@/application/fiscal/tax';
 
 /**
- * Configurações da organização (persistidas): assinaturas digitais da empresa e
- * dos técnicos, e dados de emergência (CIT) exibidos nos documentos.
+ * Configurações da organização (persistidas): assinaturas digitais, emergência
+ * (CIT) e a configuração fiscal (NFS-e Nacional + tributação).
  */
 const KEY = 'namira-settings';
 
+/** Configuração fiscal — provedor de emissão e tributação. */
+export interface FiscalConfig {
+  /** 'governo-nacional' = NFS-e Nacional (via backend + certificado); 'simulado'. */
+  provider: 'governo-nacional' | 'simulado';
+  /** URL do backend que assina e transmite ao governo (Edge Function). Vazio = simulação. */
+  backendUrl: string;
+  /** Código IBGE do município do prestador. */
+  municipioIbge: string;
+  /** Item da lista de serviços (LC 116) — dedetização = 14.02. */
+  itemListaServico: string;
+  issRate: number;
+  regime: TaxRegime;
+  issRetido: boolean;
+  retencoes: boolean;
+  inssRetido: boolean;
+  irrfRate: number;
+}
+
+const DEFAULT_FISCAL: FiscalConfig = {
+  provider: 'simulado',
+  backendUrl: '',
+  municipioIbge: '3550308', // São Paulo/SP
+  itemListaServico: '14.02',
+  issRate: DEFAULT_TAX_CONFIG.issRate,
+  regime: DEFAULT_TAX_CONFIG.regime,
+  issRetido: DEFAULT_TAX_CONFIG.issRetido,
+  retencoes: DEFAULT_TAX_CONFIG.retencoes,
+  inssRetido: DEFAULT_TAX_CONFIG.inssRetido,
+  irrfRate: DEFAULT_TAX_CONFIG.irrfRate,
+};
+
 interface SettingsState {
-  /** Assinatura digital da empresa (dataURL). */
   companySignature?: string;
-  /** Assinatura digital por técnico (userId → dataURL). */
   signatures: Record<string, string>;
-  /** Emergência toxicológica (CIT) — exibida nos documentos. */
   emergencyPhone: string;
   emergencyInfo: string;
+  fiscal: FiscalConfig;
   setCompanySignature: (dataUrl?: string) => void;
   setUserSignature: (userId: string, dataUrl?: string) => void;
   setEmergency: (phone: string, info: string) => void;
+  setFiscal: (patch: Partial<FiscalConfig>) => void;
 }
 
-function load(): Pick<SettingsState, 'companySignature' | 'signatures' | 'emergencyPhone' | 'emergencyInfo'> {
-  const base = { companySignature: undefined as string | undefined, signatures: {} as Record<string, string>, emergencyPhone: orgProfile.emergencyPhone, emergencyInfo: orgProfile.emergencyInfo };
+type Persisted = Pick<SettingsState, 'companySignature' | 'signatures' | 'emergencyPhone' | 'emergencyInfo' | 'fiscal'>;
+
+function load(): Persisted {
+  const base: Persisted = { companySignature: undefined, signatures: {}, emergencyPhone: orgProfile.emergencyPhone, emergencyInfo: orgProfile.emergencyInfo, fiscal: DEFAULT_FISCAL };
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...base, ...JSON.parse(raw) };
+    if (raw) { const p = JSON.parse(raw); return { ...base, ...p, fiscal: { ...DEFAULT_FISCAL, ...(p.fiscal ?? {}) } }; }
   } catch {
     /* ignora */
   }
@@ -32,7 +65,7 @@ function load(): Pick<SettingsState, 'companySignature' | 'signatures' | 'emerge
 }
 const persist = (s: SettingsState) => {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ companySignature: s.companySignature, signatures: s.signatures, emergencyPhone: s.emergencyPhone, emergencyInfo: s.emergencyInfo }));
+    localStorage.setItem(KEY, JSON.stringify({ companySignature: s.companySignature, signatures: s.signatures, emergencyPhone: s.emergencyPhone, emergencyInfo: s.emergencyInfo, fiscal: s.fiscal }));
   } catch {
     /* cota — ignora */
   }
@@ -48,4 +81,5 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     persist(get());
   },
   setEmergency: (emergencyPhone, emergencyInfo) => { set({ emergencyPhone, emergencyInfo }); persist(get()); },
+  setFiscal: (patch) => { set({ fiscal: { ...get().fiscal, ...patch } }); persist(get()); },
 }));

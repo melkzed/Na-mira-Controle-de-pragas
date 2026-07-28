@@ -27,6 +27,8 @@ import { toast } from '@/store/toastStore';
 import { PhotoCapture } from '../components/PhotoCapture';
 import { SignaturePad } from '../components/SignaturePad';
 import { useSettingsStore } from '@/store/settingsStore';
+import { computeTaxes } from '@/application/fiscal/tax';
+import { formatCurrency } from '@/lib/utils';
 import type { ServiceOrderPhoto } from '@/domain/types';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { Award, FileCode, FileText, Receipt } from 'lucide-react';
@@ -437,24 +439,36 @@ function OsSignatures({ so }: { so: ServiceOrder }) {
   );
 }
 
-/** Emissão de NFS-e a partir da OS concluída (fluxo: concluída → emitir → XML/PDF). */
+/** Emissão de NFS-e a partir da OS concluída (Governo · NFS-e Nacional / simulação). */
 function FiscalSection({ so }: { so: ServiceOrder }) {
-  const { invoices, emit } = useInvoicesStore();
+  const { invoices, emitFiscal } = useInvoicesStore();
+  const fiscal = useSettingsStore((s) => s.fiscal);
   const invoice = invoices.find((i) => i.serviceOrderId === so.id);
   const customer = getCustomer(so.customerId);
   const svc = getServiceType(so.serviceTypeId);
+  const [emitting, setEmitting] = useState(false);
 
-  const doEmit = () => {
-    const amount = svc?.defaultPrice ?? 300;
-    const inv = emit({
-      serviceOrderId: so.id,
-      customerId: so.customerId,
-      description: `${svc?.name ?? 'Serviço'} · ${customer?.name ?? ''}`,
-      amount,
-      taxAmount: Math.round(amount * 0.03 * 100) / 100,
-    });
-    logChange('emissão', 'fiscal', `NFS-e #${inv.number} emitida · ${customer?.name ?? ''}`, so.id);
+  const amount = svc?.defaultPrice ?? 300;
+  const preview = useMemo(() => computeTaxes(amount, {
+    issRate: fiscal.issRate, regime: fiscal.regime, issRetido: fiscal.issRetido, retencoes: fiscal.retencoes, inssRetido: fiscal.inssRetido, irrfRate: fiscal.irrfRate,
+  }, customer?.type === 'pj'), [amount, fiscal, customer]);
+
+  const doEmit = async () => {
+    setEmitting(true);
+    try {
+      const inv = await emitFiscal(
+        { serviceOrderId: so.id, customerId: so.customerId, description: `${svc?.name ?? 'Serviço'} · ${customer?.name ?? ''} (item ${fiscal.itemListaServico})`, amount },
+        fiscal,
+        { documento: customer?.document, nome: customer?.name, pessoaJuridica: customer?.type === 'pj' },
+      );
+      logChange('emissão', 'fiscal', `NFS-e #${inv.number} (${inv.provider}) · ${customer?.name ?? ''}`, so.id);
+      toast(inv.status === 'emitida' ? `NFS-e #${inv.number} emitida (${fiscal.provider === 'governo-nacional' ? 'NFS-e Nacional' : 'simulação'}).` : `NFS-e rejeitada: ${inv.message}`, { tone: inv.status === 'emitida' ? 'success' : 'danger' });
+    } finally {
+      setEmitting(false);
+    }
   };
+
+  const providerLabel = fiscal.provider === 'governo-nacional' ? (fiscal.backendUrl ? 'Governo · NFS-e Nacional' : 'Governo · NFS-e Nacional (simulação — sem backend)') : 'Simulação';
 
   return (
     <Section title="Fiscal (NFS-e)">
@@ -464,11 +478,14 @@ function FiscalSection({ so }: { so: ServiceOrder }) {
         <div className="rounded-lg border border-border p-3">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-foreground">NFS-e #{invoice.number} · {invoice.series}</p>
-              <p className="text-xs text-muted-foreground">Emitida em {new Date(invoice.issuedAt).toLocaleDateString('pt-BR')} · {invoice.status}</p>
+              <p className="text-sm font-medium text-foreground">NFS-e #{invoice.number} · série {invoice.series}</p>
+              <p className="text-xs text-muted-foreground">Emitida em {new Date(invoice.issuedAt).toLocaleDateString('pt-BR')} · {invoice.provider === 'governo-nacional' ? 'NFS-e Nacional' : 'simulação'}</p>
             </div>
-            <Badge tone={invoice.status === 'emitida' ? 'success' : 'danger'} dot>{invoice.status === 'emitida' ? 'Emitida' : 'Cancelada'}</Badge>
+            <Badge tone={invoice.status === 'emitida' ? 'success' : 'danger'} dot>{invoice.status === 'emitida' ? 'Emitida' : invoice.status === 'rejeitada' ? 'Rejeitada' : 'Cancelada'}</Badge>
           </div>
+          {invoice.accessKey && <p className="mt-1 break-all text-[11px] text-muted-foreground">Chave: {invoice.accessKey}{invoice.verificationCode ? ` · Cód. verificação: ${invoice.verificationCode}` : ''}</p>}
+          {invoice.taxes && <TaxBreakdown amount={invoice.amount} t={invoice.taxes} />}
+          {invoice.message && <p className="mt-1 text-[11px] text-warning">{invoice.message}</p>}
           <div className="mt-2 flex gap-2">
             <Button size="sm" variant="outline" leftIcon={<Download size={14} />} onClick={() => printNfse(invoice, customer)}>PDF</Button>
             <Button size="sm" variant="outline" leftIcon={<FileCode size={14} />} onClick={() => downloadNfseXml(invoice, customer)}>XML</Button>
@@ -476,9 +493,32 @@ function FiscalSection({ so }: { so: ServiceOrder }) {
           </div>
         </div>
       ) : (
-        <Button leftIcon={<Receipt size={15} />} onClick={doEmit}>Emitir NFS-e em um clique</Button>
+        <div className="space-y-2">
+          <div className="rounded-lg border border-border bg-muted/30 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Prévia da tributação · {providerLabel}</p>
+            <TaxBreakdown amount={amount} t={preview} />
+          </div>
+          <Button leftIcon={<Receipt size={15} />} onClick={doEmit} disabled={emitting}>{emitting ? 'Emitindo…' : 'Emitir NFS-e'}</Button>
+        </div>
       )}
     </Section>
+  );
+}
+
+/** Detalhamento tributário (ISS + retenções + líquido). */
+function TaxBreakdown({ amount, t }: { amount: number; t: import('@/domain/types').InvoiceTaxes }) {
+  const row = (label: string, v: number, neg = false) => v ? <div className="flex justify-between"><span className="text-muted-foreground">{label}</span><span className={neg ? 'text-danger' : 'text-foreground'}>{neg ? '−' : ''}{formatCurrency(v)}</span></div> : null;
+  return (
+    <div className="mt-2 space-y-0.5 text-xs">
+      <div className="flex justify-between"><span className="text-muted-foreground">Valor do serviço</span><span className="font-medium text-foreground">{formatCurrency(amount)}</span></div>
+      {row(`ISS (${(t.issRate * 100).toFixed(1)}%)${t.issRetido ? ' retido' : ''}`, t.iss, t.issRetido)}
+      {row('IRRF', t.irrf, true)}
+      {row('INSS', t.inss, true)}
+      {row('PIS', t.pis, true)}
+      {row('COFINS', t.cofins, true)}
+      {row('CSLL', t.csll, true)}
+      <div className="flex justify-between border-t border-border/60 pt-0.5 font-semibold"><span className="text-foreground">Líquido a receber</span><span className="text-brand">{formatCurrency(t.net)}</span></div>
+    </div>
   );
 }
 
