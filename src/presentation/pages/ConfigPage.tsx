@@ -9,8 +9,10 @@ import { Field, Input, Select } from '../components/ui/Field';
 import { Table, type Column } from '../components/ui/Table';
 import * as seed from '@/infrastructure/seed/data';
 import { useAreasStore, usePestsStore, useProductsStore, useServiceTypesStore } from '@/store/entityStores';
+import { useSettingsStore } from '@/store/settingsStore';
 import { uid } from '@/store/createEntityStore';
 import { toast } from '@/store/toastStore';
+import { SignaturePad } from '../components/SignaturePad';
 import { ROLE_META, type UserRole } from '@/domain/enums';
 import type { User } from '@/domain/types';
 
@@ -91,8 +93,66 @@ export function ConfigPage() {
         <AreasPanel />
       </div>
 
+      <SignaturesPanel />
+      <EmergencyPanel />
       <ServiceDefaultsPanel />
     </div>
+  );
+}
+
+/** Assinaturas digitais da empresa e dos técnicos — incorporadas ao PDF da OS. */
+function SignaturesPanel() {
+  const { companySignature, signatures, setCompanySignature, setUserSignature } = useSettingsStore();
+  const [userId, setUserId] = useState(seed.technicians[0]?.id ?? '');
+
+  return (
+    <Card className="mt-4">
+      <CardHeader title="Assinaturas digitais" subtitle="Empresa e técnicos — incorporadas automaticamente ao PDF da Ordem de Serviço" />
+      <CardBody className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div>
+          <p className="mb-2 text-sm font-semibold text-foreground">Assinatura da empresa</p>
+          <SignaturePad value={companySignature} onChange={(d) => setCompanySignature(d)} />
+          {companySignature && <p className="mt-1 text-xs text-success">Assinatura da empresa definida.</p>}
+        </div>
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <p className="text-sm font-semibold text-foreground">Assinatura do técnico</p>
+            <Select value={userId} onChange={(e) => setUserId(e.target.value)} className="h-8 w-auto text-xs">
+              {seed.technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </Select>
+          </div>
+          <SignaturePad key={userId} value={signatures[userId]} onChange={(d) => setUserSignature(userId, d)} />
+          <div className="mt-2 flex flex-wrap gap-2">
+            {seed.technicians.filter((t) => signatures[t.id]).map((t) => (
+              <span key={t.id} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2 py-1 text-xs">
+                <img src={signatures[t.id]} alt={t.name} className="h-5 w-12 object-contain" /> {t.name.split(' ')[0]}
+              </span>
+            ))}
+          </div>
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+/** Configuração da emergência toxicológica (CIT) exibida nos documentos. */
+function EmergencyPanel() {
+  const { emergencyPhone, emergencyInfo, setEmergency } = useSettingsStore();
+  const [phone, setPhone] = useState(emergencyPhone);
+  const [info, setInfo] = useState(emergencyInfo);
+  const dirty = phone !== emergencyPhone || info !== emergencyInfo;
+
+  return (
+    <Card className="mt-4">
+      <CardHeader title="Emergência (CIT)" subtitle="Centro de Informação Toxicológica — exibido automaticamente nos documentos" />
+      <CardBody className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Field label="Telefone de emergência"><Input value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+        <Field label="Informações" className="sm:col-span-2"><Input value={info} onChange={(e) => setInfo(e.target.value)} /></Field>
+        <div className="sm:col-span-3 flex justify-end">
+          <Button size="sm" disabled={!dirty} onClick={() => { setEmergency(phone.trim(), info.trim()); toast('Dados de emergência atualizados.', { tone: 'success' }); }}>Salvar</Button>
+        </div>
+      </CardBody>
+    </Card>
   );
 }
 

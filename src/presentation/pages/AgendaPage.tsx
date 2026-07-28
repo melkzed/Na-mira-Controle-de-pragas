@@ -451,6 +451,11 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
             <p className="mt-0.5 text-sm text-foreground">{appt.technicianNotes}</p>
           </div>
         )}
+        {appt.technicianSignature && (
+          <Section title="Assinatura do técnico">
+            <img src={appt.technicianSignature} alt="Assinatura do técnico" className="h-16 rounded-lg border border-border bg-surface object-contain px-2" />
+          </Section>
+        )}
         {appt.photos && appt.photos.length > 0 && (
           <Section title={`Fotos do atendimento (${appt.photos.length})`}>
             <div className="space-y-2">

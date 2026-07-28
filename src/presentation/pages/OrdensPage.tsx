@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Download, FileSignature, Plus } from 'lucide-react';
+import { Check, Download, Plus } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -24,6 +24,8 @@ import { usePestsStore, useAreasStore, useEquipmentStore, useServiceTypesStore }
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
 import { PhotoCapture } from '../components/PhotoCapture';
+import { SignaturePad } from '../components/SignaturePad';
+import { useSettingsStore } from '@/store/settingsStore';
 import type { ServiceOrderPhoto } from '@/domain/types';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { FileCode, Receipt } from 'lucide-react';
@@ -142,20 +144,10 @@ export function OrdensPage() {
 
             <FiscalSection so={selected} />
 
-            <Section title="Assinaturas">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border p-4">
-                  <FileSignature size={20} className={selected.hasCustomerSignature ? 'text-success' : 'text-muted-foreground'} />
-                  <p className="mt-1 text-xs text-muted-foreground">Cliente</p>
-                  <Badge tone={selected.hasCustomerSignature ? 'success' : 'neutral'} className="mt-1">{selected.hasCustomerSignature ? 'Assinado' : 'Pendente'}</Badge>
-                </div>
-                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border p-4">
-                  <FileSignature size={20} className="text-success" />
-                  <p className="mt-1 text-xs text-muted-foreground">Técnico</p>
-                  <Badge tone="success" className="mt-1">Assinado</Badge>
-                </div>
-              </div>
-            </Section>
+            <OsSignatures so={selected} />
+            <div className="rounded-lg border border-danger/20 bg-danger-soft/20 p-2.5 text-xs text-danger">
+              <span className="font-semibold">Emergência (CIT):</span> {settingsEmergency()}
+            </div>
           </div>
         )}
       </Drawer>
@@ -364,6 +356,41 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
         <Field label="Procedimentos / observações"><Textarea value={procedures} onChange={(e) => setProcedures(e.target.value)} placeholder="Descreva o que foi feito no atendimento…" /></Field>
       </div>
     </Drawer>
+  );
+}
+
+/** Texto de emergência (CIT) configurado nas Configurações. */
+function settingsEmergency(): string {
+  const s = useSettingsStore.getState();
+  return `${s.emergencyPhone}${s.emergencyInfo ? ` — ${s.emergencyInfo}` : ''}`;
+}
+
+/** Captura das assinaturas eletrônicas da OS (técnico e cliente) → PDF. */
+function OsSignatures({ so }: { so: ServiceOrder }) {
+  const update = useServiceOrdersStore((s) => s.update);
+  const savedSignatures = useSettingsStore((s) => s.signatures);
+  const [techSig, setTechSig] = useState<string | undefined>(so.technicianSignature);
+  const [custSig, setCustSig] = useState<string | undefined>(so.customerSignature);
+  useEffect(() => { setTechSig(so.technicianSignature); setCustSig(so.customerSignature); }, [so.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const techId = so.technicianIds?.[0] ?? so.technicianId;
+  const storedTechSig = techId ? savedSignatures[techId] : undefined;
+
+  const saveTech = (d?: string) => { setTechSig(d); update(so.id, { technicianSignature: d }); };
+  const saveCust = (d?: string) => { setCustSig(d); update(so.id, { customerSignature: d, hasCustomerSignature: !!d }); };
+
+  return (
+    <Section title="Assinaturas eletrônicas">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <SignaturePad key={`tech-${so.id}`} label="Técnico" value={techSig} onChange={saveTech} height={130} />
+          {storedTechSig && !techSig && (
+            <Button size="sm" variant="outline" className="mt-1" onClick={() => saveTech(storedTechSig)}>Usar assinatura salva do técnico</Button>
+          )}
+        </div>
+        <SignaturePad key={`cust-${so.id}`} label="Cliente" value={custSig} onChange={saveCust} height={130} />
+      </div>
+    </Section>
   );
 }
 
