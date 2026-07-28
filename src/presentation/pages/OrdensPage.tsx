@@ -16,6 +16,7 @@ import { PAYMENT_METHODS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/d
 import { fmtDate } from '@/lib/date';
 import { downloadCsv } from '@/lib/export';
 import { printServiceOrder } from '@/lib/printOrder';
+import { printCertificate, printLaudo } from '@/lib/printDocuments';
 import { currentBatch } from '@/lib/batches';
 import { useInvoicesStore } from '@/store/invoicesStore';
 import { useServiceOrdersStore, type ServiceOrderInput } from '@/store/serviceOrdersStore';
@@ -28,7 +29,7 @@ import { SignaturePad } from '../components/SignaturePad';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { ServiceOrderPhoto } from '@/domain/types';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
-import { FileCode, Receipt } from 'lucide-react';
+import { Award, FileCode, FileText, Receipt } from 'lucide-react';
 
 const OS_STATUS_LABEL: Record<ServiceOrderStatus, string> = {
   rascunho: 'Rascunho', em_andamento: 'Em andamento', concluida: 'Concluída', cancelada: 'Cancelada',
@@ -93,7 +94,11 @@ export function OrdensPage() {
         title={`Ordem de Serviço #${selected?.number}`}
         subtitle={selected ? getCustomer(selected.customerId)?.name : ''}
         width="max-w-xl"
-        footer={<div className="flex justify-end gap-2"><Button variant="outline" leftIcon={<Download size={15} />} onClick={() => selected && printServiceOrder(selected)}>Gerar PDF</Button><Button>Editar</Button></div>}
+        footer={<div className="flex flex-wrap justify-end gap-2">
+          <Button variant="outline" size="sm" leftIcon={<Download size={14} />} onClick={() => selected && printServiceOrder(selected)}>OS (PDF)</Button>
+          <Button variant="outline" size="sm" leftIcon={<Award size={14} />} onClick={() => selected && printCertificate(selected)}>Certificado</Button>
+          <Button variant="outline" size="sm" leftIcon={<FileText size={14} />} onClick={() => selected && printLaudo(selected)}>Laudo</Button>
+        </div>}
       >
         {selected && (
           <div className="space-y-5">

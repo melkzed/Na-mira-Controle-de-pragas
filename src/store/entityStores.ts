@@ -1,6 +1,6 @@
 import { createEntityStore } from './createEntityStore';
 import * as seed from '@/infrastructure/seed/data';
-import type { Equipment, FinanceEntry, NonConformity, Pest, Product, ServiceType, TreatedArea, Vehicle } from '@/domain/types';
+import type { Equipment, FinanceEntry, License, NonConformity, Pest, Product, ServiceType, TreatedArea, Vehicle } from '@/domain/types';
 
 /** Stores reativas dos demais módulos (CRUD standalone, persistido). */
 export const useProductsStore = createEntityStore<Product>('namira-products', seed.products);
@@ -11,3 +11,4 @@ export const useServiceTypesStore = createEntityStore<ServiceType>('namira-servi
 export const useNonConformitiesStore = createEntityStore<NonConformity>('namira-nonconformities', seed.nonConformities);
 export const usePestsStore = createEntityStore<Pest>('namira-pests', seed.pests);
 export const useAreasStore = createEntityStore<TreatedArea>('namira-areas', seed.treatedAreas);
+export const useLicensesStore = createEntityStore<License>('namira-licenses', seed.licenses);

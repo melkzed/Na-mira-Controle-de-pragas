@@ -1,12 +1,18 @@
-import { FileText, Plus, ShieldCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Check, FileText, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
+import { Drawer } from '../components/ui/Drawer';
+import { Field, Input, Select } from '../components/ui/Field';
 import { Table, type Column } from '../components/ui/Table';
 import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getUser } from '@/application/repository';
 import { useInvoicesStore } from '@/store/invoicesStore';
+import { useLicensesStore } from '@/store/entityStores';
+import { uid } from '@/store/createEntityStore';
+import { toast } from '@/store/toastStore';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { Download, FileCode } from 'lucide-react';
 import type { Invoice, License } from '@/domain/types';
@@ -14,6 +20,9 @@ import { daysUntil, formatCurrency } from '@/lib/utils';
 import { fmtDate } from '@/lib/date';
 
 export function FiscalPage() {
+  const { items: licenses, add, remove } = useLicensesStore();
+  const [formOpen, setFormOpen] = useState(false);
+
   const columns: Column<License>[] = [
     { key: 'name', header: 'Documento', render: (l) => (
       <div><p className="font-medium">{l.name}</p><p className="text-xs text-muted-foreground">{l.issuer} · nº {l.number}</p></div>
@@ -21,12 +30,15 @@ export function FiscalPage() {
     { key: 'resp', header: 'Responsável', render: (l) => getUser(l.responsibleId)?.name ?? '—' },
     { key: 'issued', header: 'Emissão', render: (l) => l.issuedAt ? fmtDate(l.issuedAt) : '—' },
     { key: 'exp', header: 'Vencimento', render: (l) => l.expiresAt ? fmtDate(l.expiresAt) : '—' },
-    { key: 'status', header: 'Situação', align: 'right', render: (l) => {
+    { key: 'status', header: 'Situação', render: (l) => {
       const d = daysUntil(l.expiresAt) ?? 999;
       if (d < 0) return <Badge tone="danger" dot>Vencida</Badge>;
       if (d <= 30) return <Badge tone="warning" dot>Vence em {d}d</Badge>;
       return <Badge tone="success" dot>Ativa</Badge>;
     } },
+    { key: 'act', header: '', align: 'right', render: (l) => (
+      <button onClick={(ev) => { ev.stopPropagation(); remove(l.id); toast('Licença removida.', { tone: 'danger', action: { label: 'Desfazer', onClick: () => add(l) } }); }} aria-label={`Excluir ${l.name}`} className="text-muted-foreground hover:text-danger"><Trash2 size={15} /></button>
+    ) },
   ];
 
   return (
@@ -34,7 +46,7 @@ export function FiscalPage() {
       <PageHeader
         title="Fiscal & Conformidade"
         description="Licenças, alvarás, tributação e documentos regulatórios"
-        actions={<Button leftIcon={<Plus size={16} />}>Nova licença</Button>}
+        actions={<Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Nova licença</Button>}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -77,9 +89,51 @@ export function FiscalPage() {
 
       <div className="mt-6">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Licenças, alvarás e responsáveis técnicos</h2>
-        <Table columns={columns} rows={seed.licenses} keyField={(l) => l.id} />
+        <p className="mb-2 text-xs text-muted-foreground">As licenças ativas aparecem automaticamente na OS, no certificado e no laudo.</p>
+        <Table columns={columns} rows={licenses} keyField={(l) => l.id} />
       </div>
+
+      <LicenseForm open={formOpen} onClose={() => setFormOpen(false)} onSave={(l) => { add(l); setFormOpen(false); toast('Licença cadastrada.', { tone: 'success' }); }} />
     </div>
+  );
+}
+
+function LicenseForm({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (l: License) => void }) {
+  const [name, setName] = useState('');
+  const [issuer, setIssuer] = useState('');
+  const [number, setNumber] = useState('');
+  const [responsibleId, setResponsibleId] = useState('');
+  const [issuedAt, setIssuedAt] = useState('');
+  const [expiresAt, setExpiresAt] = useState('');
+  const [touched, setTouched] = useState(false);
+
+  useEffect(() => {
+    if (open) { setName(''); setIssuer(''); setNumber(''); setResponsibleId(''); setIssuedAt(''); setExpiresAt(''); setTouched(false); }
+  }, [open]);
+
+  const submit = () => {
+    setTouched(true);
+    if (!name.trim()) return;
+    const status = expiresAt && new Date(expiresAt).getTime() < Date.now() ? 'vencida' : 'ativa';
+    onSave({
+      id: uid('lic'), orgId: 'org-namira', name: name.trim(), issuer: issuer.trim() || undefined, number: number.trim() || undefined,
+      responsibleId: responsibleId || undefined, issuedAt: issuedAt ? new Date(issuedAt).toISOString() : undefined,
+      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined, status,
+    });
+  };
+
+  return (
+    <Drawer open={open} onClose={onClose} title="Nova licença" subtitle="Licença, alvará ou registro regulatório"
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!name.trim()}>Cadastrar</Button></div>}>
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Documento" required className="col-span-2"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Alvará Sanitário" />{touched && !name.trim() && <span className="mt-1 block text-xs text-danger">Informe o documento.</span>}</Field>
+        <Field label="Órgão emissor"><Input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="Vigilância Sanitária" /></Field>
+        <Field label="Número"><Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="VS-2025-0001" /></Field>
+        <Field label="Responsável técnico" className="col-span-2"><Select value={responsibleId} onChange={(e) => setResponsibleId(e.target.value)}><option value="">—</option>{seed.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></Field>
+        <Field label="Emissão"><Input type="date" value={issuedAt} onChange={(e) => setIssuedAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+        <Field label="Validade"><Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+      </div>
+    </Drawer>
   );
 }
 
