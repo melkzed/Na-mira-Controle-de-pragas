@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  CheckCircle2, ChevronRight, Clock, FileText, Info, MapPin, Navigation, Package,
+  CheckCircle2, ChevronRight, Clock, FileText, Info, MapPin, Navigation, Package, PackagePlus,
   PhoneCall, Play, TriangleAlert,
 } from 'lucide-react';
 import { Card, CardBody } from '../components/ui/Card';
@@ -19,6 +19,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { appointmentsForTechnician, getCustomer, getProduct, getServiceType, technicianBalances } from '@/application/repository';
 import { useProductsStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
+import { useStockRequestsStore } from '@/store/stockRequestsStore';
 import { toast } from '@/store/toastStore';
 import { X } from 'lucide-react';
 import type { Appointment, ServiceOrderPhoto } from '@/domain/types';
@@ -38,6 +39,7 @@ export function CampoPage() {
   const setStatus = useAppointmentsStore((s) => s.setStatus);
   const updateAppt = useAppointmentsStore((s) => s.update);
   const storeAppts = useAppointmentsStore((s) => s.appointments); // reatividade
+  const requestRestock = useStockRequestsStore((s) => s.add);
 
   const todayIso = new Date().toISOString();
   const appts = useMemo(() => appointmentsForTechnician(techId, todayIso), [techId, todayIso, storeAppts]);
@@ -121,18 +123,24 @@ export function CampoPage() {
         {active && <TechNote appt={active} onSave={(text) => { updateAppt(active.id, { technicianNotes: text }); toast('Observação salva no sistema.', { tone: 'success' }); }} />}
 
         {/* Estoque do técnico */}
-        <p className="mb-2 mt-6 px-1 text-sm font-semibold text-foreground">Meu estoque</p>
+        <p className="mb-2 mt-6 px-1 text-sm font-semibold text-foreground">Meu estoque <span className="font-normal text-muted-foreground">· solicite reposição ao estoque</span></p>
         <Card>
           <CardBody className="space-y-2.5">
             {stock.length === 0 && <p className="text-sm text-muted-foreground">Sem produtos alocados.</p>}
             {stock.map(({ product, quantity }) => (
-              <div key={product.id} className="flex items-center gap-3">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground"><Package size={15} /></span>
+              <div key={product.id} className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><Package size={15} /></span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground">{product.name}</p>
-                  <p className="text-xs text-muted-foreground">{product.activeIngredient ?? product.manufacturer}</p>
+                  <p className="truncate text-xs text-muted-foreground">{product.activeIngredient ?? product.manufacturer}</p>
                 </div>
                 <Badge tone={quantity <= 2 ? 'warning' : 'neutral'}>{quantity} {product.unit}</Badge>
+                <button
+                  onClick={() => { requestRestock({ productId: product.id, quantity: Math.max(product.minQuantity, 5), requestedBy: techId, appointmentId: active?.id }); toast(`Reposição de ${product.name} solicitada ao estoque.`, { tone: 'success' }); }}
+                  aria-label={`Solicitar reposição de ${product.name}`}
+                  className="shrink-0 rounded-lg border border-border p-1.5 text-brand transition hover:bg-brand-soft"
+                  title="Solicitar reposição"
+                ><PackagePlus size={15} /></button>
               </div>
             ))}
           </CardBody>
