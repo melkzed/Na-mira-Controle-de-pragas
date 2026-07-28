@@ -1,12 +1,19 @@
-import { FileText, Plus, ShieldCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Check, FileText, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
+import { Drawer } from '../components/ui/Drawer';
+import { Field, Input, Select } from '../components/ui/Field';
 import { Table, type Column } from '../components/ui/Table';
 import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getUser } from '@/application/repository';
 import { useInvoicesStore } from '@/store/invoicesStore';
+import { useLicensesStore } from '@/store/entityStores';
+import { useSettingsStore } from '@/store/settingsStore';
+import { uid } from '@/store/createEntityStore';
+import { toast } from '@/store/toastStore';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { Download, FileCode } from 'lucide-react';
 import type { Invoice, License } from '@/domain/types';
@@ -14,6 +21,9 @@ import { daysUntil, formatCurrency } from '@/lib/utils';
 import { fmtDate } from '@/lib/date';
 
 export function FiscalPage() {
+  const { items: licenses, add, remove } = useLicensesStore();
+  const [formOpen, setFormOpen] = useState(false);
+
   const columns: Column<License>[] = [
     { key: 'name', header: 'Documento', render: (l) => (
       <div><p className="font-medium">{l.name}</p><p className="text-xs text-muted-foreground">{l.issuer} · nº {l.number}</p></div>
@@ -21,12 +31,15 @@ export function FiscalPage() {
     { key: 'resp', header: 'Responsável', render: (l) => getUser(l.responsibleId)?.name ?? '—' },
     { key: 'issued', header: 'Emissão', render: (l) => l.issuedAt ? fmtDate(l.issuedAt) : '—' },
     { key: 'exp', header: 'Vencimento', render: (l) => l.expiresAt ? fmtDate(l.expiresAt) : '—' },
-    { key: 'status', header: 'Situação', align: 'right', render: (l) => {
+    { key: 'status', header: 'Situação', render: (l) => {
       const d = daysUntil(l.expiresAt) ?? 999;
       if (d < 0) return <Badge tone="danger" dot>Vencida</Badge>;
       if (d <= 30) return <Badge tone="warning" dot>Vence em {d}d</Badge>;
       return <Badge tone="success" dot>Ativa</Badge>;
     } },
+    { key: 'act', header: '', align: 'right', render: (l) => (
+      <button onClick={(ev) => { ev.stopPropagation(); remove(l.id); toast('Licença removida.', { tone: 'danger', action: { label: 'Desfazer', onClick: () => add(l) } }); }} aria-label={`Excluir ${l.name}`} className="text-muted-foreground hover:text-danger"><Trash2 size={15} /></button>
+    ) },
   ];
 
   return (
@@ -34,7 +47,7 @@ export function FiscalPage() {
       <PageHeader
         title="Fiscal & Conformidade"
         description="Licenças, alvarás, tributação e documentos regulatórios"
-        actions={<Button leftIcon={<Plus size={16} />}>Nova licença</Button>}
+        actions={<Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Nova licença</Button>}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -70,6 +83,8 @@ export function FiscalPage() {
         </Card>
       </div>
 
+      <FiscalConfigPanel />
+
       <div className="mt-6">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Notas Fiscais de Serviço (NFS-e)</h2>
         <NotasFiscais />
@@ -77,9 +92,89 @@ export function FiscalPage() {
 
       <div className="mt-6">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Licenças, alvarás e responsáveis técnicos</h2>
-        <Table columns={columns} rows={seed.licenses} keyField={(l) => l.id} />
+        <p className="mb-2 text-xs text-muted-foreground">As licenças ativas aparecem automaticamente na OS, no certificado e no laudo.</p>
+        <Table columns={columns} rows={licenses} keyField={(l) => l.id} />
       </div>
+
+      <LicenseForm open={formOpen} onClose={() => setFormOpen(false)} onSave={(l) => { add(l); setFormOpen(false); toast('Licença cadastrada.', { tone: 'success' }); }} />
     </div>
+  );
+}
+
+function LicenseForm({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (l: License) => void }) {
+  const [name, setName] = useState('');
+  const [issuer, setIssuer] = useState('');
+  const [number, setNumber] = useState('');
+  const [responsibleId, setResponsibleId] = useState('');
+  const [issuedAt, setIssuedAt] = useState('');
+  const [expiresAt, setExpiresAt] = useState('');
+  const [touched, setTouched] = useState(false);
+
+  useEffect(() => {
+    if (open) { setName(''); setIssuer(''); setNumber(''); setResponsibleId(''); setIssuedAt(''); setExpiresAt(''); setTouched(false); }
+  }, [open]);
+
+  const submit = () => {
+    setTouched(true);
+    if (!name.trim()) return;
+    const status = expiresAt && new Date(expiresAt).getTime() < Date.now() ? 'vencida' : 'ativa';
+    onSave({
+      id: uid('lic'), orgId: 'org-namira', name: name.trim(), issuer: issuer.trim() || undefined, number: number.trim() || undefined,
+      responsibleId: responsibleId || undefined, issuedAt: issuedAt ? new Date(issuedAt).toISOString() : undefined,
+      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined, status,
+    });
+  };
+
+  return (
+    <Drawer open={open} onClose={onClose} title="Nova licença" subtitle="Licença, alvará ou registro regulatório"
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!name.trim()}>Cadastrar</Button></div>}>
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Documento" required className="col-span-2"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Alvará Sanitário" />{touched && !name.trim() && <span className="mt-1 block text-xs text-danger">Informe o documento.</span>}</Field>
+        <Field label="Órgão emissor"><Input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="Vigilância Sanitária" /></Field>
+        <Field label="Número"><Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="VS-2025-0001" /></Field>
+        <Field label="Responsável técnico" className="col-span-2"><Select value={responsibleId} onChange={(e) => setResponsibleId(e.target.value)}><option value="">—</option>{seed.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></Field>
+        <Field label="Emissão"><Input type="date" value={issuedAt} onChange={(e) => setIssuedAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+        <Field label="Validade"><Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+      </div>
+    </Drawer>
+  );
+}
+
+/** Configuração da emissão de NFS-e (provedor governo + tributação). */
+function FiscalConfigPanel() {
+  const { fiscal, setFiscal } = useSettingsStore();
+  return (
+    <Card className="mt-6">
+      <CardHeader
+        title="Integração NFS-e (Governo · Nacional)"
+        subtitle="Emissão pela API oficial da Receita Federal via backend + certificado e-CNPJ"
+        action={<Badge tone={fiscal.provider === 'governo-nacional' && fiscal.backendUrl ? 'success' : 'warning'} dot>{fiscal.provider === 'governo-nacional' ? (fiscal.backendUrl ? 'Governo ativo' : 'Governo · simulação') : 'Simulação'}</Badge>}
+      />
+      <CardBody className="space-y-4">
+        <div className="rounded-lg border border-warning/30 bg-warning-soft/40 p-3 text-xs text-foreground">
+          A emissão oficial exige um <strong>certificado digital e-CNPJ (A1/A3)</strong> e um <strong>backend</strong> que assina e transmite ao governo — o navegador não pode fazer isso sozinho. Informe a URL da função de emissão (ex.: Supabase Edge Function <code>emitir-nfse</code>); sem ela, o sistema opera em <strong>simulação</strong> mostrando exatamente o que seria enviado.
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Provedor">
+            <Select value={fiscal.provider} onChange={(e) => setFiscal({ provider: e.target.value as 'governo-nacional' | 'simulado' })}>
+              <option value="governo-nacional">Governo · NFS-e Nacional</option>
+              <option value="simulado">Simulação (sem transmissão)</option>
+            </Select>
+          </Field>
+          <Field label="URL do backend de emissão (assina + transmite)"><Input value={fiscal.backendUrl} onChange={(e) => setFiscal({ backendUrl: e.target.value })} placeholder="https://…/functions/v1/emitir-nfse" /></Field>
+          <Field label="Município (código IBGE)"><Input value={fiscal.municipioIbge} onChange={(e) => setFiscal({ municipioIbge: e.target.value.replace(/\D/g, '') })} placeholder="3550308" /></Field>
+          <Field label="Item lista de serviços (LC 116)"><Input value={fiscal.itemListaServico} onChange={(e) => setFiscal({ itemListaServico: e.target.value })} placeholder="14.02" /></Field>
+          <Field label="Regime tributário"><Select value={fiscal.regime} onChange={(e) => setFiscal({ regime: e.target.value as any })}><option value="simples">Simples Nacional</option><option value="presumido">Lucro Presumido</option><option value="real">Lucro Real</option></Select></Field>
+          <Field label="Alíquota de ISS (%)"><Input type="number" step="0.1" value={(fiscal.issRate * 100).toString()} onChange={(e) => setFiscal({ issRate: (Number(e.target.value) || 0) / 100 })} /></Field>
+        </div>
+        <div className="flex flex-wrap gap-4">
+          <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={fiscal.issRetido} onChange={(e) => setFiscal({ issRetido: e.target.checked })} className="h-4 w-4 rounded border-border" /> ISS retido pelo tomador</label>
+          <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={fiscal.retencoes} onChange={(e) => setFiscal({ retencoes: e.target.checked })} className="h-4 w-4 rounded border-border" /> Reter tributos federais (tomador PJ)</label>
+          <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={fiscal.inssRetido} onChange={(e) => setFiscal({ inssRetido: e.target.checked })} className="h-4 w-4 rounded border-border" /> Reter INSS (11%)</label>
+        </div>
+        <p className="text-xs text-muted-foreground">Template do backend incluído no repositório em <code>supabase/functions/emitir-nfse/</code>. As alíquotas variam por município e CNAE — confirme com sua contabilidade.</p>
+      </CardBody>
+    </Card>
   );
 }
 

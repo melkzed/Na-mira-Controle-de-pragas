@@ -28,6 +28,9 @@ import { APPOINTMENT_STATUS_META } from '@/domain/enums';
 import { formatCompactCurrency, formatNumber } from '@/lib/utils';
 import { fmtTime } from '@/lib/date';
 import { useAppStore } from '@/store/appStore';
+import { useEquipmentStore } from '@/store/entityStores';
+import { isEquipmentOverdue } from './EquipamentosPage';
+import { Link } from 'react-router-dom';
 
 export function DashboardPage() {
   const m = useMemo(() => computeDashboard(), []);
@@ -71,6 +74,8 @@ export function DashboardPage() {
         <MiniStat label="Téc. disponíveis" value={m.techniciansAvailable} icon="UserCheck" tone="info" />
         <MiniStat label="Veíc. em operação" value={m.vehiclesInOperation} icon="Truck" tone="neutral" />
       </Stagger>
+
+      <EquipmentStatusStrip />
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Gráfico de faturamento */}
@@ -263,6 +268,39 @@ function ChartTooltip({ active, payload, label, currency }: any) {
           {p.name}: <span className="font-semibold text-foreground">{currency ? formatCompactCurrency(p.value) : p.value}</span>
         </p>
       ))}
+    </div>
+  );
+}
+
+/** Indicadores de equipamentos (em uso / atrasados / disponíveis). */
+function EquipmentStatusStrip() {
+  const items = useEquipmentStore((s) => s.items);
+  const emUso = items.filter((e) => e.status === 'em_uso').length;
+  const atrasados = items.filter(isEquipmentOverdue).length;
+  const disponiveis = items.filter((e) => e.status === 'disponivel').length;
+  const manutencao = items.filter((e) => e.status === 'manutencao').length;
+
+  return (
+    <Card className="mt-4">
+      <CardHeader
+        title="Equipamentos"
+        subtitle="Situação da frota de equipamentos"
+        action={<Link to="/equipamentos" className="text-xs font-medium text-brand hover:underline">Ver todos →</Link>}
+      />
+      <CardBody className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <EqStat label="Em uso" value={emUso} cls="text-brand" />
+        <EqStat label="Atrasados" value={atrasados} cls={atrasados ? 'text-danger' : 'text-muted-foreground'} />
+        <EqStat label="Disponíveis" value={disponiveis} cls="text-success" />
+        <EqStat label="Manutenção" value={manutencao} cls="text-warning" />
+      </CardBody>
+    </Card>
+  );
+}
+function EqStat({ label, value, cls }: { label: string; value: number; cls: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-muted/30 p-3 text-center">
+      <p className={`text-2xl font-bold ${cls}`}>{value}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
 }

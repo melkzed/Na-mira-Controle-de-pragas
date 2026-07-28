@@ -11,13 +11,15 @@ import { Avatar } from '../components/ui/Avatar';
 import { Drawer } from '../components/ui/Drawer';
 import { Field, Input, Select } from '../components/ui/Field';
 import * as seed from '@/infrastructure/seed/data';
-import { centralBalance, getUser, technicianBalances } from '@/application/repository';
+import { centralBalance, getProduct, getUser, technicianBalances } from '@/application/repository';
 import { useProductsStore } from '@/store/entityStores';
 import { useStockStore } from '@/store/stockStore';
+import { useStockRequestsStore } from '@/store/stockRequestsStore';
 import { toast } from '@/store/toastStore';
 import type { Product } from '@/domain/types';
 import { formatNumber, daysUntil } from '@/lib/utils';
 import { fmtDate } from '@/lib/date';
+import { PackageCheck } from 'lucide-react';
 
 export function EstoquePage() {
   const [tab, setTab] = useState<'central' | 'tecnicos' | 'validade'>('central');
@@ -36,6 +38,8 @@ export function EstoquePage() {
           </>
         }
       />
+
+      <RestockRequestsPanel />
 
       <div className="mb-4">
         <Segmented
@@ -56,6 +60,48 @@ export function EstoquePage() {
       <EntryForm open={entryOpen} onClose={() => setEntryOpen(false)} />
       <TransferForm open={transferOpen} onClose={() => setTransferOpen(false)} />
     </div>
+  );
+}
+
+/** Pendências de reposição solicitadas pelos técnicos / pela OS. */
+function RestockRequestsPanel() {
+  const { requests, resolve } = useStockRequestsStore();
+  const entry = useStockStore((s) => s.entry);
+  const pending = requests.filter((r) => r.status === 'pendente');
+
+  const atender = (id: string, productId: string, quantity: number) => {
+    entry('loc-central', productId, quantity); // repõe no estoque central
+    resolve(id, 'atendida');
+    toast('Reposição atendida e lançada no estoque central.', { tone: 'success' });
+  };
+
+  if (pending.length === 0) return null;
+
+  return (
+    <Card className="mb-4 border-warning/40">
+      <CardHeader
+        title={<span className="flex items-center gap-2"><PackageCheck size={16} className="text-warning" /> Solicitações de reposição</span>}
+        subtitle={`${pending.length} pendência(s) — enviadas pelos técnicos / OS`}
+      />
+      <CardBody className="space-y-2">
+        {pending.map((r) => {
+          const prod = getProduct(r.productId);
+          return (
+            <div key={r.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 p-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-foreground">{prod?.name ?? r.productId} <span className="font-normal text-muted-foreground">· {r.quantity} {prod?.unit}</span></p>
+                <p className="text-xs text-muted-foreground">
+                  {getUser(r.requestedBy)?.name ?? 'Solicitante'} · {fmtDate(r.createdAt)}{r.note ? ` · ${r.note}` : ''}
+                </p>
+              </div>
+              <Badge tone="warning" dot>Pendente</Badge>
+              <Button size="sm" variant="outline" onClick={() => resolve(r.id, 'cancelada')}>Recusar</Button>
+              <Button size="sm" onClick={() => atender(r.id, r.productId, r.quantity)}>Atender</Button>
+            </div>
+          );
+        })}
+      </CardBody>
+    </Card>
   );
 }
 

@@ -27,6 +27,10 @@ import { cn } from '@/lib/utils';
 
 type View = 'dia' | 'semana' | 'mes' | 'agenda' | 'mapa';
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 7); // 07h–18h
+/** Altura de cada faixa de 1 hora (px). A grade da célula e a posição dos cards
+ *  usam o mesmo valor — assim o card nunca vaza para outro dia/horário. */
+const ROW_H = 76;
+const GRID_H = HOURS.length * ROW_H;
 
 export function AgendaPage() {
   const [view, setView] = useState<View>('semana');
@@ -195,7 +199,7 @@ function WeekView({ refDate, appts, onSelect }: { refDate: Date; appts: Appointm
           <div className="relative grid grid-cols-[56px_repeat(7,1fr)]">
             <div>
               {HOURS.map((h) => (
-                <div key={h} className="h-16 border-b border-border/60 pr-2 pt-1 text-right text-[10px] text-muted-foreground">
+                <div key={h} style={{ height: ROW_H }} className="border-b border-border/60 pr-2 pt-1 text-right text-[10px] text-muted-foreground">
                   {String(h).padStart(2, '0')}:00
                 </div>
               ))}
@@ -203,12 +207,15 @@ function WeekView({ refDate, appts, onSelect }: { refDate: Date; appts: Appointm
             {days.map((d) => {
               const laid = packDay(appts.filter((a) => isSameDay(parseISO(a.scheduledStart), d)));
               return (
-                <div key={d.toISOString()} className="relative border-l border-border">
-                  {HOURS.map((h) => <div key={h} className="h-16 border-b border-border/60" />)}
+                <div key={d.toISOString()} className="relative overflow-hidden border-l border-border" style={{ height: GRID_H }}>
+                  {HOURS.map((h) => <div key={h} style={{ height: ROW_H }} className="border-b border-border/60" />)}
                   {laid.map(({ a, col, cols }) => {
                     const start = parseISO(a.scheduledStart);
-                    const top = (start.getHours() - 7 + start.getMinutes() / 60) * 64;
-                    const height = ((a.estimatedMinutes ?? 60) / 60) * 64;
+                    const rawTop = (start.getHours() - 7 + start.getMinutes() / 60) * ROW_H;
+                    const top = Math.max(0, rawTop);
+                    const rawHeight = ((a.estimatedMinutes ?? 60) / 60) * ROW_H;
+                    // Nunca ultrapassa o fim da grade (fica contido na célula cinza).
+                    const height = Math.max(24, Math.min(rawHeight, GRID_H - top) - 3);
                     const st = getServiceType(a.serviceTypeId);
                     const widthPct = 100 / cols;
                     return (
@@ -216,20 +223,19 @@ function WeekView({ refDate, appts, onSelect }: { refDate: Date; appts: Appointm
                         key={a.id}
                         initial={{ opacity: 0, scale: 0.96 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        whileHover={{ scale: 1.02, zIndex: 20 }}
                         onClick={() => onSelect(a)}
-                        className="absolute overflow-hidden rounded-lg border-l-[3px] px-1.5 py-1 text-left shadow-soft"
+                        className="absolute overflow-hidden rounded-lg border-l-[3px] px-1.5 py-1 text-left shadow-soft transition hover:z-10 hover:shadow-card hover:brightness-[1.03]"
                         style={{
                           top,
-                          height: Math.max(height - 4, 26),
+                          height,
                           left: `calc(${col * widthPct}% + 2px)`,
                           width: `calc(${widthPct}% - 4px)`,
                           background: `${st?.color}1a`,
                           borderColor: st?.color,
                         }}
                       >
-                        <p className="truncate text-[11px] font-semibold text-foreground">{fmtTime(a.scheduledStart)} {getCustomer(a.customerId)?.name}</p>
-                        <p className="truncate text-[10px] text-muted-foreground">{st?.name}</p>
+                        <p className="truncate text-[11px] font-semibold leading-tight text-foreground">{fmtTime(a.scheduledStart)} {getCustomer(a.customerId)?.name}</p>
+                        <p className="truncate text-[10px] leading-tight text-muted-foreground">{st?.name}</p>
                       </motion.button>
                     );
                   })}
@@ -444,6 +450,30 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
             <p className="text-[11px] font-semibold uppercase tracking-wide text-brand">Observação do técnico (campo)</p>
             <p className="mt-0.5 text-sm text-foreground">{appt.technicianNotes}</p>
           </div>
+        )}
+        {appt.technicianSignature && (
+          <Section title="Assinatura do técnico">
+            <img src={appt.technicianSignature} alt="Assinatura do técnico" className="h-16 rounded-lg border border-border bg-surface object-contain px-2" />
+          </Section>
+        )}
+        {appt.photos && appt.photos.length > 0 && (
+          <Section title={`Fotos do atendimento (${appt.photos.length})`}>
+            <div className="space-y-2">
+              {(['antes', 'durante', 'apos'] as const).map((ph) => {
+                const list = appt.photos!.filter((p) => p.phase === ph);
+                if (!list.length) return null;
+                const label = ph === 'antes' ? 'Antes' : ph === 'durante' ? 'Durante' : 'Após';
+                return (
+                  <div key={ph}>
+                    <p className="mb-1 text-[11px] font-medium text-muted-foreground">{label}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {list.map((p, i) => <img key={i} src={p.dataUrl} alt={p.name ?? label} className="h-16 w-20 rounded-lg border border-border object-cover" />)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
         )}
         {cust?.permanentNotes && (
           <div className="rounded-lg border border-warning/30 bg-warning-soft/60 p-3">

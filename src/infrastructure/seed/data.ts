@@ -14,6 +14,9 @@ import type {
   Invoice,
   License,
   Pest,
+  RecurringPayable,
+  StockRequest,
+  TreatedArea,
   Product,
   ProductCategory,
   ServiceOrder,
@@ -51,6 +54,7 @@ function daysFromNow(n: number): string {
 
 // ── Usuários / equipe ──────────────────────────────────────────────────────
 export const users: User[] = [
+  { id: 'u-owner', orgId: ORG, name: 'Vanessa · Na Mira', email: 'namiracomercial@gmail.com', role: 'admin', isActive: true, phone: '(11) 99999-0000' },
   { id: 'u-admin', orgId: ORG, name: 'Marina Duarte', email: 'marina@namira.com', role: 'admin', isActive: true, phone: '(11) 99999-0001' },
   { id: 'u-sup', orgId: ORG, name: 'Rafael Nunes', email: 'rafael@namira.com', role: 'supervisor', isActive: true, phone: '(11) 99999-0002' },
   { id: 'u-fin', orgId: ORG, name: 'Camila Reis', email: 'camila@namira.com', role: 'financeiro', isActive: true, phone: '(11) 99999-0003' },
@@ -77,14 +81,38 @@ export const serviceTypes: ServiceType[] = [
 ];
 
 export const pests: Pest[] = [
-  { id: 'p-bar', orgId: ORG, name: 'Baratas' },
-  { id: 'p-rat', orgId: ORG, name: 'Ratos' },
-  { id: 'p-cup', orgId: ORG, name: 'Cupins' },
-  { id: 'p-for', orgId: ORG, name: 'Formigas' },
-  { id: 'p-mos', orgId: ORG, name: 'Mosquitos' },
-  { id: 'p-esc', orgId: ORG, name: 'Escorpiões' },
-  { id: 'p-ara', orgId: ORG, name: 'Aranhas' },
-  { id: 'p-pul', orgId: ORG, name: 'Pulgas' },
+  { id: 'p-bar', orgId: ORG, name: 'Baratas', category: 'Rasteira', defaultWarrantyDays: 90, description: 'Baratas de esgoto e germânica.' },
+  { id: 'p-rat', orgId: ORG, name: 'Ratos', category: 'Roedor', defaultWarrantyDays: 60, description: 'Ratazana, rato de telhado e camundongo.' },
+  { id: 'p-cup', orgId: ORG, name: 'Cupins', category: 'Xilófago', defaultWarrantyDays: 365, description: 'Cupim de solo e de madeira seca.' },
+  { id: 'p-for', orgId: ORG, name: 'Formigas', category: 'Rasteira', defaultWarrantyDays: 90 },
+  { id: 'p-mos', orgId: ORG, name: 'Mosquitos', category: 'Voadora', defaultWarrantyDays: 30 },
+  { id: 'p-esc', orgId: ORG, name: 'Escorpiões', category: 'Peçonhento', defaultWarrantyDays: 90 },
+  { id: 'p-ara', orgId: ORG, name: 'Aranhas', category: 'Peçonhento', defaultWarrantyDays: 90 },
+  { id: 'p-pul', orgId: ORG, name: 'Pulgas', category: 'Ectoparasita', defaultWarrantyDays: 30 },
+];
+
+export const recurringPayables: RecurringPayable[] = [
+  { id: 'rp-1', orgId: ORG, description: 'Aluguel da sede', category: 'Aluguel', amount: 3800, frequency: 'mensal', dueDay: 5, active: true, createdAt: daysFromNow(-120) },
+  { id: 'rp-2', orgId: ORG, description: 'Folha de salários', category: 'Salários', amount: 18500, frequency: 'mensal', dueDay: 5, active: true, createdAt: daysFromNow(-120) },
+  { id: 'rp-3', orgId: ORG, description: 'Energia elétrica', category: 'Energia', amount: 640, frequency: 'mensal', dueDay: 12, active: true, createdAt: daysFromNow(-120) },
+  { id: 'rp-4', orgId: ORG, description: 'Internet e telefonia', category: 'Internet', amount: 320, frequency: 'mensal', dueDay: 15, active: true, createdAt: daysFromNow(-120) },
+];
+
+export const stockRequests: StockRequest[] = [
+  { id: 'sr-1', orgId: ORG, productId: 'prod-2', quantity: 4, requestedBy: 'u-t1', note: 'Acabou durante o atendimento', status: 'pendente', createdAt: daysFromNow(0) },
+];
+
+export const treatedAreas: TreatedArea[] = [
+  { id: 'ar-coz', orgId: ORG, name: 'Cozinha' },
+  { id: 'ar-ban', orgId: ORG, name: 'Banheiro' },
+  { id: 'ar-for', orgId: ORG, name: 'Forro' },
+  { id: 'ar-cxa', orgId: ORG, name: "Caixa d'água" },
+  { id: 'ar-jar', orgId: ORG, name: 'Jardim' },
+  { id: 'ar-est', orgId: ORG, name: 'Estoque' },
+  { id: 'ar-esc', orgId: ORG, name: 'Escritório' },
+  { id: 'ar-dep', orgId: ORG, name: 'Depósito' },
+  { id: 'ar-ext', orgId: ORG, name: 'Área externa' },
+  { id: 'ar-gar', orgId: ORG, name: 'Garagem' },
 ];
 
 export const suppliers: Supplier[] = [
@@ -149,10 +177,10 @@ export const batchExpiry: { productId: string; batchCode: string; expiresAt: str
 
 // ── Equipamentos e veículos ──────────────────────────────────────────────────
 export const equipment: Equipment[] = [
-  { id: 'eq-1', orgId: ORG, name: 'Pulverizador Costal 20L', code: 'PC-01', assetNumber: 'PAT-1001', kind: 'Pulverizador', status: 'em_uso', assignedTo: 'u-t1' },
+  { id: 'eq-1', orgId: ORG, name: 'Pulverizador Costal 20L', code: 'PC-01', assetNumber: 'PAT-1001', kind: 'Pulverizador', status: 'em_uso', assignedTo: 'u-t1', checkedOutTo: 'u-t1', checkedOutAt: at(0, 8), expectedReturnAt: at(0, 18) },
   { id: 'eq-2', orgId: ORG, name: 'Pulverizador Costal 20L', code: 'PC-02', assetNumber: 'PAT-1002', kind: 'Pulverizador', status: 'disponivel' },
   { id: 'eq-3', orgId: ORG, name: 'Termonebulizador', code: 'TN-01', assetNumber: 'PAT-1010', kind: 'Nebulizador', status: 'manutencao', nextMaintenanceAt: daysFromNow(6) },
-  { id: 'eq-4', orgId: ORG, name: 'Bomba de Injeção Cupim', code: 'BI-01', assetNumber: 'PAT-1020', kind: 'Bomba', status: 'em_uso', assignedTo: 'u-t3' },
+  { id: 'eq-4', orgId: ORG, name: 'Bomba de Injeção Cupim', code: 'BI-01', assetNumber: 'PAT-1020', kind: 'Bomba', status: 'em_uso', assignedTo: 'u-t3', checkedOutTo: 'u-t3', checkedOutAt: daysFromNow(-1), expectedReturnAt: daysFromNow(-1) },
   { id: 'eq-5', orgId: ORG, name: 'Kit EPI Completo', code: 'EPI-05', assetNumber: 'PAT-1030', kind: 'EPI', status: 'disponivel' },
 ];
 
@@ -334,4 +362,7 @@ export const orgProfile = {
   taxRegime: 'Simples Nacional',
   city: 'São Paulo',
   state: 'SP',
+  /** Emergência toxicológica — exibida automaticamente nos documentos (CIT). */
+  emergencyPhone: '0800 722 6001',
+  emergencyInfo: 'CIT/SP — atendimento 24h em caso de intoxicação',
 };

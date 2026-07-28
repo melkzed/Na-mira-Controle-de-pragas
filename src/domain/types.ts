@@ -10,10 +10,13 @@ import type {
   EquipmentStatus,
   FinanceEntryStatus,
   FinanceEntryType,
+  RecurrenceFreq,
   ServiceOrderStatus,
   StockLocationKind,
   StockMovementType,
   UserRole,
+  WarrantyType,
+  WarrantyUnit,
 } from './enums';
 
 export interface Organization {
@@ -195,6 +198,21 @@ export interface StockBalance {
   quantity: number;
 }
 
+/** Solicitação de reposição de estoque (gerada pela OS / pelo técnico). */
+export interface StockRequest {
+  id: string;
+  orgId: string;
+  productId: string;
+  quantity: number;
+  requestedBy?: string;
+  serviceOrderId?: string;
+  appointmentId?: string;
+  note?: string;
+  status: 'pendente' | 'atendida' | 'cancelada';
+  createdAt: string;
+  resolvedAt?: string;
+}
+
 export interface StockMovement {
   id: string;
   orgId: string;
@@ -219,6 +237,12 @@ export interface Equipment {
   status: EquipmentStatus;
   assignedTo?: string;
   nextMaintenanceAt?: string;
+  /** Retirada em uso: quando, para quem, OS e previsão de devolução. */
+  checkedOutAt?: string;
+  checkedOutTo?: string;
+  checkedOutOsId?: string;
+  expectedReturnAt?: string;
+  notes?: string;
 }
 
 export interface Vehicle {
@@ -269,6 +293,10 @@ export interface Appointment {
   notes?: string;
   /** Observação do técnico registrada em campo (aparece no sistema da empresa). */
   technicianNotes?: string;
+  /** Fotos do atendimento (antes/durante/após), registradas pelo técnico. */
+  photos?: ServiceOrderPhoto[];
+  /** Assinatura eletrônica do técnico, capturada ao finalizar a visita. */
+  technicianSignature?: string;
   routeOrder?: number;
   products: AppointmentProduct[];
   /** Agrupa as ocorrências de uma mesma recorrência (cada uma é independente). */
@@ -304,12 +332,73 @@ export interface ServiceOrder {
   products: ServiceOrderProduct[];
   hasCustomerSignature: boolean;
   createdAt: string;
+
+  // ── Ordem de Serviço avançada ──────────────────────────────────────────
+  /** Múltiplos serviços na mesma OS (além do serviceTypeId principal). */
+  serviceTypeIds?: string[];
+  /** Áreas tratadas (cadastro). Complementa o texto livre areaTreated. */
+  areaIds?: string[];
+  /** Equipe: múltiplos técnicos e o vendedor responsável. */
+  technicianIds?: string[];
+  sellerId?: string;
+  /** Equipamentos utilizados no atendimento. */
+  equipmentIds?: string[];
+  /** Forma de pagamento acordada. */
+  paymentMethod?: string;
+  /** Garantia do serviço (com/sem, prazo e tipo). */
+  warranty?: WarrantyInfo;
+  /** Recorrência do serviço. */
+  recurrence?: OsRecurrence;
+  /** Datas do serviço. */
+  executionDate?: string;
+  dueDate?: string;
+  validityDate?: string;
+  /** Fotos antes/durante/após. */
+  photos?: ServiceOrderPhoto[];
+  /** Localização registrada durante o atendimento (app do técnico). */
+  location?: { lat: number; lng: number };
+  /** Assinaturas eletrônicas (dataURL) incorporadas ao PDF. */
+  technicianSignature?: string;
+  customerSignature?: string;
 }
 
 export interface Pest {
   id: string;
   orgId: string;
   name: string;
+  /** Categoria (ex.: rasteira, voadora, roedor, cupim…). */
+  category?: string;
+  description?: string;
+  /** Tempo de garantia padrão (dias) — alimenta a OS ao selecionar a praga. */
+  defaultWarrantyDays?: number;
+  notes?: string;
+}
+
+/** Área/ambiente tratado (cadastro reutilizável na OS). */
+export interface TreatedArea {
+  id: string;
+  orgId: string;
+  name: string;
+  notes?: string;
+}
+
+/** Foto vinculada à OS, por fase do serviço. */
+export interface ServiceOrderPhoto {
+  dataUrl: string;
+  phase: 'antes' | 'durante' | 'apos';
+  name?: string;
+}
+
+export interface WarrantyInfo {
+  has: boolean;
+  value?: number;
+  unit?: WarrantyUnit;
+  type?: WarrantyType;
+}
+
+export interface OsRecurrence {
+  enabled: boolean;
+  frequency?: RecurrenceFreq;
 }
 
 export interface FinanceEntry {
@@ -320,11 +409,42 @@ export interface FinanceEntry {
   categoryId?: string;
   customerId?: string;
   serviceOrderId?: string;
+  /** Vínculo com a conta recorrente que gerou este lançamento. */
+  recurringId?: string;
   description: string;
   amount: number;
   dueDate?: string;
   paidAt?: string;
   createdAt: string;
+}
+
+/** Conta a pagar recorrente (aluguel, salários, água, energia, contratos…). */
+export interface RecurringPayable {
+  id: string;
+  orgId: string;
+  description: string;
+  category?: string;
+  amount: number;
+  /** Frequência (mensal, bimestral, trimestral, semestral, anual). */
+  frequency: RecurrenceFreq;
+  /** Dia de vencimento (1–28). */
+  dueDay: number;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface InvoiceTaxes {
+  issRate: number;
+  iss: number;
+  issRetido: boolean;
+  irrf: number;
+  inss: number;
+  pis: number;
+  cofins: number;
+  csll: number;
+  totalRetencoes: number;
+  /** Valor líquido a receber (bruto − retenções). */
+  net: number;
 }
 
 export interface Invoice {
@@ -337,8 +457,18 @@ export interface Invoice {
   description: string;
   amount: number;
   taxAmount: number;
-  status: 'emitida' | 'cancelada';
+  status: 'emitida' | 'cancelada' | 'processando' | 'rejeitada';
   issuedAt: string;
+  /** Provedor de emissão (ex.: 'governo-nacional', 'simulado'). */
+  provider?: string;
+  /** Ambiente NFS-e Nacional retornado pelo governo. */
+  accessKey?: string;
+  protocol?: string;
+  verificationCode?: string;
+  /** Mensagem de rejeição/erro do provedor, se houver. */
+  message?: string;
+  /** Detalhamento tributário (ISS + retenções + líquido). */
+  taxes?: InvoiceTaxes;
 }
 
 export interface License {
