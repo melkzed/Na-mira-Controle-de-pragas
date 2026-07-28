@@ -1,13 +1,16 @@
-import { X } from 'lucide-react';
+import { useState } from 'react';
+import { Bug, MapPin, Plus, X } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
-import { Select } from '../components/ui/Field';
+import { Field, Input, Select } from '../components/ui/Field';
 import { Table, type Column } from '../components/ui/Table';
 import * as seed from '@/infrastructure/seed/data';
-import { useProductsStore, useServiceTypesStore } from '@/store/entityStores';
+import { useAreasStore, usePestsStore, useProductsStore, useServiceTypesStore } from '@/store/entityStores';
+import { uid } from '@/store/createEntityStore';
+import { toast } from '@/store/toastStore';
 import { ROLE_META, type UserRole } from '@/domain/enums';
 import type { User } from '@/domain/types';
 
@@ -83,8 +86,85 @@ export function ConfigPage() {
         </CardBody>
       </Card>
 
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <PestsPanel />
+        <AreasPanel />
+      </div>
+
       <ServiceDefaultsPanel />
     </div>
+  );
+}
+
+/** Cadastro de pragas — alimenta a Ordem de Serviço (nome, categoria, garantia). */
+function PestsPanel() {
+  const { items, add, remove } = usePestsStore();
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState('');
+  const [warranty, setWarranty] = useState('');
+
+  const create = () => {
+    if (!name.trim()) return;
+    add({ id: uid('p'), orgId: 'org-namira', name: name.trim(), category: category.trim() || undefined, defaultWarrantyDays: warranty ? Number(warranty) : undefined });
+    toast('Praga cadastrada.', { tone: 'success' });
+    setName(''); setCategory(''); setWarranty('');
+  };
+
+  return (
+    <Card>
+      <CardHeader title={<span className="flex items-center gap-2"><Bug size={16} className="text-brand" /> Pragas</span>} subtitle={`${items.length} cadastradas · alimentam a OS`} />
+      <CardBody className="space-y-3">
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Nome"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Percevejos" onKeyDown={(e) => e.key === 'Enter' && create()} /></Field>
+          <Field label="Categoria"><Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Rasteira / Voadora…" /></Field>
+          <Field label="Garantia padrão (dias)"><Input type="number" min={0} value={warranty} onChange={(e) => setWarranty(e.target.value)} placeholder="90" /></Field>
+          <div className="flex items-end"><Button className="w-full" leftIcon={<Plus size={15} />} onClick={create} disabled={!name.trim()}>Adicionar</Button></div>
+        </div>
+        <div className="max-h-64 space-y-1.5 overflow-y-auto">
+          {items.map((p) => (
+            <div key={p.id} className="flex items-center gap-2 rounded-lg border border-border/60 px-3 py-2">
+              <span className="flex-1 text-sm font-medium text-foreground">{p.name}</span>
+              {p.category && <Badge tone="neutral">{p.category}</Badge>}
+              {p.defaultWarrantyDays != null && <Badge tone="brand">{p.defaultWarrantyDays}d</Badge>}
+              <button onClick={() => remove(p.id)} aria-label={`Excluir ${p.name}`} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-danger"><X size={14} /></button>
+            </div>
+          ))}
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+/** Cadastro de áreas tratadas — selecionáveis na OS e exibidas no PDF. */
+function AreasPanel() {
+  const { items, add, remove } = useAreasStore();
+  const [name, setName] = useState('');
+
+  const create = () => {
+    if (!name.trim()) return;
+    add({ id: uid('ar'), orgId: 'org-namira', name: name.trim() });
+    setName('');
+  };
+
+  return (
+    <Card>
+      <CardHeader title={<span className="flex items-center gap-2"><MapPin size={16} className="text-brand" /> Áreas tratadas</span>} subtitle={`${items.length} cadastradas · selecionáveis na OS`} />
+      <CardBody className="space-y-3">
+        <div className="flex gap-2">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Refeitório" onKeyDown={(e) => e.key === 'Enter' && create()} />
+          <Button leftIcon={<Plus size={15} />} onClick={create} disabled={!name.trim()}>Adicionar</Button>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {items.map((a) => (
+            <span key={a.id} className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs text-foreground">
+              {a.name}
+              <button onClick={() => remove(a.id)} aria-label={`Excluir ${a.name}`} className="text-muted-foreground hover:text-danger"><X size={12} /></button>
+            </span>
+          ))}
+          {items.length === 0 && <span className="text-xs text-muted-foreground">Nenhuma área cadastrada.</span>}
+        </div>
+      </CardBody>
+    </Card>
   );
 }
 

@@ -6,6 +6,7 @@
 import type { ServiceOrder } from '@/domain/types';
 import { getCustomer, getProduct, getServiceType, getUser } from '@/application/repository';
 import * as seed from '@/infrastructure/seed/data';
+import { WARRANTY_TYPE_LABEL, RECURRENCE_FREQ_LABEL } from '@/domain/enums';
 import { formatDocument } from './utils';
 import { currentBatch } from './batches';
 import { toast } from '@/store/toastStore';
@@ -20,12 +21,46 @@ function esc(s: unknown): string {
 function fmtDateTime(iso?: string): string {
   return iso ? new Date(iso).toLocaleString('pt-BR') : '—';
 }
+function fmtDateOnly(iso?: string): string {
+  return iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
+}
 
-export function printServiceOrder(so: ServiceOrder): void {
+/** Texto legível da garantia do serviço. */
+function warrantyText(so: ServiceOrder): string {
+  const w = so.warranty;
+  if (!w || !w.has) return 'Sem garantia';
+  const prazo = w.value ? `${w.value} ${w.unit ?? 'dias'}` : '';
+  const tipo = w.type ? ` · ${WARRANTY_TYPE_LABEL[w.type]}` : '';
+  return `${prazo}${tipo}`.trim() || 'Com garantia';
+}
+
+const PHASE_LABEL: Record<string, string> = { antes: 'Antes', durante: 'Durante', apos: 'Após' };
+/** Blocos de fotos agrupados por fase (antes/durante/após). */
+function photosHtml(so: ServiceOrder): string {
+  const phases: ('antes' | 'durante' | 'apos')[] = ['antes', 'durante', 'apos'];
+  return phases.map((ph) => {
+    const list = (so.photos ?? []).filter((p) => p.phase === ph);
+    if (!list.length) return '';
+    const imgs = list.map((p) => `<img src="${p.dataUrl}" alt="${esc(p.name ?? ph)}" style="width:150px;height:112px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0" />`).join('');
+    return `<p style="margin:8px 0 4px;font-size:12px;color:#64748b"><strong>${PHASE_LABEL[ph]}</strong></p><div style="display:flex;gap:8px;flex-wrap:wrap">${imgs}</div>`;
+  }).join('');
+}
+
+export function printServiceOrder(so: ServiceOrder, options?: { includePhotos?: boolean }): void {
+  const includePhotos = options?.includePhotos ?? true;
   const customer = getCustomer(so.customerId);
   const service = getServiceType(so.serviceTypeId);
-  const tech = getUser(so.technicianId);
   const org = seed.orgProfile;
+
+  // Múltiplos serviços / técnicos.
+  const serviceNames = (so.serviceTypeIds?.length ? so.serviceTypeIds : [so.serviceTypeId])
+    .map((id) => getServiceType(id)?.name).filter(Boolean).join(', ') || service?.name || '—';
+  const techNames = (so.technicianIds?.length ? so.technicianIds : [so.technicianId])
+    .map((id) => getUser(id)?.name).filter(Boolean).join(', ') || '—';
+  const sellerName = so.sellerId ? getUser(so.sellerId)?.name : undefined;
+  const clientType = customer ? (customer.type === 'pj' ? 'Pessoa Jurídica' : 'Pessoa Física') : '—';
+  const recurrenceText = so.recurrence?.enabled ? (so.recurrence.frequency ? RECURRENCE_FREQ_LABEL[so.recurrence.frequency] : 'Sim') : 'Não';
+  const equipNames = (so.equipmentIds ?? []).map((id) => seed.equipment.find((e) => e.id === id)?.name).filter(Boolean).join(', ');
 
   const address = customer
     ? [customer.street && `${customer.street}, ${customer.number ?? 's/n'}`, customer.district, customer.city && `${customer.city}/${customer.state ?? ''}`, customer.cep && `CEP ${customer.cep}`]
@@ -79,6 +114,7 @@ export function printServiceOrder(so: ServiceOrder): void {
   .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 48px; }
   .sign .line { border-top: 1px solid #94a3b8; padding-top: 6px; text-align: center; font-size: 12px; color: #64748b; }
   .foot { margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 11px; color: #94a3b8; text-align: center; }
+  .emg { margin-top: 24px; border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; border-radius: 8px; padding: 10px 14px; font-size: 12px; }
   @media print { body { padding: 0; } @page { margin: 16mm; } }
 </style></head>
 <body>
@@ -95,7 +131,7 @@ export function printServiceOrder(so: ServiceOrder): void {
       <div class="osno">
         <div class="l">Ordem de Serviço</div>
         <div class="n">#${esc(so.number)}</div>
-        <div class="l">${esc(service?.name ?? '')}</div>
+        <div class="l">${esc(serviceNames)}</div>
       </div>
     </div>
 
@@ -103,21 +139,35 @@ export function printServiceOrder(so: ServiceOrder): void {
     <div class="grid">
       <div><span>Nome:</span> ${esc(customer?.name)}</div>
       <div><span>Documento:</span> ${esc(formatDocument(customer?.document))}</div>
-      <div><span>Telefone:</span> ${esc(customer?.phone ?? '—')}</div>
+      <div><span>Tipo de cliente:</span> ${esc(clientType)}</div>
       <div><span>Tipo de imóvel:</span> ${esc(customer?.propertyType ?? '—')}</div>
+      <div><span>Telefone:</span> ${esc(customer?.phone ?? '—')}</div>
+      <div><span>Forma de pagamento:</span> ${esc(so.paymentMethod ?? '—')}</div>
       <div style="grid-column:1/3"><span>Endereço:</span> ${esc(address)}</div>
     </div>
 
     ${customer?.permanentNotes ? `<div style="margin-top:12px;border-left:3px solid #f59e0b;background:#fffbeb;padding:10px 12px;border-radius:6px;font-size:12px"><strong>Observações do contrato:</strong> ${esc(customer.permanentNotes)}</div>` : ''}
 
+    <h2>Serviço</h2>
+    <div class="grid">
+      <div><span>Serviços executados:</span> ${esc(serviceNames)}</div>
+      <div><span>Pragas combatidas:</span> ${esc(pests || '—')}</div>
+      <div style="grid-column:1/3"><span>Áreas tratadas:</span> ${esc(so.areaTreated || '—')}</div>
+      <div><span>Garantia:</span> ${esc(warrantyText(so))}</div>
+      <div><span>Recorrência:</span> ${esc(recurrenceText)}</div>
+    </div>
+
     <h2>Execução</h2>
     <div class="grid">
-      <div><span>Técnico:</span> ${esc(tech?.name ?? '—')}</div>
-      <div><span>Área atendida:</span> ${esc(so.areaTreated ?? '—')}</div>
-      <div><span>Início:</span> ${esc(fmtDateTime(so.startedAt))}</div>
-      <div><span>Término:</span> ${esc(fmtDateTime(so.finishedAt))}</div>
+      <div><span>Técnico(s):</span> ${esc(techNames)}</div>
+      ${sellerName ? `<div><span>Vendedor:</span> ${esc(sellerName)}</div>` : ''}
+      <div><span>Data de execução:</span> ${esc(so.executionDate ? fmtDateOnly(so.executionDate) : fmtDateOnly(so.startedAt))}</div>
+      <div><span>Vencimento:</span> ${esc(fmtDateOnly(so.dueDate))}</div>
+      <div><span>Validade do serviço:</span> ${esc(fmtDateOnly(so.validityDate))}</div>
+      <div><span>Hora início:</span> ${esc(fmtDateTime(so.startedAt))}</div>
+      <div><span>Hora término:</span> ${esc(fmtDateTime(so.finishedAt))}</div>
       <div><span>Tempo total:</span> ${so.totalMinutes ? esc(so.totalMinutes) + ' min' : '—'}</div>
-      <div><span>Pragas combatidas:</span> ${esc(pests || '—')}</div>
+      ${equipNames ? `<div style="grid-column:1/3"><span>Equipamentos utilizados:</span> ${esc(equipNames)}</div>` : ''}
     </div>
 
     <h2>Produtos utilizados</h2>
@@ -129,9 +179,16 @@ export function printServiceOrder(so: ServiceOrder): void {
     <h2>Procedimentos e observações</h2>
     <div class="box">${esc(so.procedures ?? '')}${so.notes ? '<br/>' + esc(so.notes) : ''}</div>
 
+    ${includePhotos && so.photos && so.photos.length ? `<h2>Registro fotográfico</h2>${photosHtml(so)}` : ''}
+
+    <div class="emg">
+      <strong>Emergência · Centro de Informação Toxicológica (CIT):</strong>
+      ${esc(org.emergencyPhone ?? '0800 722 6001')}${org.emergencyInfo ? ` — ${esc(org.emergencyInfo)}` : ''}
+    </div>
+
     <div class="sign">
       <div class="line">Assinatura do Cliente</div>
-      <div class="line">Assinatura do Técnico</div>
+      <div class="line">${esc(techNames)}<br/>Assinatura do Técnico</div>
     </div>
 
     <div class="foot">Documento gerado por Na Mira · Controle de Pragas em ${new Date().toLocaleString('pt-BR')}</div>

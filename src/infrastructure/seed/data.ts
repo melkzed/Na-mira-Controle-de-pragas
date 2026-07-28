@@ -14,6 +14,7 @@ import type {
   Invoice,
   License,
   Pest,
+  TreatedArea,
   Product,
   ProductCategory,
   ServiceOrder,
@@ -78,14 +79,27 @@ export const serviceTypes: ServiceType[] = [
 ];
 
 export const pests: Pest[] = [
-  { id: 'p-bar', orgId: ORG, name: 'Baratas' },
-  { id: 'p-rat', orgId: ORG, name: 'Ratos' },
-  { id: 'p-cup', orgId: ORG, name: 'Cupins' },
-  { id: 'p-for', orgId: ORG, name: 'Formigas' },
-  { id: 'p-mos', orgId: ORG, name: 'Mosquitos' },
-  { id: 'p-esc', orgId: ORG, name: 'Escorpiões' },
-  { id: 'p-ara', orgId: ORG, name: 'Aranhas' },
-  { id: 'p-pul', orgId: ORG, name: 'Pulgas' },
+  { id: 'p-bar', orgId: ORG, name: 'Baratas', category: 'Rasteira', defaultWarrantyDays: 90, description: 'Baratas de esgoto e germânica.' },
+  { id: 'p-rat', orgId: ORG, name: 'Ratos', category: 'Roedor', defaultWarrantyDays: 60, description: 'Ratazana, rato de telhado e camundongo.' },
+  { id: 'p-cup', orgId: ORG, name: 'Cupins', category: 'Xilófago', defaultWarrantyDays: 365, description: 'Cupim de solo e de madeira seca.' },
+  { id: 'p-for', orgId: ORG, name: 'Formigas', category: 'Rasteira', defaultWarrantyDays: 90 },
+  { id: 'p-mos', orgId: ORG, name: 'Mosquitos', category: 'Voadora', defaultWarrantyDays: 30 },
+  { id: 'p-esc', orgId: ORG, name: 'Escorpiões', category: 'Peçonhento', defaultWarrantyDays: 90 },
+  { id: 'p-ara', orgId: ORG, name: 'Aranhas', category: 'Peçonhento', defaultWarrantyDays: 90 },
+  { id: 'p-pul', orgId: ORG, name: 'Pulgas', category: 'Ectoparasita', defaultWarrantyDays: 30 },
+];
+
+export const treatedAreas: TreatedArea[] = [
+  { id: 'ar-coz', orgId: ORG, name: 'Cozinha' },
+  { id: 'ar-ban', orgId: ORG, name: 'Banheiro' },
+  { id: 'ar-for', orgId: ORG, name: 'Forro' },
+  { id: 'ar-cxa', orgId: ORG, name: "Caixa d'água" },
+  { id: 'ar-jar', orgId: ORG, name: 'Jardim' },
+  { id: 'ar-est', orgId: ORG, name: 'Estoque' },
+  { id: 'ar-esc', orgId: ORG, name: 'Escritório' },
+  { id: 'ar-dep', orgId: ORG, name: 'Depósito' },
+  { id: 'ar-ext', orgId: ORG, name: 'Área externa' },
+  { id: 'ar-gar', orgId: ORG, name: 'Garagem' },
 ];
 
 export const suppliers: Supplier[] = [
@@ -335,4 +349,7 @@ export const orgProfile = {
   taxRegime: 'Simples Nacional',
   city: 'São Paulo',
   state: 'SP',
+  /** Emergência toxicológica — exibida automaticamente nos documentos (CIT). */
+  emergencyPhone: '0800 722 6001',
+  emergencyInfo: 'CIT/SP — atendimento 24h em caso de intoxicação',
 };
