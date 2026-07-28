@@ -433,6 +433,20 @@ export interface RecurringPayable {
   createdAt: string;
 }
 
+export interface InvoiceTaxes {
+  issRate: number;
+  iss: number;
+  issRetido: boolean;
+  irrf: number;
+  inss: number;
+  pis: number;
+  cofins: number;
+  csll: number;
+  totalRetencoes: number;
+  /** Valor líquido a receber (bruto − retenções). */
+  net: number;
+}
+
 export interface Invoice {
   id: string;
   orgId: string;
@@ -443,8 +457,18 @@ export interface Invoice {
   description: string;
   amount: number;
   taxAmount: number;
-  status: 'emitida' | 'cancelada';
+  status: 'emitida' | 'cancelada' | 'processando' | 'rejeitada';
   issuedAt: string;
+  /** Provedor de emissão (ex.: 'governo-nacional', 'simulado'). */
+  provider?: string;
+  /** Ambiente NFS-e Nacional retornado pelo governo. */
+  accessKey?: string;
+  protocol?: string;
+  verificationCode?: string;
+  /** Mensagem de rejeição/erro do provedor, se houver. */
+  message?: string;
+  /** Detalhamento tributário (ISS + retenções + líquido). */
+  taxes?: InvoiceTaxes;
 }
 
 export interface License {

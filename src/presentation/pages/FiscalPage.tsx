@@ -11,6 +11,7 @@ import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getUser } from '@/application/repository';
 import { useInvoicesStore } from '@/store/invoicesStore';
 import { useLicensesStore } from '@/store/entityStores';
+import { useSettingsStore } from '@/store/settingsStore';
 import { uid } from '@/store/createEntityStore';
 import { toast } from '@/store/toastStore';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
@@ -82,6 +83,8 @@ export function FiscalPage() {
         </Card>
       </div>
 
+      <FiscalConfigPanel />
+
       <div className="mt-6">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Notas Fiscais de Serviço (NFS-e)</h2>
         <NotasFiscais />
@@ -134,6 +137,44 @@ function LicenseForm({ open, onClose, onSave }: { open: boolean; onClose: () => 
         <Field label="Validade"><Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
       </div>
     </Drawer>
+  );
+}
+
+/** Configuração da emissão de NFS-e (provedor governo + tributação). */
+function FiscalConfigPanel() {
+  const { fiscal, setFiscal } = useSettingsStore();
+  return (
+    <Card className="mt-6">
+      <CardHeader
+        title="Integração NFS-e (Governo · Nacional)"
+        subtitle="Emissão pela API oficial da Receita Federal via backend + certificado e-CNPJ"
+        action={<Badge tone={fiscal.provider === 'governo-nacional' && fiscal.backendUrl ? 'success' : 'warning'} dot>{fiscal.provider === 'governo-nacional' ? (fiscal.backendUrl ? 'Governo ativo' : 'Governo · simulação') : 'Simulação'}</Badge>}
+      />
+      <CardBody className="space-y-4">
+        <div className="rounded-lg border border-warning/30 bg-warning-soft/40 p-3 text-xs text-foreground">
+          A emissão oficial exige um <strong>certificado digital e-CNPJ (A1/A3)</strong> e um <strong>backend</strong> que assina e transmite ao governo — o navegador não pode fazer isso sozinho. Informe a URL da função de emissão (ex.: Supabase Edge Function <code>emitir-nfse</code>); sem ela, o sistema opera em <strong>simulação</strong> mostrando exatamente o que seria enviado.
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Provedor">
+            <Select value={fiscal.provider} onChange={(e) => setFiscal({ provider: e.target.value as 'governo-nacional' | 'simulado' })}>
+              <option value="governo-nacional">Governo · NFS-e Nacional</option>
+              <option value="simulado">Simulação (sem transmissão)</option>
+            </Select>
+          </Field>
+          <Field label="URL do backend de emissão (assina + transmite)"><Input value={fiscal.backendUrl} onChange={(e) => setFiscal({ backendUrl: e.target.value })} placeholder="https://…/functions/v1/emitir-nfse" /></Field>
+          <Field label="Município (código IBGE)"><Input value={fiscal.municipioIbge} onChange={(e) => setFiscal({ municipioIbge: e.target.value.replace(/\D/g, '') })} placeholder="3550308" /></Field>
+          <Field label="Item lista de serviços (LC 116)"><Input value={fiscal.itemListaServico} onChange={(e) => setFiscal({ itemListaServico: e.target.value })} placeholder="14.02" /></Field>
+          <Field label="Regime tributário"><Select value={fiscal.regime} onChange={(e) => setFiscal({ regime: e.target.value as any })}><option value="simples">Simples Nacional</option><option value="presumido">Lucro Presumido</option><option value="real">Lucro Real</option></Select></Field>
+          <Field label="Alíquota de ISS (%)"><Input type="number" step="0.1" value={(fiscal.issRate * 100).toString()} onChange={(e) => setFiscal({ issRate: (Number(e.target.value) || 0) / 100 })} /></Field>
+        </div>
+        <div className="flex flex-wrap gap-4">
+          <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={fiscal.issRetido} onChange={(e) => setFiscal({ issRetido: e.target.checked })} className="h-4 w-4 rounded border-border" /> ISS retido pelo tomador</label>
+          <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={fiscal.retencoes} onChange={(e) => setFiscal({ retencoes: e.target.checked })} className="h-4 w-4 rounded border-border" /> Reter tributos federais (tomador PJ)</label>
+          <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={fiscal.inssRetido} onChange={(e) => setFiscal({ inssRetido: e.target.checked })} className="h-4 w-4 rounded border-border" /> Reter INSS (11%)</label>
+        </div>
+        <p className="text-xs text-muted-foreground">Template do backend incluído no repositório em <code>supabase/functions/emitir-nfse/</code>. As alíquotas variam por município e CNAE — confirme com sua contabilidade.</p>
+      </CardBody>
+    </Card>
   );
 }
 
