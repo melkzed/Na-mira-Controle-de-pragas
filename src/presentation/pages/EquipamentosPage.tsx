@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Plus, Trash2, X } from 'lucide-react';
+import { Check, Plus, Trash2, TriangleAlert, X } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -12,7 +12,7 @@ import { useEquipmentStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
 import type { Equipment } from '@/domain/types';
 import type { EquipmentStatus } from '@/domain/enums';
-import { fmtDate } from '@/lib/date';
+import { toast } from '@/store/toastStore';
 
 const statusMeta: Record<EquipmentStatus, { label: string; tone: any }> = {
   disponivel: { label: 'Disponível', tone: 'success' },
@@ -45,26 +45,72 @@ function saveKind(kind: string) {
   }
 }
 
+/** Equipamento em uso com devolução vencida. */
+export function isEquipmentOverdue(e: Equipment): boolean {
+  return e.status === 'em_uso' && !!e.expectedReturnAt && new Date(e.expectedReturnAt).getTime() < Date.now();
+}
+const fmtDateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
+
 export function EquipamentosPage() {
-  const { items, add, remove } = useEquipmentStore();
+  const { items, add, update, remove } = useEquipmentStore();
   const [formOpen, setFormOpen] = useState(false);
+
+  const emUso = items.filter((e) => e.status === 'em_uso');
+  const atrasados = items.filter(isEquipmentOverdue);
+  const disponiveis = items.filter((e) => e.status === 'disponivel');
+
+  const devolver = (e: Equipment) => {
+    update(e.id, { status: 'disponivel', checkedOutAt: undefined, checkedOutTo: undefined, checkedOutOsId: undefined, expectedReturnAt: undefined });
+    toast(`${e.name} devolvido ao estoque.`, { tone: 'success' });
+  };
 
   const columns: Column<Equipment>[] = [
     { key: 'name', header: 'Equipamento', render: (e) => (<div><p className="font-medium">{e.name}</p><p className="text-xs text-muted-foreground">{e.code} · Patrimônio {e.assetNumber}</p></div>) },
     { key: 'kind', header: 'Tipo', render: (e) => <Badge tone="neutral">{e.kind}</Badge> },
-    { key: 'resp', header: 'Responsável', render: (e) => getUser(e.assignedTo)?.name ?? '—' },
-    { key: 'maint', header: 'Próx. manutenção', render: (e) => e.nextMaintenanceAt ? fmtDate(e.nextMaintenanceAt) : '—' },
-    { key: 'status', header: 'Status', align: 'right', render: (e) => <Badge tone={statusMeta[e.status].tone} dot>{statusMeta[e.status].label}</Badge> },
+    { key: 'resp', header: 'Responsável', render: (e) => getUser(e.checkedOutTo ?? e.assignedTo)?.name ?? '—' },
+    { key: 'ret', header: 'Devolução prevista', render: (e) => e.status === 'em_uso'
+      ? <span className={isEquipmentOverdue(e) ? 'font-semibold text-danger' : 'text-foreground'}>{fmtDateTime(e.expectedReturnAt)}{isEquipmentOverdue(e) ? ' · atrasado' : ''}</span>
+      : <span className="text-muted-foreground">—</span> },
+    { key: 'status', header: 'Status', align: 'right', render: (e) => isEquipmentOverdue(e)
+      ? <Badge tone="danger" dot>Atrasado</Badge>
+      : <Badge tone={statusMeta[e.status].tone} dot>{statusMeta[e.status].label}</Badge> },
     { key: 'act', header: '', align: 'right', render: (e) => (
-      <button onClick={(ev) => { ev.stopPropagation(); remove(e.id); }} className="text-muted-foreground hover:text-danger" title="Excluir"><Trash2 size={15} /></button>
+      <div className="flex items-center justify-end gap-1">
+        {e.status === 'em_uso' && <Button size="sm" variant="outline" onClick={(ev) => { ev.stopPropagation(); devolver(e); }}>Devolver</Button>}
+        <button onClick={(ev) => { ev.stopPropagation(); remove(e.id); }} className="text-muted-foreground hover:text-danger" title="Excluir"><Trash2 size={15} /></button>
+      </div>
     ) },
   ];
 
   return (
     <div>
       <PageHeader title="Equipamentos" description={`${items.length} itens · pulverizadores, bombas, EPIs e ferramentas`} actions={<Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Novo equipamento</Button>} />
+
+      <div className="mb-4 grid grid-cols-3 gap-4">
+        <StatMini label="Em uso" value={emUso.length} tone="brand" />
+        <StatMini label="Atrasados" value={atrasados.length} tone={atrasados.length ? 'danger' : 'neutral'} />
+        <StatMini label="Disponíveis" value={disponiveis.length} tone="success" />
+      </div>
+
+      {atrasados.length > 0 && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-danger/30 bg-danger-soft/40 p-3 text-sm text-danger">
+          <TriangleAlert size={16} className="shrink-0" />
+          {atrasados.length} equipamento(s) com devolução atrasada: {atrasados.map((e) => e.name).join(', ')}.
+        </div>
+      )}
+
       <Table columns={columns} rows={items} keyField={(e) => e.id} />
       <EquipmentForm open={formOpen} onClose={() => setFormOpen(false)} onSave={(e) => { add(e); setFormOpen(false); }} />
+    </div>
+  );
+}
+
+function StatMini({ label, value, tone }: { label: string; value: number; tone: 'brand' | 'danger' | 'success' | 'neutral' }) {
+  const toneCls = { brand: 'text-brand', danger: 'text-danger', success: 'text-success', neutral: 'text-muted-foreground' }[tone];
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4 shadow-soft">
+      <p className={`text-2xl font-bold ${toneCls}`}>{value}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
 }

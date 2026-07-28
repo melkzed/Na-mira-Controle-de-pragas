@@ -222,6 +222,12 @@ export interface Equipment {
   status: EquipmentStatus;
   assignedTo?: string;
   nextMaintenanceAt?: string;
+  /** Retirada em uso: quando, para quem, OS e previsão de devolução. */
+  checkedOutAt?: string;
+  checkedOutTo?: string;
+  checkedOutOsId?: string;
+  expectedReturnAt?: string;
+  notes?: string;
 }
 
 export interface Vehicle {
@@ -272,6 +278,8 @@ export interface Appointment {
   notes?: string;
   /** Observação do técnico registrada em campo (aparece no sistema da empresa). */
   technicianNotes?: string;
+  /** Fotos do atendimento (antes/durante/após), registradas pelo técnico. */
+  photos?: ServiceOrderPhoto[];
   routeOrder?: number;
   products: AppointmentProduct[];
   /** Agrupa as ocorrências de uma mesma recorrência (cada uma é independente). */

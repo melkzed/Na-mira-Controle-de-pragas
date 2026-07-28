@@ -451,6 +451,25 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
             <p className="mt-0.5 text-sm text-foreground">{appt.technicianNotes}</p>
           </div>
         )}
+        {appt.photos && appt.photos.length > 0 && (
+          <Section title={`Fotos do atendimento (${appt.photos.length})`}>
+            <div className="space-y-2">
+              {(['antes', 'durante', 'apos'] as const).map((ph) => {
+                const list = appt.photos!.filter((p) => p.phase === ph);
+                if (!list.length) return null;
+                const label = ph === 'antes' ? 'Antes' : ph === 'durante' ? 'Durante' : 'Após';
+                return (
+                  <div key={ph}>
+                    <p className="mb-1 text-[11px] font-medium text-muted-foreground">{label}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {list.map((p, i) => <img key={i} src={p.dataUrl} alt={p.name ?? label} className="h-16 w-20 rounded-lg border border-border object-cover" />)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+        )}
         {cust?.permanentNotes && (
           <div className="rounded-lg border border-warning/30 bg-warning-soft/60 p-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-warning">Observações do contrato</p>
