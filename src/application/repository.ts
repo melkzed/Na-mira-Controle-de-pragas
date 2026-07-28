@@ -71,6 +71,11 @@ export function serviceOrdersForCustomer(customerId: string): ServiceOrder[] {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+/** Última Ordem de Serviço do cliente — base para o preenchimento inteligente. */
+export function lastOrderForCustomer(customerId: string): ServiceOrder | undefined {
+  return serviceOrdersForCustomer(customerId)[0];
+}
+
 export function appointmentsForTechnician(
   technicianId: string,
   dayIso: string,

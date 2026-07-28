@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Download, Plus } from 'lucide-react';
+import { Check, Download, Plus, Zap } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -9,7 +9,7 @@ import { Field, Input, Select, Textarea } from '../components/ui/Field';
 import { Table, type Column } from '../components/ui/Table';
 import { ServiceOrderStatusBadge } from '../components/StatusBadge';
 import * as seed from '@/infrastructure/seed/data';
-import { getCustomer, getProduct, getServiceType, getUser } from '@/application/repository';
+import { getCustomer, getProduct, getServiceType, getUser, lastOrderForCustomer } from '@/application/repository';
 import type { ServiceOrder } from '@/domain/types';
 import type { RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
 import { PAYMENT_METHODS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
@@ -195,6 +195,7 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const [returnAt, setReturnAt] = useState('');
   const [photos, setPhotos] = useState<ServiceOrderPhoto[]>([]);
   const [touched, setTouched] = useState(false);
+  const [filledFrom, setFilledFrom] = useState<number | null>(null);
 
   const cust = customers.find((c) => c.id === customerId);
 
@@ -207,9 +208,38 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       setSellerId(''); setStatus('em_andamento'); setAreaIds([]); setPestIds([]); setDuration(''); setProcedures('');
       setPaymentMethod(''); setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
       setRecEnabled(false); setRecFreq('mensal'); setExecDate(''); setDueDate(''); setValidityDate('');
-      setEquipmentIds([]); setReturnAt(''); setPhotos([]); setTouched(false);
+      setEquipmentIds([]); setReturnAt(''); setPhotos([]); setTouched(false); setFilledFrom(null);
     }
   }, [open, customers, serviceTypes]);
+
+  /** Preenchimento inteligente: repete o último atendimento do cliente. */
+  const applyHistory = (cid: string) => {
+    const last = lastOrderForCustomer(cid);
+    if (!last) { setFilledFrom(null); return; }
+    setServiceTypeIds(last.serviceTypeIds?.length ? last.serviceTypeIds : (last.serviceTypeId ? [last.serviceTypeId] : []));
+    setPestIds(last.pestIds ?? []);
+    if (last.areaIds?.length) setAreaIds(last.areaIds);
+    else if (last.areaTreated) { const names = last.areaTreated.split(',').map((s) => s.trim()); setAreaIds(areas.filter((a) => names.includes(a.name)).map((a) => a.id)); }
+    else setAreaIds([]);
+    if (last.technicianIds?.length) setTechnicianIds(last.technicianIds);
+    if (last.paymentMethod) setPaymentMethod(last.paymentMethod);
+    if (last.warranty) {
+      setWarrantyHas(last.warranty.has);
+      if (last.warranty.value) setWarrantyValue(String(last.warranty.value));
+      if (last.warranty.unit) setWarrantyUnit(last.warranty.unit);
+      if (last.warranty.type) setWarrantyType(last.warranty.type);
+    }
+    if (last.recurrence) { setRecEnabled(last.recurrence.enabled); if (last.recurrence.frequency) setRecFreq(last.recurrence.frequency); }
+    setFilledFrom(last.number);
+  };
+
+  // Ao selecionar o cliente, tenta preencher a partir do histórico.
+  useEffect(() => { if (open && customerId) applyHistory(customerId); }, [customerId, open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const clearFill = () => {
+    setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
+    setPestIds([]); setAreaIds([]); setPaymentMethod(''); setRecEnabled(false); setFilledFrom(null);
+  };
 
   const toggle = (setter: React.Dispatch<React.SetStateAction<string[]>>, id: string) =>
     setter((arr) => (arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]));
@@ -278,6 +308,14 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
           {cust && <p className="mt-1 text-xs text-muted-foreground">{cust.type === 'pj' ? 'Pessoa Jurídica' : 'Pessoa Física'}{cust.propertyType ? ` · ${cust.propertyType}` : ''}</p>}
           {touched && !customerId && <span className="mt-1 block text-xs text-danger">Selecione um cliente.</span>}
         </Field>
+
+        {filledFrom != null && (
+          <div className="flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft/40 p-2.5 text-xs text-brand">
+            <Zap size={14} className="shrink-0" />
+            <span className="flex-1">Preenchido automaticamente pelo último atendimento (OS #{filledFrom}). Revise e ajuste o que mudou.</span>
+            <button onClick={clearFill} className="shrink-0 font-medium underline">Começar em branco</button>
+          </div>
+        )}
 
         <Field label="Serviços executados" hint="Toque para adicionar vários serviços à mesma OS">
           <div className="flex flex-wrap gap-1.5">
