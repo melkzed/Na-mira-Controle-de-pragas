@@ -14,6 +14,8 @@ import { Select, Textarea } from '../components/ui/Field';
 import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { PhotoCapture } from '../components/PhotoCapture';
+import { SignaturePad } from '../components/SignaturePad';
+import { useSettingsStore } from '@/store/settingsStore';
 import { appointmentsForTechnician, getCustomer, getProduct, getServiceType, technicianBalances } from '@/application/repository';
 import { useProductsStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
@@ -79,10 +81,11 @@ export function CampoPage() {
         {active && (
           <NextVisit
             appt={active}
+            techId={techId}
             onNavigate={() => setNavAppt(active)}
             onDetail={() => setDetailAppt(active)}
             onStart={() => setStatus(active.id, 'em_atendimento')}
-            onFinish={() => { setStatus(active.id, 'finalizado'); toast('Visita finalizada e atualizada no sistema.', { tone: 'success' }); }}
+            onFinish={(signature) => { updateAppt(active.id, { technicianSignature: signature }); setStatus(active.id, 'finalizado'); toast('Visita finalizada e assinada.', { tone: 'success' }); }}
           />
         )}
 
@@ -352,12 +355,13 @@ function HeaderStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function NextVisit({ appt, onNavigate, onDetail, onStart, onFinish }: {
+function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish }: {
   appt: Appointment;
+  techId: string;
   onNavigate: () => void;
   onDetail: () => void;
   onStart: () => void;
-  onFinish: () => void;
+  onFinish: (signature?: string) => void;
 }) {
   const cust = getCustomer(appt.customerId);
   const st = getServiceType(appt.serviceTypeId);
@@ -366,6 +370,8 @@ function NextVisit({ appt, onNavigate, onDetail, onStart, onFinish }: {
   const checklist = ['Equipamentos', 'EPIs', 'Produtos', 'Veículo', 'Documentação'];
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [confirming, setConfirming] = useState(false);
+  const storedSig = useSettingsStore((s) => s.signatures[techId]);
+  const [signature, setSignature] = useState<string | undefined>(appt.technicianSignature ?? storedSig);
 
   return (
     <Card hover className="overflow-hidden border-brand/30">
@@ -437,10 +443,11 @@ function NextVisit({ appt, onNavigate, onDetail, onStart, onFinish }: {
             <Button leftIcon={<Play size={16} />} onClick={onStart}>Iniciar atendimento</Button>
           ) : confirming ? (
             <div className="rounded-xl border border-brand/40 bg-brand-soft/30 p-3">
-              <p className="mb-2 text-sm font-medium text-foreground">Confirmar finalização desta visita? O sistema da empresa será atualizado.</p>
-              <div className="grid grid-cols-2 gap-2">
+              <p className="mb-2 text-sm font-medium text-foreground">Assine para finalizar. O sistema da empresa será atualizado.</p>
+              <SignaturePad key={appt.id} value={signature} onChange={setSignature} height={120} label="Assinatura do técnico" />
+              <div className="mt-2 grid grid-cols-2 gap-2">
                 <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>Voltar</Button>
-                <Button variant="primary" size="sm" leftIcon={<CheckCircle2 size={15} />} onClick={() => { onFinish(); setConfirming(false); }}>Confirmar</Button>
+                <Button variant="primary" size="sm" leftIcon={<CheckCircle2 size={15} />} onClick={() => { onFinish(signature); setConfirming(false); }}>Confirmar</Button>
               </div>
             </div>
           ) : (

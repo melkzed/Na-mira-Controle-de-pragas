@@ -280,6 +280,8 @@ export interface Appointment {
   technicianNotes?: string;
   /** Fotos do atendimento (antes/durante/após), registradas pelo técnico. */
   photos?: ServiceOrderPhoto[];
+  /** Assinatura eletrônica do técnico, capturada ao finalizar a visita. */
+  technicianSignature?: string;
   routeOrder?: number;
   products: AppointmentProduct[];
   /** Agrupa as ocorrências de uma mesma recorrência (cada uma é independente). */
@@ -340,6 +342,9 @@ export interface ServiceOrder {
   photos?: ServiceOrderPhoto[];
   /** Localização registrada durante o atendimento (app do técnico). */
   location?: { lat: number; lng: number };
+  /** Assinaturas eletrônicas (dataURL) incorporadas ao PDF. */
+  technicianSignature?: string;
+  customerSignature?: string;
 }
 
 export interface Pest {

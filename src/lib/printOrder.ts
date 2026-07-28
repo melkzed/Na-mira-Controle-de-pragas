@@ -7,6 +7,7 @@ import type { ServiceOrder } from '@/domain/types';
 import { getCustomer, getProduct, getServiceType, getUser } from '@/application/repository';
 import * as seed from '@/infrastructure/seed/data';
 import { WARRANTY_TYPE_LABEL, RECURRENCE_FREQ_LABEL } from '@/domain/enums';
+import { useSettingsStore } from '@/store/settingsStore';
 import { formatDocument } from './utils';
 import { currentBatch } from './batches';
 import { toast } from '@/store/toastStore';
@@ -62,6 +63,15 @@ export function printServiceOrder(so: ServiceOrder, options?: { includePhotos?: 
   const recurrenceText = so.recurrence?.enabled ? (so.recurrence.frequency ? RECURRENCE_FREQ_LABEL[so.recurrence.frequency] : 'Sim') : 'Não';
   const equipNames = (so.equipmentIds ?? []).map((id) => seed.equipment.find((e) => e.id === id)?.name).filter(Boolean).join(', ');
 
+  // Assinaturas e emergência (configuráveis nas Configurações).
+  const settings = useSettingsStore.getState();
+  const techId = so.technicianIds?.[0] ?? so.technicianId;
+  const techSig = so.technicianSignature ?? (techId ? settings.signatures[techId] : undefined);
+  const custSig = so.customerSignature;
+  const companySig = settings.companySignature;
+  const emergencyLine = `${settings.emergencyPhone}${settings.emergencyInfo ? ` — ${settings.emergencyInfo}` : ''}`;
+  const sigImg = (src?: string) => (src ? `<img src="${src}" alt="assinatura" style="height:48px;object-fit:contain;margin:0 auto 2px;display:block" />` : '<div style="height:48px"></div>');
+
   const address = customer
     ? [customer.street && `${customer.street}, ${customer.number ?? 's/n'}`, customer.district, customer.city && `${customer.city}/${customer.state ?? ''}`, customer.cep && `CEP ${customer.cep}`]
         .filter(Boolean)
@@ -111,8 +121,8 @@ export function printServiceOrder(so: ServiceOrder, options?: { includePhotos?: 
   th { background: #f1f5f9; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #64748b; }
   td.r, th.r { text-align: right; }
   .box { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; font-size: 13px; min-height: 44px; }
-  .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 48px; }
-  .sign .line { border-top: 1px solid #94a3b8; padding-top: 6px; text-align: center; font-size: 12px; color: #64748b; }
+  .sign { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 44px; align-items: end; }
+  .sign .line { border-top: 1px solid #94a3b8; padding-top: 6px; text-align: center; font-size: 11px; color: #64748b; }
   .foot { margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 11px; color: #94a3b8; text-align: center; }
   .emg { margin-top: 24px; border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; border-radius: 8px; padding: 10px 14px; font-size: 12px; }
   @media print { body { padding: 0; } @page { margin: 16mm; } }
@@ -182,13 +192,13 @@ export function printServiceOrder(so: ServiceOrder, options?: { includePhotos?: 
     ${includePhotos && so.photos && so.photos.length ? `<h2>Registro fotográfico</h2>${photosHtml(so)}` : ''}
 
     <div class="emg">
-      <strong>Emergência · Centro de Informação Toxicológica (CIT):</strong>
-      ${esc(org.emergencyPhone ?? '0800 722 6001')}${org.emergencyInfo ? ` — ${esc(org.emergencyInfo)}` : ''}
+      <strong>Emergência · Centro de Informação Toxicológica (CIT):</strong> ${esc(emergencyLine)}
     </div>
 
     <div class="sign">
-      <div class="line">Assinatura do Cliente</div>
-      <div class="line">${esc(techNames)}<br/>Assinatura do Técnico</div>
+      <div class="line">${sigImg(custSig)}Assinatura do Cliente</div>
+      <div class="line">${sigImg(techSig)}${esc(techNames)} · Assinatura do Técnico</div>
+      <div class="line">${sigImg(companySig)}${esc(org.name)} · Responsável Técnico</div>
     </div>
 
     <div class="foot">Documento gerado por Na Mira · Controle de Pragas em ${new Date().toLocaleString('pt-BR')}</div>
