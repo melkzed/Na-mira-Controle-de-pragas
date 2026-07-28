@@ -14,6 +14,7 @@ import type {
   Invoice,
   License,
   Pest,
+  RecurringPayable,
   StockRequest,
   TreatedArea,
   Product,
@@ -88,6 +89,13 @@ export const pests: Pest[] = [
   { id: 'p-esc', orgId: ORG, name: 'Escorpiões', category: 'Peçonhento', defaultWarrantyDays: 90 },
   { id: 'p-ara', orgId: ORG, name: 'Aranhas', category: 'Peçonhento', defaultWarrantyDays: 90 },
   { id: 'p-pul', orgId: ORG, name: 'Pulgas', category: 'Ectoparasita', defaultWarrantyDays: 30 },
+];
+
+export const recurringPayables: RecurringPayable[] = [
+  { id: 'rp-1', orgId: ORG, description: 'Aluguel da sede', category: 'Aluguel', amount: 3800, frequency: 'mensal', dueDay: 5, active: true, createdAt: daysFromNow(-120) },
+  { id: 'rp-2', orgId: ORG, description: 'Folha de salários', category: 'Salários', amount: 18500, frequency: 'mensal', dueDay: 5, active: true, createdAt: daysFromNow(-120) },
+  { id: 'rp-3', orgId: ORG, description: 'Energia elétrica', category: 'Energia', amount: 640, frequency: 'mensal', dueDay: 12, active: true, createdAt: daysFromNow(-120) },
+  { id: 'rp-4', orgId: ORG, description: 'Internet e telefonia', category: 'Internet', amount: 320, frequency: 'mensal', dueDay: 15, active: true, createdAt: daysFromNow(-120) },
 ];
 
 export const stockRequests: StockRequest[] = [

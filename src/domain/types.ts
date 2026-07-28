@@ -409,10 +409,27 @@ export interface FinanceEntry {
   categoryId?: string;
   customerId?: string;
   serviceOrderId?: string;
+  /** Vínculo com a conta recorrente que gerou este lançamento. */
+  recurringId?: string;
   description: string;
   amount: number;
   dueDate?: string;
   paidAt?: string;
+  createdAt: string;
+}
+
+/** Conta a pagar recorrente (aluguel, salários, água, energia, contratos…). */
+export interface RecurringPayable {
+  id: string;
+  orgId: string;
+  description: string;
+  category?: string;
+  amount: number;
+  /** Frequência (mensal, bimestral, trimestral, semestral, anual). */
+  frequency: RecurrenceFreq;
+  /** Dia de vencimento (1–28). */
+  dueDay: number;
+  active: boolean;
   createdAt: string;
 }
 
