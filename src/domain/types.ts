@@ -10,10 +10,13 @@ import type {
   EquipmentStatus,
   FinanceEntryStatus,
   FinanceEntryType,
+  RecurrenceFreq,
   ServiceOrderStatus,
   StockLocationKind,
   StockMovementType,
   UserRole,
+  WarrantyType,
+  WarrantyUnit,
 } from './enums';
 
 export interface Organization {
@@ -304,12 +307,70 @@ export interface ServiceOrder {
   products: ServiceOrderProduct[];
   hasCustomerSignature: boolean;
   createdAt: string;
+
+  // ── Ordem de Serviço avançada ──────────────────────────────────────────
+  /** Múltiplos serviços na mesma OS (além do serviceTypeId principal). */
+  serviceTypeIds?: string[];
+  /** Áreas tratadas (cadastro). Complementa o texto livre areaTreated. */
+  areaIds?: string[];
+  /** Equipe: múltiplos técnicos e o vendedor responsável. */
+  technicianIds?: string[];
+  sellerId?: string;
+  /** Equipamentos utilizados no atendimento. */
+  equipmentIds?: string[];
+  /** Forma de pagamento acordada. */
+  paymentMethod?: string;
+  /** Garantia do serviço (com/sem, prazo e tipo). */
+  warranty?: WarrantyInfo;
+  /** Recorrência do serviço. */
+  recurrence?: OsRecurrence;
+  /** Datas do serviço. */
+  executionDate?: string;
+  dueDate?: string;
+  validityDate?: string;
+  /** Fotos antes/durante/após. */
+  photos?: ServiceOrderPhoto[];
+  /** Localização registrada durante o atendimento (app do técnico). */
+  location?: { lat: number; lng: number };
 }
 
 export interface Pest {
   id: string;
   orgId: string;
   name: string;
+  /** Categoria (ex.: rasteira, voadora, roedor, cupim…). */
+  category?: string;
+  description?: string;
+  /** Tempo de garantia padrão (dias) — alimenta a OS ao selecionar a praga. */
+  defaultWarrantyDays?: number;
+  notes?: string;
+}
+
+/** Área/ambiente tratado (cadastro reutilizável na OS). */
+export interface TreatedArea {
+  id: string;
+  orgId: string;
+  name: string;
+  notes?: string;
+}
+
+/** Foto vinculada à OS, por fase do serviço. */
+export interface ServiceOrderPhoto {
+  dataUrl: string;
+  phase: 'antes' | 'durante' | 'apos';
+  name?: string;
+}
+
+export interface WarrantyInfo {
+  has: boolean;
+  value?: number;
+  unit?: WarrantyUnit;
+  type?: WarrantyType;
+}
+
+export interface OsRecurrence {
+  enabled: boolean;
+  frequency?: RecurrenceFreq;
 }
 
 export interface FinanceEntry {

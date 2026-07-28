@@ -115,3 +115,27 @@ export const ROLE_META: Record<UserRole, { label: string }> = {
   estoque: { label: 'Estoque' },
   tecnico: { label: 'Técnico' },
 };
+
+// ── Ordem de Serviço avançada ──────────────────────────────────────────────
+export type WarrantyUnit = 'dias' | 'meses';
+export type WarrantyType = 'preventivo' | 'corretivo' | 'monitoramento';
+export type RecurrenceFreq = 'semanal' | 'quinzenal' | 'mensal' | 'bimestral' | 'trimestral' | 'semestral' | 'anual';
+
+export const WARRANTY_TYPE_LABEL: Record<WarrantyType, string> = {
+  preventivo: 'Controle preventivo',
+  corretivo: 'Controle corretivo',
+  monitoramento: 'Monitoramento',
+};
+
+export const RECURRENCE_FREQ_LABEL: Record<RecurrenceFreq, string> = {
+  semanal: 'Semanal',
+  quinzenal: 'Quinzenal',
+  mensal: 'Mensal',
+  bimestral: 'Bimestral',
+  trimestral: 'Trimestral',
+  semestral: 'Semestral',
+  anual: 'Anual',
+};
+
+/** Formas de pagamento comuns (usadas na OS). */
+export const PAYMENT_METHODS = ['Dinheiro', 'PIX', 'Cartão de crédito', 'Cartão de débito', 'Boleto', 'Transferência', 'A faturar'] as const;
