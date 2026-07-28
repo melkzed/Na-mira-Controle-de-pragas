@@ -164,10 +164,10 @@ export const batchExpiry: { productId: string; batchCode: string; expiresAt: str
 
 // ── Equipamentos e veículos ──────────────────────────────────────────────────
 export const equipment: Equipment[] = [
-  { id: 'eq-1', orgId: ORG, name: 'Pulverizador Costal 20L', code: 'PC-01', assetNumber: 'PAT-1001', kind: 'Pulverizador', status: 'em_uso', assignedTo: 'u-t1' },
+  { id: 'eq-1', orgId: ORG, name: 'Pulverizador Costal 20L', code: 'PC-01', assetNumber: 'PAT-1001', kind: 'Pulverizador', status: 'em_uso', assignedTo: 'u-t1', checkedOutTo: 'u-t1', checkedOutAt: at(0, 8), expectedReturnAt: at(0, 18) },
   { id: 'eq-2', orgId: ORG, name: 'Pulverizador Costal 20L', code: 'PC-02', assetNumber: 'PAT-1002', kind: 'Pulverizador', status: 'disponivel' },
   { id: 'eq-3', orgId: ORG, name: 'Termonebulizador', code: 'TN-01', assetNumber: 'PAT-1010', kind: 'Nebulizador', status: 'manutencao', nextMaintenanceAt: daysFromNow(6) },
-  { id: 'eq-4', orgId: ORG, name: 'Bomba de Injeção Cupim', code: 'BI-01', assetNumber: 'PAT-1020', kind: 'Bomba', status: 'em_uso', assignedTo: 'u-t3' },
+  { id: 'eq-4', orgId: ORG, name: 'Bomba de Injeção Cupim', code: 'BI-01', assetNumber: 'PAT-1020', kind: 'Bomba', status: 'em_uso', assignedTo: 'u-t3', checkedOutTo: 'u-t3', checkedOutAt: daysFromNow(-1), expectedReturnAt: daysFromNow(-1) },
   { id: 'eq-5', orgId: ORG, name: 'Kit EPI Completo', code: 'EPI-05', assetNumber: 'PAT-1030', kind: 'EPI', status: 'disponivel' },
 ];
 

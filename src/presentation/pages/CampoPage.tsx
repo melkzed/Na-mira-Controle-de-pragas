@@ -13,12 +13,13 @@ import { Drawer } from '../components/ui/Drawer';
 import { Select, Textarea } from '../components/ui/Field';
 import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { RouteMap, type RouteStop } from '../components/RouteMap';
+import { PhotoCapture } from '../components/PhotoCapture';
 import { appointmentsForTechnician, getCustomer, getProduct, getServiceType, technicianBalances } from '@/application/repository';
 import { useProductsStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { toast } from '@/store/toastStore';
 import { X } from 'lucide-react';
-import type { Appointment } from '@/domain/types';
+import type { Appointment, ServiceOrderPhoto } from '@/domain/types';
 import { fmtTime } from '@/lib/date';
 import { cn } from '@/lib/utils';
 import { appleMapsLink, googleMapsRoute, wazeLink } from '@/lib/geo';
@@ -164,7 +165,11 @@ function TechNote({ appt, onSave }: { appt: Appointment; onSave: (text: string) 
 
 /** Detalhe da visita para o técnico: produtos necessários, solicitação e infos. */
 function VisitDetailDrawer({ appt, onClose, onNavigate }: { appt: Appointment | null; onClose: () => void; onNavigate: (a: Appointment) => void }) {
+  const updateAppt = useAppointmentsStore((s) => s.update);
+  const [photos, setPhotos] = useState<ServiceOrderPhoto[]>(appt?.photos ?? []);
+  useEffect(() => { setPhotos(appt?.photos ?? []); }, [appt?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!appt) return null;
+  const savePhotos = (next: ServiceOrderPhoto[]) => { setPhotos(next); updateAppt(appt.id, { photos: next }); };
   const cust = getCustomer(appt.customerId);
   const st = getServiceType(appt.serviceTypeId);
   const planned = appt.products?.length ? appt.products.map((p) => ({ productId: p.productId, qty: p.plannedQty })) : (st?.defaultProducts ?? []);
@@ -203,6 +208,10 @@ function VisitDetailDrawer({ appt, onClose, onNavigate }: { appt: Appointment | 
               })}
             </div>
           )}
+        </Section>
+
+        <Section title="Fotos do atendimento">
+          <PhotoCapture photos={photos} onChange={savePhotos} />
         </Section>
 
         {appt.notes && <Section title="Solicitação / observações do agendamento"><p className="text-sm text-foreground">{appt.notes}</p></Section>}

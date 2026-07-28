@@ -20,9 +20,11 @@ import { currentBatch } from '@/lib/batches';
 import { useInvoicesStore } from '@/store/invoicesStore';
 import { useServiceOrdersStore, type ServiceOrderInput } from '@/store/serviceOrdersStore';
 import { useCustomersStore } from '@/store/customersStore';
-import { usePestsStore, useAreasStore, useServiceTypesStore } from '@/store/entityStores';
+import { usePestsStore, useAreasStore, useEquipmentStore, useServiceTypesStore } from '@/store/entityStores';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
+import { PhotoCapture } from '../components/PhotoCapture';
+import type { ServiceOrderPhoto } from '@/domain/types';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { FileCode, Receipt } from 'lucide-react';
 
@@ -169,6 +171,8 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const serviceTypes = useServiceTypesStore((s) => s.items);
   const pests = usePestsStore((s) => s.items);
   const areas = useAreasStore((s) => s.items);
+  const equipment = useEquipmentStore((s) => s.items);
+  const checkoutEquipment = useEquipmentStore((s) => s.update);
   const sellers = seed.users.filter((u) => u.role !== 'tecnico');
 
   const [customerId, setCustomerId] = useState('');
@@ -190,6 +194,9 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const [execDate, setExecDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [validityDate, setValidityDate] = useState('');
+  const [equipmentIds, setEquipmentIds] = useState<string[]>([]);
+  const [returnAt, setReturnAt] = useState('');
+  const [photos, setPhotos] = useState<ServiceOrderPhoto[]>([]);
   const [touched, setTouched] = useState(false);
 
   const cust = customers.find((c) => c.id === customerId);
@@ -202,7 +209,8 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       setTechnicianIds(seed.technicians[0] ? [seed.technicians[0].id] : []);
       setSellerId(''); setStatus('em_andamento'); setAreaIds([]); setPestIds([]); setDuration(''); setProcedures('');
       setPaymentMethod(''); setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
-      setRecEnabled(false); setRecFreq('mensal'); setExecDate(''); setDueDate(''); setValidityDate(''); setTouched(false);
+      setRecEnabled(false); setRecFreq('mensal'); setExecDate(''); setDueDate(''); setValidityDate('');
+      setEquipmentIds([]); setReturnAt(''); setPhotos([]); setTouched(false);
     }
   }, [open, customers, serviceTypes]);
 
@@ -246,9 +254,16 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       executionDate: execDate ? new Date(execDate).toISOString() : undefined,
       dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
       validityDate: validityDate ? new Date(validityDate).toISOString() : undefined,
+      equipmentIds,
+      photos: photos.length ? photos : undefined,
       hasCustomerSignature: false,
     };
     const so = add(input);
+    // Retirada dos equipamentos utilizados (em uso, com previsão de devolução).
+    const returnIso = returnAt ? new Date(returnAt).toISOString() : undefined;
+    equipmentIds.forEach((id) => checkoutEquipment(id, {
+      status: 'em_uso', checkedOutAt: now, checkedOutTo: technicianIds[0], checkedOutOsId: so.id, expectedReturnAt: returnIso,
+    }));
     logChange('criação', 'ordem de serviço', `OS #${so.number} · ${getCustomer(customerId)?.name ?? ''}`, so.id);
     toast(`OS #${so.number} criada.`, { tone: 'success' });
     onCreated(so);
@@ -332,6 +347,19 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
           </div>
         </Field>
         <Field label="Vendedor responsável"><Select value={sellerId} onChange={(e) => setSellerId(e.target.value)}><option value="">—</option>{sellers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></Field>
+
+        <Field label="Equipamentos utilizados" hint="Ficam marcados como 'em uso' até a devolução">
+          <div className="flex flex-wrap gap-1.5">
+            {equipment.map((e) => <Chip key={e.id} active={equipmentIds.includes(e.id)} onClick={() => toggle(setEquipmentIds, e.id)}>{e.name}{e.code ? ` (${e.code})` : ''}</Chip>)}
+          </div>
+        </Field>
+        {equipmentIds.length > 0 && (
+          <Field label="Previsão de devolução dos equipamentos"><Input type="datetime-local" value={returnAt} onChange={(e) => setReturnAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+        )}
+
+        <Field label="Fotos (antes / durante / após)">
+          <PhotoCapture photos={photos} onChange={setPhotos} />
+        </Field>
 
         <Field label="Procedimentos / observações"><Textarea value={procedures} onChange={(e) => setProcedures(e.target.value)} placeholder="Descreva o que foi feito no atendimento…" /></Field>
       </div>
