@@ -198,6 +198,21 @@ export interface StockBalance {
   quantity: number;
 }
 
+/** Solicitação de reposição de estoque (gerada pela OS / pelo técnico). */
+export interface StockRequest {
+  id: string;
+  orgId: string;
+  productId: string;
+  quantity: number;
+  requestedBy?: string;
+  serviceOrderId?: string;
+  appointmentId?: string;
+  note?: string;
+  status: 'pendente' | 'atendida' | 'cancelada';
+  createdAt: string;
+  resolvedAt?: string;
+}
+
 export interface StockMovement {
   id: string;
   orgId: string;

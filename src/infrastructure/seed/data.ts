@@ -14,6 +14,7 @@ import type {
   Invoice,
   License,
   Pest,
+  StockRequest,
   TreatedArea,
   Product,
   ProductCategory,
@@ -87,6 +88,10 @@ export const pests: Pest[] = [
   { id: 'p-esc', orgId: ORG, name: 'Escorpiões', category: 'Peçonhento', defaultWarrantyDays: 90 },
   { id: 'p-ara', orgId: ORG, name: 'Aranhas', category: 'Peçonhento', defaultWarrantyDays: 90 },
   { id: 'p-pul', orgId: ORG, name: 'Pulgas', category: 'Ectoparasita', defaultWarrantyDays: 30 },
+];
+
+export const stockRequests: StockRequest[] = [
+  { id: 'sr-1', orgId: ORG, productId: 'prod-2', quantity: 4, requestedBy: 'u-t1', note: 'Acabou durante o atendimento', status: 'pendente', createdAt: daysFromNow(0) },
 ];
 
 export const treatedAreas: TreatedArea[] = [
