@@ -7,6 +7,7 @@
  */
 import type {
   Appointment,
+  BankAccount,
   CrmLead,
   Customer,
   Equipment,
@@ -76,19 +77,19 @@ export const serviceTypes: ServiceType[] = [
   { id: 'st-ded', orgId: ORG, name: 'Dedetização', defaultDurationMin: 90, defaultPrice: 320, color: '#10b981', defaultProducts: [{ productId: 'prod-1', qty: 1 }, { productId: 'prod-3', qty: 2 }, { productId: 'prod-7', qty: 1 }] },
   { id: 'st-des', orgId: ORG, name: 'Desratização', defaultDurationMin: 75, defaultPrice: 280, color: '#6366f1', defaultProducts: [{ productId: 'prod-2', qty: 2 }, { productId: 'prod-7', qty: 1 }] },
   { id: 'st-san', orgId: ORG, name: 'Sanitização', defaultDurationMin: 60, defaultPrice: 240, color: '#0ea5e9', defaultProducts: [{ productId: 'prod-5', qty: 3 }, { productId: 'prod-6', qty: 1 }] },
-  { id: 'st-cup', orgId: ORG, name: 'Descupinização', defaultDurationMin: 120, defaultPrice: 540, color: '#f59e0b', defaultProducts: [{ productId: 'prod-4', qty: 1 }] },
+  { id: 'st-cup', orgId: ORG, name: 'Descupinização', defaultDurationMin: 120, defaultPrice: 540, color: '#f59e0b', defaultProducts: [{ productId: 'prod-4', qty: 1 }], defaultValidityDays: 365 },
   { id: 'st-esc', orgId: ORG, name: 'Escorpião/Aranha', defaultDurationMin: 80, defaultPrice: 360, color: '#ef4444', defaultProducts: [{ productId: 'prod-1', qty: 1 }] },
 ];
 
 export const pests: Pest[] = [
-  { id: 'p-bar', orgId: ORG, name: 'Baratas', category: 'Rasteira', defaultWarrantyDays: 90, description: 'Baratas de esgoto e germânica.' },
-  { id: 'p-rat', orgId: ORG, name: 'Ratos', category: 'Roedor', defaultWarrantyDays: 60, description: 'Ratazana, rato de telhado e camundongo.' },
-  { id: 'p-cup', orgId: ORG, name: 'Cupins', category: 'Xilófago', defaultWarrantyDays: 365, description: 'Cupim de solo e de madeira seca.' },
-  { id: 'p-for', orgId: ORG, name: 'Formigas', category: 'Rasteira', defaultWarrantyDays: 90 },
-  { id: 'p-mos', orgId: ORG, name: 'Mosquitos', category: 'Voadora', defaultWarrantyDays: 30 },
-  { id: 'p-esc', orgId: ORG, name: 'Escorpiões', category: 'Peçonhento', defaultWarrantyDays: 90 },
-  { id: 'p-ara', orgId: ORG, name: 'Aranhas', category: 'Peçonhento', defaultWarrantyDays: 90 },
-  { id: 'p-pul', orgId: ORG, name: 'Pulgas', category: 'Ectoparasita', defaultWarrantyDays: 30 },
+  { id: 'p-bar', orgId: ORG, name: 'Baratas', category: 'Rasteira', defaultWarrantyDays: 90, defaultValidityDays: 180, description: 'Baratas de esgoto e germânica.' },
+  { id: 'p-rat', orgId: ORG, name: 'Ratos', category: 'Roedor', defaultWarrantyDays: 60, defaultValidityDays: 90, description: 'Ratazana, rato de telhado e camundongo.' },
+  { id: 'p-cup', orgId: ORG, name: 'Cupins', category: 'Xilófago', defaultWarrantyDays: 365, defaultValidityDays: 365, description: 'Cupim de solo e de madeira seca.' },
+  { id: 'p-for', orgId: ORG, name: 'Formigas', category: 'Rasteira', defaultWarrantyDays: 90, defaultValidityDays: 180 },
+  { id: 'p-mos', orgId: ORG, name: 'Mosquitos', category: 'Voadora', defaultWarrantyDays: 30, defaultValidityDays: 60 },
+  { id: 'p-esc', orgId: ORG, name: 'Escorpiões', category: 'Peçonhento', defaultWarrantyDays: 90, defaultValidityDays: 180 },
+  { id: 'p-ara', orgId: ORG, name: 'Aranhas', category: 'Peçonhento', defaultWarrantyDays: 90, defaultValidityDays: 180 },
+  { id: 'p-pul', orgId: ORG, name: 'Pulgas', category: 'Ectoparasita', defaultWarrantyDays: 30, defaultValidityDays: 60 },
 ];
 
 export const recurringPayables: RecurringPayable[] = [
@@ -296,6 +297,12 @@ export const revenueSeries: { month: string; receita: number; despesa: number }[
   { month: 'Mai', receita: 34500, despesa: 20300 },
   { month: 'Jun', receita: 38200, despesa: 21800 },
   { month: 'Jul', receita: 41100, despesa: 22400 },
+];
+
+// ── Financeiro / bancos ────────────────────────────────────────────────────────
+export const bankAccounts: BankAccount[] = [
+  { id: 'bank-1', orgId: ORG, bank: 'Banco do Brasil', agency: '1234-5', account: '65432-1', alias: 'Conta principal', openingBalance: 28500, isActive: true },
+  { id: 'bank-2', orgId: ORG, bank: 'Itaú', agency: '0456', account: '11223-4', alias: 'Conta reserva', openingBalance: 12000, isActive: true },
 ];
 
 // ── Fiscal / licenças ─────────────────────────────────────────────────────────

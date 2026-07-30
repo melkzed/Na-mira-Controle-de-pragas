@@ -161,16 +161,17 @@ function EmergencyPanel() {
 
 /** Cadastro de pragas — alimenta a Ordem de Serviço (nome, categoria, garantia). */
 function PestsPanel() {
-  const { items, add, remove } = usePestsStore();
+  const { items, add, update, remove } = usePestsStore();
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
   const [warranty, setWarranty] = useState('');
+  const [validity, setValidity] = useState('');
 
   const create = () => {
     if (!name.trim()) return;
-    add({ id: uid('p'), orgId: 'org-namira', name: name.trim(), category: category.trim() || undefined, defaultWarrantyDays: warranty ? Number(warranty) : undefined });
+    add({ id: uid('p'), orgId: 'org-namira', name: name.trim(), category: category.trim() || undefined, defaultWarrantyDays: warranty ? Number(warranty) : undefined, defaultValidityDays: validity ? Number(validity) : undefined });
     toast('Praga cadastrada.', { tone: 'success' });
-    setName(''); setCategory(''); setWarranty('');
+    setName(''); setCategory(''); setWarranty(''); setValidity('');
   };
 
   return (
@@ -181,14 +182,23 @@ function PestsPanel() {
           <Field label="Nome"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Percevejos" onKeyDown={(e) => e.key === 'Enter' && create()} /></Field>
           <Field label="Categoria"><Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Rasteira / Voadora…" /></Field>
           <Field label="Garantia padrão (dias)"><Input type="number" min={0} value={warranty} onChange={(e) => setWarranty(e.target.value)} placeholder="90" /></Field>
-          <div className="flex items-end"><Button className="w-full" leftIcon={<Plus size={15} />} onClick={create} disabled={!name.trim()}>Adicionar</Button></div>
+          <Field label="Validade da proteção (dias)"><Input type="number" min={0} value={validity} onChange={(e) => setValidity(e.target.value)} placeholder="180" /></Field>
+          <div className="col-span-2 flex items-end"><Button className="w-full" leftIcon={<Plus size={15} />} onClick={create} disabled={!name.trim()}>Adicionar</Button></div>
         </div>
         <div className="max-h-64 space-y-1.5 overflow-y-auto">
           {items.map((p) => (
             <div key={p.id} className="flex items-center gap-2 rounded-lg border border-border/60 px-3 py-2">
               <span className="flex-1 text-sm font-medium text-foreground">{p.name}</span>
               {p.category && <Badge tone="neutral">{p.category}</Badge>}
-              {p.defaultWarrantyDays != null && <Badge tone="brand">{p.defaultWarrantyDays}d</Badge>}
+              {p.defaultWarrantyDays != null && <Badge tone="brand">Garantia {p.defaultWarrantyDays}d</Badge>}
+              {p.defaultValidityDays != null && (
+                <Input
+                  type="number" min={0} value={p.defaultValidityDays}
+                  onChange={(e) => update(p.id, { defaultValidityDays: Number(e.target.value) || undefined })}
+                  className="h-7 w-20 px-2 text-xs"
+                  aria-label={`Validade de ${p.name}`}
+                />
+              )}
               <button onClick={() => remove(p.id)} aria-label={`Excluir ${p.name}`} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-danger"><X size={14} /></button>
             </div>
           ))}
@@ -260,6 +270,15 @@ function ServiceDefaultsPanel() {
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: st.color }} />
               <span className="text-sm font-semibold text-foreground">{st.name}</span>
               <span className="text-xs text-muted-foreground">· {st.defaultDurationMin}min</span>
+              <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+                Validade (dias)
+                <Input
+                  type="number" min={0} value={st.defaultValidityDays ?? ''}
+                  onChange={(e) => update(st.id, { defaultValidityDays: e.target.value ? Number(e.target.value) : undefined })}
+                  className="h-7 w-20 px-2 text-xs" placeholder="—"
+                  aria-label={`Validade padrão de ${st.name}`}
+                />
+              </label>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               {(st.defaultProducts ?? []).map((dp) => (
