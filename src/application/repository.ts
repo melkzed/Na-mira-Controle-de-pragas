@@ -8,7 +8,7 @@
  */
 import * as seed from '@/infrastructure/seed/data';
 import { useCustomersStore } from '@/store/customersStore';
-import { useProductsStore, useServiceTypesStore } from '@/store/entityStores';
+import { useProductsStore, useServiceTypesStore, useUsersStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useStockStore } from '@/store/stockStore';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
@@ -30,7 +30,19 @@ export function getCustomer(id: string): Customer | undefined {
 
 export function getUser(id?: string): User | undefined {
   if (!id) return undefined;
-  return seed.users.find((u) => u.id === id);
+  return useUsersStore.getState().items.find((u) => u.id === id);
+}
+
+export function allUsers(): User[] {
+  return useUsersStore.getState().items;
+}
+
+export function allTechnicians(): User[] {
+  return useUsersStore.getState().items.filter((u) => u.role === 'tecnico');
+}
+
+export function activeTechnicians(): User[] {
+  return allTechnicians().filter((u) => u.isActive);
 }
 
 export function getProduct(id: string): Product | undefined {
@@ -88,4 +100,18 @@ export function appointmentsForTechnician(
         a.scheduledStart.slice(0, 10) === day,
     )
     .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
+}
+
+/** Histórico de visitas do técnico (todas as datas) — mais recentes primeiro. */
+export function appointmentsHistoryForTechnician(technicianId: string): Appointment[] {
+  return useAppointmentsStore.getState().appointments
+    .filter((a) => a.technicianId === technicianId)
+    .sort((a, b) => b.scheduledStart.localeCompare(a.scheduledStart));
+}
+
+/** Ordens de Serviço em que o técnico participou — mais recentes primeiro. */
+export function serviceOrdersForTechnician(technicianId: string): ServiceOrder[] {
+  return useServiceOrdersStore.getState().orders
+    .filter((so) => so.technicianId === technicianId || so.technicianIds?.includes(technicianId))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

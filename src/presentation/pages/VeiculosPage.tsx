@@ -8,8 +8,7 @@ import { Avatar } from '../components/ui/Avatar';
 import { Drawer } from '../components/ui/Drawer';
 import { Field, Input, Select } from '../components/ui/Field';
 import { getUser } from '@/application/repository';
-import { users } from '@/infrastructure/seed/data';
-import { useVehiclesStore } from '@/store/entityStores';
+import { useVehiclesStore, useUsersStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
 import { toast } from '@/store/toastStore';
 import type { Vehicle } from '@/domain/types';
@@ -55,6 +54,7 @@ export function VeiculosPage() {
 }
 
 function VehicleForm({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (v: Vehicle) => void }) {
+  const users = useUsersStore((s) => s.items);
   const [plate, setPlate] = useState('');
   const [model, setModel] = useState('');
   const [driverId, setDriverId] = useState('');

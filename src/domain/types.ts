@@ -35,6 +35,8 @@ export interface User {
   avatarUrl?: string;
   role: UserRole;
   isActive: boolean;
+  /** Permissão de acesso ao aplicativo de campo (só relevante para técnicos). */
+  fieldAppAccess?: boolean;
 }
 
 export interface Team {
@@ -227,6 +229,15 @@ export interface StockMovement {
   createdAt: string;
 }
 
+/** Evento no histórico de movimentação de um equipamento/ferramenta. */
+export interface EquipmentHistoryEntry {
+  at: string;
+  type: 'entrega' | 'devolucao' | 'status';
+  technicianId?: string;
+  by?: string;
+  note?: string;
+}
+
 export interface Equipment {
   id: string;
   orgId: string;
@@ -241,8 +252,25 @@ export interface Equipment {
   checkedOutAt?: string;
   checkedOutTo?: string;
   checkedOutOsId?: string;
+  checkedOutBy?: string;
   expectedReturnAt?: string;
   notes?: string;
+  /** Histórico completo de entregas/devoluções/mudanças de status. */
+  history?: EquipmentHistoryEntry[];
+}
+
+/** Solicitação de ferramenta/equipamento feita pelo técnico no app de campo. */
+export interface EquipmentRequest {
+  id: string;
+  orgId: string;
+  technicianId: string;
+  equipmentId: string;
+  note?: string;
+  status: 'pendente' | 'aprovada' | 'negada';
+  createdAt: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  expectedReturnAt?: string;
 }
 
 export interface Vehicle {

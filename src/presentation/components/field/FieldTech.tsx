@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { Eye } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
-import { technicians } from '@/infrastructure/seed/data';
+import { useUsersStore } from '@/store/entityStores';
 
 interface FieldTechValue {
   /** Usuário autenticado é técnico (não é staff em pré-visualização). */
@@ -22,9 +22,10 @@ const Ctx = createContext<FieldTechValue | null>(null);
  */
 export function FieldTechProvider({ children }: { children: ReactNode }) {
   const currentUser = useAppStore((s) => s.currentUser);
+  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico' && u.isActive));
   const isTech = currentUser?.role === 'tecnico';
   const [previewId, setPreviewId] = useState(technicians[0]?.id ?? '');
-  const techId = isTech && currentUser ? currentUser.id : previewId;
+  const techId = isTech && currentUser ? currentUser.id : (previewId || technicians[0]?.id || '');
   const techName =
     (isTech && currentUser?.name) ||
     technicians.find((t) => t.id === techId)?.name ||
@@ -47,6 +48,7 @@ export function useFieldTech(): FieldTechValue {
 /** Faixa de pré-visualização — exibida apenas para staff (não-técnicos). */
 export function PreviewBanner() {
   const { isTech, previewId, setPreviewId } = useFieldTech();
+  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico' && u.isActive));
   if (isTech) return null;
   return (
     <div className="mb-4 flex items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 p-3">

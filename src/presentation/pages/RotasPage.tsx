@@ -7,7 +7,7 @@ import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { appointmentsForTechnician, getCustomer, getServiceType } from '@/application/repository';
-import { technicians } from '@/infrastructure/seed/data';
+import { useUsersStore } from '@/store/entityStores';
 import { fmtTime } from '@/lib/date';
 import { appleMapsLink, googleMapsRoute, wazeLink } from '@/lib/geo';
 import { AVG_SPEED_KMH, fmtMinutes, minutesOfDay, planRoute, simulateRoute, type TimedStop } from '@/lib/route';
@@ -27,13 +27,15 @@ const toTimed = (a: Appointment): TimedStop => ({
 
 /** Roteirização — melhor sequência respeitando janelas de horário (hora marcada). */
 export function RotasPage() {
-  const [techId, setTechId] = useState(technicians[0].id);
+  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico' && u.isActive));
+  const [techId, setTechId] = useState('');
   const [optimized, setOptimized] = useState(true);
   const todayIso = new Date().toISOString();
-  const tech = technicians.find((t) => t.id === techId)!;
-  const scheduled = appointmentsForTechnician(techId, todayIso);
+  const effectiveTechId = techId || technicians[0]?.id || '';
+  const tech = technicians.find((t) => t.id === effectiveTechId);
 
   const { orderedGeo, sim, savedKm, totalKm, totalMin, lateCount } = useMemo(() => {
+    const scheduled = effectiveTechId ? appointmentsForTechnician(effectiveTechId, todayIso) : [];
     const withGeo = scheduled.filter(hasGeo);
     const timed = withGeo.map(toTimed);
     const dayStart = withGeo.length ? minutesOfDay(withGeo[0].scheduledStart) : 8 * 60;
@@ -51,7 +53,7 @@ export function RotasPage() {
       totalMin: Math.round((activeSim.distanceKm / AVG_SPEED_KMH) * 60 + serviceMin),
       lateCount: activeSim.late.filter(Boolean).length,
     };
-  }, [scheduled, optimized]);
+  }, [effectiveTechId, todayIso, optimized]);
 
   const mapStops: RouteStop[] = orderedGeo.map((a) => ({
     id: a.id,
@@ -98,7 +100,7 @@ export function RotasPage() {
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader
-            title={`Rota de ${tech.name}`}
+            title={`Rota de ${tech?.name ?? '—'}`}
             subtitle={optimized ? 'Menor deslocamento respeitando hora marcada' : 'Na ordem dos horários agendados'}
             action={
               optimized

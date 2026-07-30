@@ -13,7 +13,7 @@ import { useCustomersStore } from '@/store/customersStore';
 import { useTrapsStore, type TrapInput } from '@/store/trapsStore';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
-import { technicians } from '@/infrastructure/seed/data';
+import { useUsersStore } from '@/store/entityStores';
 import type { TrapDevice, TrapStatus } from '@/domain/types';
 import { fmtDate } from '@/lib/date';
 import { printMipReport, printTrapReport } from '@/lib/printReports';
@@ -135,11 +135,12 @@ function TrapForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
 }
 
 function InspectionForm({ trap, onClose, onSave }: { trap: TrapDevice | null; onClose: () => void; onSave: (d: { trapId: string; date: string; consumed: boolean; action?: any; technicianId?: string; notes?: string }) => void }) {
+  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico'));
   const [consumed, setConsumed] = useState(false);
   const [action, setAction] = useState<'nenhuma' | 'substituida' | 'retirada' | 'reinstalada' | 'extraviada'>('nenhuma');
   const [technicianId, setTechnicianId] = useState(technicians[0]?.id ?? '');
   const [notes, setNotes] = useState('');
-  useEffect(() => { if (trap) { setConsumed(false); setAction('nenhuma'); setTechnicianId(technicians[0]?.id ?? ''); setNotes(''); } }, [trap]);
+  useEffect(() => { if (trap) { setConsumed(false); setAction('nenhuma'); setTechnicianId(technicians[0]?.id ?? ''); setNotes(''); } }, [trap]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!trap) return null;
 
   const submit = () => onSave({ trapId: trap.id, date: new Date().toISOString(), consumed, action, technicianId, notes: notes.trim() || undefined });

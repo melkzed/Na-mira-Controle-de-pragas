@@ -39,68 +39,66 @@ export function CrmPage() {
         actions={<Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Novo lead</Button>}
       />
 
-      <div className="overflow-x-auto pb-4">
-        <div className="flex min-w-[980px] gap-3">
-          {STAGES.map((stage) => {
-            const meta = CRM_STAGE_META[stage];
-            const stageLeads = leads.filter((l) => l.stage === stage);
-            const total = stageLeads.reduce((s, l) => s + (l.estimatedValue ?? 0), 0);
-            return (
-              <div key={stage} className="flex w-64 shrink-0 flex-col">
-                <div className="mb-2 flex items-center justify-between px-1">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: meta.color }} />
-                    <span className="text-sm font-semibold text-foreground">{meta.label}</span>
-                    <span className="text-xs text-muted-foreground">{stageLeads.length}</span>
-                  </div>
+      <div className="space-y-4">
+        {STAGES.map((stage) => {
+          const meta = CRM_STAGE_META[stage];
+          const stageLeads = leads.filter((l) => l.stage === stage);
+          const total = stageLeads.reduce((s, l) => s + (l.estimatedValue ?? 0), 0);
+          return (
+            <div key={stage} className="rounded-2xl border border-border bg-muted/30 p-3">
+              <div className="mb-2 flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: meta.color }} />
+                  <span className="text-sm font-semibold text-foreground">{meta.label}</span>
+                  <span className="text-xs text-muted-foreground">{stageLeads.length}</span>
                 </div>
-                <p className="mb-2 px-1 text-xs text-muted-foreground">{formatCompactCurrency(total)}</p>
-                <div className="flex-1 space-y-2 rounded-2xl bg-muted/40 p-2">
-                  {stageLeads.map((lead, i) => (
-                    <motion.div
-                      key={lead.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: Math.min(i * 0.04, 0.3) }}
-                      whileHover={{ y: -2 }}
-                      onClick={() => setSelected(lead)}
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`Abrir lead ${lead.name}`}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(lead); } }}
-                      className="group cursor-pointer rounded-xl border border-border bg-surface p-3 shadow-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                    >
-                      <p className="text-sm font-semibold text-foreground">{lead.name}</p>
-                      {lead.company && <p className="text-xs text-muted-foreground">{lead.company}</p>}
-                      <div className="mt-2 flex items-center justify-between">
-                        <span className="text-sm font-bold" style={{ color: meta.color }}>{formatCompactCurrency(lead.estimatedValue ?? 0)}</span>
-                        {lead.source && <Badge tone="neutral" className="text-[10px]">{lead.source}</Badge>}
-                      </div>
-                      <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
-                        {lead.ownerId ? (
-                          <div className="flex items-center gap-1.5">
-                            <Avatar name={getUser(lead.ownerId)?.name ?? '?'} size="xs" />
-                            <span className="text-[11px] text-muted-foreground">{getUser(lead.ownerId)?.name?.split(' ')[0]}</span>
-                          </div>
-                        ) : <span />}
-                        {!['ganho', 'perdido'].includes(lead.stage) && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); advance(lead); }}
-                            className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-brand opacity-0 transition hover:bg-brand-soft group-hover:opacity-100"
-                            title="Avançar etapa"
-                          >
-                            avançar <ChevronRight size={12} />
-                          </button>
-                        )}
-                      </div>
-                    </motion.div>
-                  ))}
-                  {stageLeads.length === 0 && <p className="px-2 py-4 text-center text-xs text-muted-foreground/60">Vazio</p>}
-                </div>
+                <p className="text-xs text-muted-foreground">{formatCompactCurrency(total)}</p>
               </div>
-            );
-          })}
-        </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {stageLeads.map((lead, i) => (
+                  <motion.div
+                    key={lead.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: Math.min(i * 0.04, 0.3) }}
+                    whileHover={{ y: -2 }}
+                    onClick={() => setSelected(lead)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Abrir lead ${lead.name}`}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(lead); } }}
+                    className="group w-64 shrink-0 cursor-pointer rounded-xl border border-border bg-surface p-3 shadow-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                  >
+                    <p className="text-sm font-semibold text-foreground">{lead.name}</p>
+                    {lead.company && <p className="text-xs text-muted-foreground">{lead.company}</p>}
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className="text-sm font-bold" style={{ color: meta.color }}>{formatCompactCurrency(lead.estimatedValue ?? 0)}</span>
+                      {lead.source && <Badge tone="neutral" className="text-[10px]">{lead.source}</Badge>}
+                    </div>
+                    <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
+                      {lead.ownerId ? (
+                        <div className="flex items-center gap-1.5">
+                          <Avatar name={getUser(lead.ownerId)?.name ?? '?'} size="xs" />
+                          <span className="text-[11px] text-muted-foreground">{getUser(lead.ownerId)?.name?.split(' ')[0]}</span>
+                        </div>
+                      ) : <span />}
+                      {!['ganho', 'perdido'].includes(lead.stage) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); advance(lead); }}
+                          className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-brand opacity-0 transition hover:bg-brand-soft group-hover:opacity-100"
+                          title="Avançar etapa"
+                        >
+                          avançar <ChevronRight size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                ))}
+                {stageLeads.length === 0 && <p className="px-2 py-4 text-xs text-muted-foreground/60">Vazio</p>}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <LeadForm open={formOpen} onClose={() => setFormOpen(false)} onSave={(input) => { add(input); setFormOpen(false); }} />

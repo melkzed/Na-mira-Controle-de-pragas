@@ -7,7 +7,7 @@ import { Segmented } from './ui/Segmented';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { logChange } from '@/store/auditStore';
 import { useCustomersStore } from '@/store/customersStore';
-import { useServiceTypesStore } from '@/store/entityStores';
+import { useServiceTypesStore, useUsersStore } from '@/store/entityStores';
 import { getProduct } from '@/application/repository';
 import * as seed from '@/infrastructure/seed/data';
 import type { AppointmentPriority } from '@/domain/enums';
@@ -31,6 +31,7 @@ export function AppointmentForm({
   const add = useAppointmentsStore((s) => s.add);
   const customers = useCustomersStore((s) => s.customers);
   const serviceTypes = useServiceTypesStore((s) => s.items);
+  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico' && u.isActive));
 
   const [customerId, setCustomerId] = useState('');
   const [serviceTypeId, setServiceTypeId] = useState(seed.serviceTypes[0]?.id ?? '');
@@ -55,7 +56,7 @@ export function AppointmentForm({
     setStart(toLocalInput(base));
     setCustomerId(customers[0]?.id ?? '');
     setServiceTypeId(seed.serviceTypes[0]?.id ?? '');
-    setTechnicianId(seed.technicians[0]?.id ?? '');
+    setTechnicianId(technicians[0]?.id ?? '');
     setPriority('normal');
     setDuration(seed.serviceTypes[0]?.defaultDurationMin ?? 90);
     setFixedTime(false);
@@ -63,7 +64,7 @@ export function AppointmentForm({
     setRecurrence('none');
     setOccurrences(4);
     setTouched(false);
-  }, [open, defaultDate, customers]);
+  }, [open, defaultDate, customers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ajusta a duração padrão ao trocar o tipo de serviço.
   useEffect(() => {
@@ -148,7 +149,7 @@ export function AppointmentForm({
           </Field>
           <Field label="Técnico responsável">
             <Select value={technicianId} onChange={(e) => setTechnicianId(e.target.value)}>
-              {seed.technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </Select>
           </Field>
         </div>

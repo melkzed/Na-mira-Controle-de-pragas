@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Eraser, PenLine } from 'lucide-react';
+import { Eraser, PenLine, Upload } from 'lucide-react';
 import { Button } from './ui/Button';
 
 /**
- * Bloco de assinatura eletrônica (canvas). Desenha com mouse ou toque, permite
- * limpar e devolve a assinatura como dataURL (PNG) via onChange.
+ * Bloco de assinatura eletrônica (canvas). Desenha com mouse ou toque, aceita
+ * upload de um arquivo de imagem da assinatura, permite limpar e devolve o
+ * resultado como dataURL (PNG) via onChange.
  */
 export function SignaturePad({
   value,
@@ -18,6 +19,7 @@ export function SignaturePad({
   label?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const drawing = useRef(false);
   const [dirty, setDirty] = useState(false);
 
@@ -75,6 +77,29 @@ export function SignaturePad({
     onChange(undefined);
   };
 
+  /** Carrega um arquivo de imagem (foto/scan da assinatura) e desenha no canvas. */
+  const loadFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const img = new Image();
+      img.onload = () => {
+        const ctx = canvas.getContext('2d')!;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const scale = Math.min(rect.width / img.width, height / img.height, 1);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        ctx.drawImage(img, (rect.width - w) / 2, (height - h) / 2, w, h);
+        setDirty(true);
+        onChange(canvas.toDataURL('image/png'));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <div>
       {label && <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><PenLine size={13} /> {label}</p>}
@@ -88,9 +113,17 @@ export function SignaturePad({
           onPointerLeave={end}
           className="block cursor-crosshair"
         />
-        {!dirty && !value && <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">Assine aqui</span>}
+        {!dirty && !value && <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">Assine aqui ou carregue um arquivo</span>}
       </div>
-      <div className="mt-1.5 flex justify-end">
+      <div className="mt-1.5 flex justify-end gap-1">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) loadFile(f); e.target.value = ''; }}
+        />
+        <Button type="button" variant="ghost" size="sm" leftIcon={<Upload size={13} />} onClick={() => fileInputRef.current?.click()}>Carregar arquivo</Button>
         <Button type="button" variant="ghost" size="sm" leftIcon={<Eraser size={13} />} onClick={clear}>Limpar</Button>
       </div>
     </div>

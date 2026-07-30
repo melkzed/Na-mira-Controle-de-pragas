@@ -3,7 +3,7 @@
  * Deriva métricas a partir da fonte de dados sem lógica de UI.
  */
 import * as seed from '@/infrastructure/seed/data';
-import { centralBalance } from './repository';
+import { activeTechnicians, centralBalance } from './repository';
 import { useProductsStore } from '@/store/entityStores';
 import { expiringBatches } from '@/lib/batches';
 import { daysUntil } from '@/lib/utils';
@@ -72,7 +72,7 @@ export function computeDashboard(): DashboardMetrics {
       .map((a) => a.technicianId),
   );
   const techniciansWorking = busyTechIds.size;
-  const techniciansAvailable = seed.technicians.length - techniciansWorking;
+  const techniciansAvailable = activeTechnicians().length - techniciansWorking;
 
   const paidToday = seed.financeEntries.filter(
     (e) => e.type === 'receita' && e.status === 'pago' && isSameDay(e.paidAt ?? '', day),

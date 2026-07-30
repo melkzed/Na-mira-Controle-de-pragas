@@ -53,7 +53,7 @@ export type CrmStage =
   | 'ganho'
   | 'perdido';
 
-export type EquipmentStatus = 'disponivel' | 'em_uso' | 'manutencao' | 'inativo';
+export type EquipmentStatus = 'disponivel' | 'em_uso' | 'manutencao' | 'perdido' | 'danificado' | 'inativo';
 
 // ── Metadados de apresentação para os estados de domínio ──────────────────
 

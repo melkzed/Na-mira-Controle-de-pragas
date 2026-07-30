@@ -21,6 +21,7 @@ const NaoConformidadePage = named(() => import('./presentation/pages/NaoConformi
 const EstoquePage = named(() => import('./presentation/pages/EstoquePage'), 'EstoquePage');
 const ProdutosPage = named(() => import('./presentation/pages/ProdutosPage'), 'ProdutosPage');
 const EquipamentosPage = named(() => import('./presentation/pages/EquipamentosPage'), 'EquipamentosPage');
+const TecnicosPage = named(() => import('./presentation/pages/TecnicosPage'), 'TecnicosPage');
 const VeiculosPage = named(() => import('./presentation/pages/VeiculosPage'), 'VeiculosPage');
 const FinanceiroPage = named(() => import('./presentation/pages/FinanceiroPage'), 'FinanceiroPage');
 const FiscalPage = named(() => import('./presentation/pages/FiscalPage'), 'FiscalPage');
@@ -70,6 +71,7 @@ export const router = createBrowserRouter([
       { path: 'estoque', element: <EstoquePage /> },
       { path: 'produtos', element: <ProdutosPage /> },
       { path: 'equipamentos', element: <EquipamentosPage /> },
+      { path: 'tecnicos', element: <TecnicosPage /> },
       { path: 'veiculos', element: <VeiculosPage /> },
       { path: 'financeiro', element: <FinanceiroPage /> },
       { path: 'fiscal', element: <FiscalPage /> },

@@ -7,19 +7,14 @@ import { Drawer } from '../components/ui/Drawer';
 import { Field, Input, Select } from '../components/ui/Field';
 import { Table, type Column } from '../components/ui/Table';
 import { getUser } from '@/application/repository';
-import { users } from '@/infrastructure/seed/data';
-import { useEquipmentStore } from '@/store/entityStores';
+import { useEquipmentStore, useUsersStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
 import type { Equipment } from '@/domain/types';
 import type { EquipmentStatus } from '@/domain/enums';
+import { EQUIPMENT_STATUS_META } from '@/domain/equipmentMeta';
 import { toast } from '@/store/toastStore';
 
-const statusMeta: Record<EquipmentStatus, { label: string; tone: any }> = {
-  disponivel: { label: 'Disponível', tone: 'success' },
-  em_uso: { label: 'Em uso', tone: 'brand' },
-  manutencao: { label: 'Manutenção', tone: 'warning' },
-  inativo: { label: 'Inativo', tone: 'neutral' },
-};
+const statusMeta = EQUIPMENT_STATUS_META;
 
 // Categorias de equipamento — base + personalizadas (persistidas no navegador).
 const BASE_KINDS = ['Pulverizador', 'Bomba', 'Nebulizador', 'EPI', 'Ferramenta'];
@@ -116,6 +111,7 @@ function StatMini({ label, value, tone }: { label: string; value: number; tone: 
 }
 
 function EquipmentForm({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (e: Equipment) => void }) {
+  const users = useUsersStore((s) => s.items);
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [assetNumber, setAssetNumber] = useState('');

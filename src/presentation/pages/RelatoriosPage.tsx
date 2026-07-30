@@ -9,7 +9,7 @@ import { Input, Select } from '../components/ui/Field';
 import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getServiceType, getUser } from '@/application/repository';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
-import { useProductsStore } from '@/store/entityStores';
+import { useProductsStore, useUsersStore } from '@/store/entityStores';
 import { useCustomersStore } from '@/store/customersStore';
 import { downloadCsv, downloadXls } from '@/lib/export';
 import { printDataReport, type ReportColumn } from '@/lib/printReports';
@@ -143,6 +143,7 @@ const fileName = (name: string) => name.toLowerCase().normalize('NFD').replace(/
 
 export function RelatoriosPage() {
   const customers = useCustomersStore((s) => s.customers);
+  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico'));
   useServiceOrdersStore((s) => s.orders); // reatividade das contagens
   useProductsStore((s) => s.items);
 
@@ -187,7 +188,7 @@ export function RelatoriosPage() {
           </Select>
           <Select value={f.technicianId} onChange={(e) => set({ technicianId: e.target.value })} aria-label="Filtrar por técnico">
             <option value="">Todos os técnicos</option>
-            {seed.technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </Select>
           <Select value={f.serviceTypeId} onChange={(e) => set({ serviceTypeId: e.target.value })} aria-label="Filtrar por serviço">
             <option value="">Todos os serviços</option>
