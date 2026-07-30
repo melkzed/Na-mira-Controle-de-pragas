@@ -15,7 +15,8 @@ import type { Vehicle } from '@/domain/types';
 import { formatNumber } from '@/lib/utils';
 
 export function VeiculosPage() {
-  const { items, add, remove } = useVehiclesStore();
+  const { items, add, update, remove } = useVehiclesStore();
+  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico' && u.isActive));
   const [formOpen, setFormOpen] = useState(false);
 
   return (
@@ -36,7 +37,24 @@ export function VeiculosPage() {
               <p className="mt-3 text-lg font-bold tracking-tight text-foreground">{v.plate}</p>
               <p className="text-sm text-muted-foreground">{v.model}</p>
               <div className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
-                <div className="flex items-center justify-between"><span className="text-muted-foreground">Motorista</span>{driver ? <span className="flex items-center gap-1.5 font-medium text-foreground"><Avatar name={driver.name} size="xs" />{driver.name.split(' ')[0]}</span> : '—'}</div>
+                <label className="block">
+                  <span className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                    Técnico responsável {driver && <Avatar name={driver.name} size="xs" />}
+                  </span>
+                  <Select
+                    value={v.driverId ?? ''}
+                    onChange={(e) => {
+                      update(v.id, { driverId: e.target.value || undefined });
+                      const newDriver = technicians.find((t) => t.id === e.target.value);
+                      toast(newDriver ? `${v.plate} agora com ${newDriver.name}.` : `${v.plate} sem técnico responsável.`, { tone: 'success' });
+                    }}
+                    className="h-9 text-sm"
+                    aria-label={`Técnico responsável pelo veículo ${v.plate}`}
+                  >
+                    <option value="">Sem técnico</option>
+                    {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </Select>
+                </label>
                 <div className="flex items-center justify-between"><span className="text-muted-foreground">Quilometragem</span><span className="font-medium text-foreground">{formatNumber(v.odometerKm)} km</span></div>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2">

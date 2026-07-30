@@ -28,7 +28,7 @@ export function printNfse(invoice: Invoice, customer?: Customer): void {
     .sec h2{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin:0 0 8px}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;font-size:13px} .grid span{color:#64748b}
     .val{padding:16px 22px;display:flex;justify-content:space-between;align-items:center;background:#f8fafc}
-    .val .t{font-size:12px;color:#64748b} .val .v{font-size:24px;font-weight:800;color:#10b981}
+    .val .t{font-size:12px;color:#64748b} .val .v{font-size:24px;font-weight:800;color:#D32F2F}
     .foot{padding:12px 22px;font-size:11px;color:#94a3b8;text-align:center}
     @media print{body{padding:0}.doc{border:0}@page{margin:14mm}}
   </style></head><body>
@@ -57,7 +57,7 @@ export function printNfse(invoice: Invoice, customer?: Customer): void {
       <div><div class="t">Valor do ISS: ${esc(formatCurrency(invoice.taxAmount))}</div><div class="t">Status: ${invoice.status === 'emitida' ? 'Emitida (simulação)' : 'Cancelada'}</div></div>
       <div style="text-align:right"><div class="t">Valor total</div><div class="v">${esc(formatCurrency(invoice.amount))}</div></div>
     </div>
-    <div class="foot">Documento gerado por Na Mira · Controle de Pragas — simulação de NFS-e (emissão real via provedor municipal)</div>
+    <div class="foot">Documento gerado por Gestão Dedetizadora — simulação de NFS-e (emissão real via provedor municipal)</div>
   </div>
   <script>window.onload=function(){setTimeout(function(){window.print();},150);};</script></body></html>`;
   const w = window.open('', '_blank', 'width=880,height=1000');

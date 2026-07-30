@@ -164,6 +164,10 @@ export interface Product {
   supplierId?: string;
   registrationCode?: string;
   activeIngredient?: string;
+  /** Grupo químico (ex.: Piretróide, Neonicotinóide, Hidroxicumarina…) — laudos técnicos. */
+  chemicalGroup?: string;
+  /** Antídoto/conduta em caso de intoxicação — laudos técnicos. */
+  antidote?: string;
   applicationType?: string;
   dosage?: string;
   unit: string;
@@ -293,6 +297,8 @@ export interface ServiceType {
   color: string;
   /** Produtos padrão do serviço — pré-preenchem a OS; o técnico ajusta o que usou. */
   defaultProducts?: { productId: string; qty: number }[];
+  /** Validade padrão do serviço (dias) — sugere a validade da OS. */
+  defaultValidityDays?: number;
 }
 
 export interface AppointmentProduct {
@@ -399,6 +405,8 @@ export interface Pest {
   description?: string;
   /** Tempo de garantia padrão (dias) — alimenta a OS ao selecionar a praga. */
   defaultWarrantyDays?: number;
+  /** Validade da proteção contra essa praga (dias) — sugere a validade da OS. */
+  defaultValidityDays?: number;
   notes?: string;
 }
 
@@ -429,6 +437,13 @@ export interface OsRecurrence {
   frequency?: RecurrenceFreq;
 }
 
+/** Forma de emissão do pagamento. */
+export type PaymentMethodKind = 'cheque' | 'debito_conta' | 'eletronico' | 'dinheiro';
+/** Aprovação eletrônica do pagamento antes da emissão. */
+export type ApprovalStatus = 'pendente' | 'aprovado' | 'reprovado';
+/** Tributo estadual/municipal vinculado ao lançamento. */
+export type TaxKind = 'darf' | 'iptu' | 'concessionaria';
+
 export interface FinanceEntry {
   id: string;
   orgId: string;
@@ -444,6 +459,90 @@ export interface FinanceEntry {
   dueDate?: string;
   paidAt?: string;
   createdAt: string;
+  /** Aprovação eletrônica — despesas só são emitidas depois de aprovadas. */
+  approvalStatus?: ApprovalStatus;
+  /** Desconto vinculado ao lançamento (abatido do valor na emissão). */
+  discount?: number;
+  /** Forma de emissão do pagamento. */
+  paymentMethod?: PaymentMethodKind;
+  /** Conta bancária usada na emissão/recebimento. */
+  bankAccountId?: string;
+  /** Agrupa vários lançamentos pagos juntos em uma mesma emissão. */
+  groupId?: string;
+  /** Tributo estadual/municipal (DARF, IPTU, concessionárias). */
+  taxKind?: TaxKind;
+  /** Vencimento original, preenchido quando a pendência é prorrogada. */
+  postponedFrom?: string;
+  /** Documento fiscal anexado (nota fiscal do fornecedor) — nome e conteúdo. */
+  fiscalDocumentName?: string;
+  fiscalDocumentUrl?: string;
+}
+
+/** Conta bancária da empresa — saldo calculado a partir dos lançamentos (BankTransaction). */
+export interface BankAccount {
+  id: string;
+  orgId: string;
+  bank: string;
+  agency?: string;
+  account: string;
+  alias?: string;
+  openingBalance: number;
+  isActive: boolean;
+}
+
+/** Movimentação de uma conta bancária — extrato eletrônico e conciliação. */
+export interface BankTransaction {
+  id: string;
+  orgId: string;
+  accountId: string;
+  type: 'deposito' | 'transferencia_saida' | 'transferencia_entrada' | 'pagamento' | 'recebimento' | 'estorno';
+  amount: number;
+  date: string;
+  description?: string;
+  reconciled: boolean;
+  relatedFinanceEntryId?: string;
+  transferPairId?: string;
+}
+
+/** Cheque emitido — controle de compensação. */
+export interface Check {
+  id: string;
+  orgId: string;
+  number: string;
+  bank: string;
+  amount: number;
+  issueDate: string;
+  dueDate?: string;
+  payee?: string;
+  status: 'emitido' | 'compensado' | 'devolvido' | 'cancelado';
+  financeEntryId?: string;
+}
+
+/** Empréstimo ou aplicação financeira — saldo real x teórico. */
+export interface LoanInvestment {
+  id: string;
+  orgId: string;
+  kind: 'emprestimo' | 'aplicacao';
+  description: string;
+  principal: number;
+  rate?: number;
+  startDate: string;
+  dueDate?: string;
+  theoreticalBalance: number;
+  realBalance: number;
+  active: boolean;
+}
+
+/** Fechamento diário de caixa. */
+export interface CashClosing {
+  id: string;
+  orgId: string;
+  date: string;
+  totalIn: number;
+  totalOut: number;
+  balance: number;
+  closedBy?: string;
+  closedAt: string;
 }
 
 /** Conta a pagar recorrente (aluguel, salários, água, energia, contratos…). */

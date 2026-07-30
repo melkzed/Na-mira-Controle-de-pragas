@@ -21,7 +21,7 @@ import { currentBatch } from '@/lib/batches';
 import { useInvoicesStore } from '@/store/invoicesStore';
 import { useServiceOrdersStore, type ServiceOrderInput } from '@/store/serviceOrdersStore';
 import { useCustomersStore } from '@/store/customersStore';
-import { usePestsStore, useAreasStore, useEquipmentStore, useServiceTypesStore, useUsersStore } from '@/store/entityStores';
+import { usePestsStore, useAreasStore, useEquipmentStore, useServiceTypesStore, useUsersStore, useLicensesStore } from '@/store/entityStores';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
 import { PhotoCapture } from '../components/PhotoCapture';
@@ -206,6 +206,8 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const [photos, setPhotos] = useState<ServiceOrderPhoto[]>([]);
   const [touched, setTouched] = useState(false);
   const [filledFrom, setFilledFrom] = useState<number | null>(null);
+  const [validityTouched, setValidityTouched] = useState(false);
+  const licenses = useLicensesStore((s) => s.items);
 
   const cust = customers.find((c) => c.id === customerId);
 
@@ -217,7 +219,7 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       setTechnicianIds(technicianUsers[0] ? [technicianUsers[0].id] : []);
       setSellerId(''); setStatus('em_andamento'); setAreaIds([]); setPestIds([]); setDuration(''); setProcedures('');
       setPaymentMethod(''); setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
-      setRecEnabled(false); setRecFreq('mensal'); setExecDate(''); setDueDate(''); setValidityDate('');
+      setRecEnabled(false); setRecFreq('mensal'); setExecDate(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
       setEquipmentIds([]); setReturnAt(''); setPhotos([]); setTouched(false); setFilledFrom(null);
     }
   }, [open, customers, serviceTypes]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -249,6 +251,7 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const clearFill = () => {
     setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
     setPestIds([]); setAreaIds([]); setPaymentMethod(''); setRecEnabled(false); setFilledFrom(null);
+    setValidityDate(''); setValidityTouched(false);
   };
 
   const toggle = (setter: React.Dispatch<React.SetStateAction<string[]>>, id: string) =>
@@ -273,6 +276,25 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     setAreaIds((arr) => [...arr, a.id]);
     toast(`Área "${name}" cadastrada.`, { tone: 'success' });
   };
+
+  // Validade sugerida da OS — maior validade entre os serviços e pragas selecionados.
+  const suggestedValidityDays = useMemo(() => {
+    const days = [
+      ...serviceTypeIds.map((id) => serviceTypes.find((s) => s.id === id)?.defaultValidityDays),
+      ...pestIds.map((id) => pests.find((p) => p.id === id)?.defaultValidityDays),
+    ].filter((v): v is number => v != null);
+    return days.length ? Math.max(...days) : undefined;
+  }, [serviceTypeIds, pestIds, serviceTypes, pests]);
+
+  useEffect(() => {
+    if (validityTouched || suggestedValidityDays == null) return;
+    const d = new Date();
+    d.setDate(d.getDate() + suggestedValidityDays);
+    setValidityDate(d.toISOString().slice(0, 10));
+  }, [suggestedValidityDays, validityTouched]);
+
+  // Certificações/licenças da empresa vencidas — alertadas na geração da OS.
+  const expiredLicenses = licenses.filter((l) => l.expiresAt && new Date(l.expiresAt) < new Date());
 
   // Produtos sugeridos: união dos produtos padrão dos serviços selecionados.
   const suggestedProducts = useMemo(() => {
@@ -350,6 +372,13 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
           </div>
         )}
 
+        {expiredLicenses.length > 0 && (
+          <div className="rounded-xl border border-danger/30 bg-danger-soft/30 p-2.5 text-xs text-danger">
+            <span className="font-semibold">Atenção — certificação vencida:</span>{' '}
+            {expiredLicenses.map((l) => `${l.name} (venceu em ${fmtDate(l.expiresAt!)})`).join(', ')}. Regularize antes de emitir o certificado/laudo desta OS.
+          </div>
+        )}
+
         <Field label="Serviços executados" hint="Toque para adicionar vários serviços à mesma OS">
           <div className="flex flex-wrap items-center gap-1.5">
             {serviceTypes.map((s) => <Chip key={s.id} active={serviceTypeIds.includes(s.id)} onClick={() => toggle(setServiceTypeIds, s.id)}>{s.name}</Chip>)}
@@ -408,7 +437,9 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
           <Field label="Status"><Select value={status} onChange={(e) => setStatus(e.target.value as ServiceOrderStatus)}>{(Object.keys(OS_STATUS_LABEL) as ServiceOrderStatus[]).map((s) => <option key={s} value={s}>{OS_STATUS_LABEL[s]}</option>)}</Select></Field>
           <Field label="Data de execução"><Input type="date" value={execDate} onChange={(e) => setExecDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
           <Field label="Vencimento"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
-          <Field label="Validade do serviço"><Input type="date" value={validityDate} onChange={(e) => setValidityDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+          <Field label="Validade do serviço" hint={!validityTouched && suggestedValidityDays != null ? `Sugerida pelo serviço/praga: ${suggestedValidityDays} dias` : undefined}>
+            <Input type="date" value={validityDate} onChange={(e) => { setValidityDate(e.target.value); setValidityTouched(true); }} onClick={(e) => e.currentTarget.showPicker?.()} />
+          </Field>
           <Field label="Duração (min)"><Input type="number" min={0} value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="—" /></Field>
         </div>
 

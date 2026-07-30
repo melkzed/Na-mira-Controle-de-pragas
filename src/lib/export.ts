@@ -47,7 +47,7 @@ export function downloadXls<T>(
   columns: CsvColumn<T>[],
   title?: string,
 ): void {
-  const head = `<tr>${columns.map((c) => `<th style="background:#10b981;color:#fff;border:1px solid #cbd5e1;padding:6px 10px;text-align:left">${esc(c.header)}</th>`).join('')}</tr>`;
+  const head = `<tr>${columns.map((c) => `<th style="background:#D32F2F;color:#fff;border:1px solid #cbd5e1;padding:6px 10px;text-align:left">${esc(c.header)}</th>`).join('')}</tr>`;
   const body = rows
     .map((r) => `<tr>${columns.map((c) => `<td style="border:1px solid #e2e8f0;padding:5px 10px">${esc(c.value(r))}</td>`).join('')}</tr>`)
     .join('');

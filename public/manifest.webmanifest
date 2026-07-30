@@ -1,13 +1,13 @@
 {
-  "name": "Na Mira · Controle de Pragas",
-  "short_name": "Na Mira",
-  "description": "Gestão operacional para controle de pragas — agenda, equipes em campo e estoque.",
+  "name": "Gestão Dedetizadora · Controle de Pragas",
+  "short_name": "Gestão Dedetizadora",
+  "description": "O controle inteligente das suas operações — agenda, equipes em campo e estoque para empresas de controle de pragas.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#f4f7f5",
-  "theme_color": "#10b981",
+  "background_color": "#fafafa",
+  "theme_color": "#D32F2F",
   "categories": ["business", "productivity"],
   "lang": "pt-BR",
   "icons": [

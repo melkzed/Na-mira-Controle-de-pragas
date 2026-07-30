@@ -11,7 +11,7 @@ import { Field, Input } from '../components/ui/Field';
 import { Combobox } from '../components/ui/Combobox';
 import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
-import { useUsersStore, useEquipmentStore } from '@/store/entityStores';
+import { useUsersStore, useEquipmentStore, useVehiclesStore } from '@/store/entityStores';
 import { useEquipmentRequestsStore } from '@/store/equipmentRequestsStore';
 import { useStockRequestsStore } from '@/store/stockRequestsStore';
 import { useStockStore } from '@/store/stockStore';
@@ -284,17 +284,36 @@ function TechnicianDetail({ tech, onClose, onEdit }: { tech: User | null; onClos
           { value: 'atividades', label: 'Atividades' },
         ]} />
 
-        {tab === 'dados' && (
-          <div className="space-y-2.5">
-            <InfoRow label="Telefone" value={tech.phone ?? '—'} />
-            <InfoRow label="E-mail" value={tech.email} />
-            <InfoRow label="Acesso ao app de campo" value={tech.fieldAppAccess === false ? 'Bloqueado' : 'Liberado'} />
-          </div>
-        )}
+        {tab === 'dados' && <TechDadosTab tech={tech} />}
         {tab === 'equipamentos' && <TechEquipmentTab key={tech.id} tech={tech} />}
         {tab === 'atividades' && <TechActivityTab key={tech.id} tech={tech} />}
       </div>
     </Drawer>
+  );
+}
+
+/** Dados cadastrais do técnico + veículo atualmente associado. */
+function TechDadosTab({ tech }: { tech: User }) {
+  const vehicles = useVehiclesStore((s) => s.items);
+  const vehicle = vehicles.find((v) => v.driverId === tech.id);
+
+  return (
+    <div className="space-y-2.5">
+      <InfoRow label="Telefone" value={tech.phone ?? '—'} />
+      <InfoRow label="E-mail" value={tech.email} />
+      <InfoRow label="Acesso ao app de campo" value={tech.fieldAppAccess === false ? 'Bloqueado' : 'Liberado'} />
+      <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Veículo associado</p>
+        {vehicle ? (
+          <div className="flex items-center justify-between">
+            <span className="font-medium text-foreground">{vehicle.plate}{vehicle.model ? ` · ${vehicle.model}` : ''}</span>
+            <Badge tone={vehicle.isActive ? 'success' : 'neutral'} dot>{vehicle.isActive ? 'Ativo' : 'Inativo'}</Badge>
+          </div>
+        ) : (
+          <span className="text-muted-foreground">Nenhum veículo associado.</span>
+        )}
+      </div>
+    </div>
   );
 }
 

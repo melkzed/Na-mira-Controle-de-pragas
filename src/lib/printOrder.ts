@@ -10,6 +10,7 @@ import { WARRANTY_TYPE_LABEL, RECURRENCE_FREQ_LABEL } from '@/domain/enums';
 import { useSettingsStore } from '@/store/settingsStore';
 import { formatDocument } from './utils';
 import { currentBatch } from './batches';
+import { logoSvgMarkup } from './logoSvg';
 import { toast } from '@/store/toastStore';
 
 function esc(s: unknown): string {
@@ -105,15 +106,15 @@ export function printServiceOrder(so: ServiceOrder, options?: { includePhotos?: 
   * { box-sizing: border-box; }
   body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #0f172a; margin: 0; padding: 32px; }
   .doc { max-width: 760px; margin: 0 auto; }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #10b981; padding-bottom: 16px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #D32F2F; padding-bottom: 16px; }
   .brand { display: flex; gap: 12px; align-items: center; }
-  .logo { width: 44px; height: 44px; border-radius: 10px; background: #10b981; color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 20px; }
+  .logo { width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .brand h1 { font-size: 16px; margin: 0; }
   .brand p { margin: 2px 0 0; font-size: 12px; color: #64748b; }
   .osno { text-align: right; }
-  .osno .n { font-size: 22px; font-weight: 800; color: #10b981; }
+  .osno .n { font-size: 22px; font-weight: 800; color: #D32F2F; }
   .osno .l { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
-  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #10b981; margin: 24px 0 8px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #D32F2F; margin: 24px 0 8px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; font-size: 13px; }
   .grid div span { color: #64748b; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
@@ -131,7 +132,7 @@ export function printServiceOrder(so: ServiceOrder, options?: { includePhotos?: 
   <div class="doc">
     <div class="head">
       <div class="brand">
-        <div class="logo">NM</div>
+        <div class="logo">${logoSvgMarkup(40)}</div>
         <div>
           <h1>${esc(org.name)}</h1>
           <p>${esc(org.legalName)} · CNPJ ${esc(org.cnpj)}</p>
@@ -201,7 +202,7 @@ export function printServiceOrder(so: ServiceOrder, options?: { includePhotos?: 
       <div class="line">${sigImg(companySig)}${esc(org.name)} · Responsável Técnico</div>
     </div>
 
-    <div class="foot">Documento gerado por Na Mira · Controle de Pragas em ${new Date().toLocaleString('pt-BR')}</div>
+    <div class="foot">Documento gerado por Gestão Dedetizadora em ${new Date().toLocaleString('pt-BR')}</div>
   </div>
   <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 150); };</script>
 </body></html>`;
