@@ -10,7 +10,7 @@ import { Table, type Column } from '../components/ui/Table';
 import { ServiceOrderStatusBadge } from '../components/StatusBadge';
 import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getProduct, getServiceType, getUser, lastOrderForCustomer } from '@/application/repository';
-import type { ServiceOrder } from '@/domain/types';
+import type { Pest, ServiceOrder, ServiceType, TreatedArea } from '@/domain/types';
 import type { RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
 import { PAYMENT_METHODS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
 import { fmtDate } from '@/lib/date';
@@ -21,17 +21,20 @@ import { currentBatch } from '@/lib/batches';
 import { useInvoicesStore } from '@/store/invoicesStore';
 import { useServiceOrdersStore, type ServiceOrderInput } from '@/store/serviceOrdersStore';
 import { useCustomersStore } from '@/store/customersStore';
-import { usePestsStore, useAreasStore, useEquipmentStore, useServiceTypesStore } from '@/store/entityStores';
+import { usePestsStore, useAreasStore, useEquipmentStore, useServiceTypesStore, useUsersStore } from '@/store/entityStores';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
 import { PhotoCapture } from '../components/PhotoCapture';
 import { SignaturePad } from '../components/SignaturePad';
+import { QuickAddChip } from '../components/QuickAddChip';
+import { Combobox, MultiCombobox } from '../components/ui/Combobox';
 import { useSettingsStore } from '@/store/settingsStore';
 import { computeTaxes } from '@/application/fiscal/tax';
 import { formatCurrency } from '@/lib/utils';
 import type { ServiceOrderPhoto } from '@/domain/types';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { Award, FileCode, FileText, Receipt } from 'lucide-react';
+import { uid } from '@/store/createEntityStore';
 
 const OS_STATUS_LABEL: Record<ServiceOrderStatus, string> = {
   rascunho: 'Rascunho', em_andamento: 'Em andamento', concluida: 'Concluída', cancelada: 'Cancelada',
@@ -168,11 +171,16 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const add = useServiceOrdersStore((s) => s.add);
   const customers = useCustomersStore((s) => s.customers);
   const serviceTypes = useServiceTypesStore((s) => s.items);
+  const addServiceType = useServiceTypesStore((s) => s.add);
   const pests = usePestsStore((s) => s.items);
+  const addPest = usePestsStore((s) => s.add);
   const areas = useAreasStore((s) => s.items);
+  const addArea = useAreasStore((s) => s.add);
   const equipment = useEquipmentStore((s) => s.items);
   const checkoutEquipment = useEquipmentStore((s) => s.update);
-  const sellers = seed.users.filter((u) => u.role !== 'tecnico');
+  const allStaffUsers = useUsersStore((s) => s.items);
+  const technicianUsers = allStaffUsers.filter((u) => u.role === 'tecnico' && u.isActive);
+  const sellers = allStaffUsers.filter((u) => u.role !== 'tecnico');
 
   const [customerId, setCustomerId] = useState('');
   const [serviceTypeIds, setServiceTypeIds] = useState<string[]>([]);
@@ -206,13 +214,13 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       const c0 = customers[0]?.id ?? '';
       setCustomerId(c0);
       setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
-      setTechnicianIds(seed.technicians[0] ? [seed.technicians[0].id] : []);
+      setTechnicianIds(technicianUsers[0] ? [technicianUsers[0].id] : []);
       setSellerId(''); setStatus('em_andamento'); setAreaIds([]); setPestIds([]); setDuration(''); setProcedures('');
       setPaymentMethod(''); setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
       setRecEnabled(false); setRecFreq('mensal'); setExecDate(''); setDueDate(''); setValidityDate('');
       setEquipmentIds([]); setReturnAt(''); setPhotos([]); setTouched(false); setFilledFrom(null);
     }
-  }, [open, customers, serviceTypes]);
+  }, [open, customers, serviceTypes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Preenchimento inteligente: repete o último atendimento do cliente. */
   const applyHistory = (cid: string) => {
@@ -245,6 +253,26 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
 
   const toggle = (setter: React.Dispatch<React.SetStateAction<string[]>>, id: string) =>
     setter((arr) => (arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]));
+
+  /** Cadastro rápido — evita sair da O.S. para incluir serviço/praga/área novos. */
+  const quickAddServiceType = (name: string) => {
+    const st: ServiceType = { id: uid('st'), orgId: 'org-namira', name, defaultDurationMin: 60, defaultPrice: 0, color: '#0ea5e9' };
+    addServiceType(st);
+    setServiceTypeIds((arr) => [...arr, st.id]);
+    toast(`Serviço "${name}" cadastrado.`, { tone: 'success' });
+  };
+  const quickAddPest = (name: string) => {
+    const p: Pest = { id: uid('pest'), orgId: 'org-namira', name };
+    addPest(p);
+    setPestIds((arr) => [...arr, p.id]);
+    toast(`Praga "${name}" cadastrada.`, { tone: 'success' });
+  };
+  const quickAddArea = (name: string) => {
+    const a: TreatedArea = { id: uid('area'), orgId: 'org-namira', name };
+    addArea(a);
+    setAreaIds((arr) => [...arr, a.id]);
+    toast(`Área "${name}" cadastrada.`, { tone: 'success' });
+  };
 
   // Produtos sugeridos: união dos produtos padrão dos serviços selecionados.
   const suggestedProducts = useMemo(() => {
@@ -303,10 +331,13 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!customerId}>Criar OS</Button></div>}>
       <div className="space-y-5">
         <Field label="Cliente" required>
-          <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-            <option value="">Selecione…</option>
-            {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </Select>
+          <Combobox
+            value={customerId}
+            onChange={setCustomerId}
+            placeholder="Selecione…"
+            searchPlaceholder="Buscar cliente…"
+            options={customers.map((c) => ({ value: c.id, label: c.name, sub: c.type === 'pj' ? 'Pessoa Jurídica' : 'Pessoa Física' }))}
+          />
           {cust && <p className="mt-1 text-xs text-muted-foreground">{cust.type === 'pj' ? 'Pessoa Jurídica' : 'Pessoa Física'}{cust.propertyType ? ` · ${cust.propertyType}` : ''}</p>}
           {touched && !customerId && <span className="mt-1 block text-xs text-danger">Selecione um cliente.</span>}
         </Field>
@@ -320,20 +351,23 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
         )}
 
         <Field label="Serviços executados" hint="Toque para adicionar vários serviços à mesma OS">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {serviceTypes.map((s) => <Chip key={s.id} active={serviceTypeIds.includes(s.id)} onClick={() => toggle(setServiceTypeIds, s.id)}>{s.name}</Chip>)}
+            <QuickAddChip label="serviço" onAdd={quickAddServiceType} />
           </div>
         </Field>
 
         <Field label="Pragas combatidas">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {pests.map((p) => <Chip key={p.id} active={pestIds.includes(p.id)} onClick={() => toggle(setPestIds, p.id)}>{p.name}</Chip>)}
+            <QuickAddChip label="praga" onAdd={quickAddPest} />
           </div>
         </Field>
 
         <Field label="Áreas tratadas">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {areas.map((a) => <Chip key={a.id} active={areaIds.includes(a.id)} onClick={() => toggle(setAreaIds, a.id)}>{a.name}</Chip>)}
+            <QuickAddChip label="área" onAdd={quickAddArea} />
           </div>
         </Field>
 
@@ -380,15 +414,18 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
 
         <Field label="Equipe — técnicos" hint="Selecione um ou mais técnicos">
           <div className="flex flex-wrap gap-1.5">
-            {seed.technicians.map((t) => <Chip key={t.id} active={technicianIds.includes(t.id)} onClick={() => toggle(setTechnicianIds, t.id)}>{t.name.split(' ')[0]}</Chip>)}
+            {technicianUsers.map((t) => <Chip key={t.id} active={technicianIds.includes(t.id)} onClick={() => toggle(setTechnicianIds, t.id)}>{t.name.split(' ')[0]}</Chip>)}
           </div>
         </Field>
         <Field label="Vendedor responsável"><Select value={sellerId} onChange={(e) => setSellerId(e.target.value)}><option value="">—</option>{sellers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></Field>
 
-        <Field label="Equipamentos utilizados" hint="Ficam marcados como 'em uso' até a devolução">
-          <div className="flex flex-wrap gap-1.5">
-            {equipment.map((e) => <Chip key={e.id} active={equipmentIds.includes(e.id)} onClick={() => toggle(setEquipmentIds, e.id)}>{e.name}{e.code ? ` (${e.code})` : ''}</Chip>)}
-          </div>
+        <Field label="Equipamentos utilizados" hint="Busque pelo nome ou código — ficam marcados como 'em uso' até a devolução">
+          <MultiCombobox
+            values={equipmentIds}
+            onChange={setEquipmentIds}
+            placeholder="Buscar equipamento…"
+            options={equipment.map((e) => ({ value: e.id, label: e.name, sub: e.code }))}
+          />
         </Field>
         {equipmentIds.length > 0 && (
           <Field label="Previsão de devolução dos equipamentos"><Input type="datetime-local" value={returnAt} onChange={(e) => setReturnAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
@@ -410,29 +447,47 @@ function settingsEmergency(): string {
   return `${s.emergencyPhone}${s.emergencyInfo ? ` — ${s.emergencyInfo}` : ''}`;
 }
 
-/** Captura das assinaturas eletrônicas da OS (técnico e cliente) → PDF. */
+/** Captura das assinaturas eletrônicas da OS (técnico e cliente) → PDF.
+ *  Ao selecionar técnico/cliente que já têm assinatura cadastrada, ela é
+ *  carregada automaticamente; uma assinatura nova (traço ou arquivo) fica
+ *  registrada para reaproveitar nas próximas OS do mesmo técnico/cliente. */
 function OsSignatures({ so }: { so: ServiceOrder }) {
   const update = useServiceOrdersStore((s) => s.update);
   const savedSignatures = useSettingsStore((s) => s.signatures);
+  const setEntitySignature = useSettingsStore((s) => s.setUserSignature);
   const [techSig, setTechSig] = useState<string | undefined>(so.technicianSignature);
   const [custSig, setCustSig] = useState<string | undefined>(so.customerSignature);
-  useEffect(() => { setTechSig(so.technicianSignature); setCustSig(so.customerSignature); }, [so.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const techId = so.technicianIds?.[0] ?? so.technicianId;
-  const storedTechSig = techId ? savedSignatures[techId] : undefined;
 
-  const saveTech = (d?: string) => { setTechSig(d); update(so.id, { technicianSignature: d }); };
-  const saveCust = (d?: string) => { setCustSig(d); update(so.id, { customerSignature: d, hasCustomerSignature: !!d }); };
+  useEffect(() => {
+    const storedTech = techId ? savedSignatures[techId] : undefined;
+    const storedCust = savedSignatures[so.customerId];
+    const nextTech = so.technicianSignature ?? storedTech;
+    const nextCust = so.customerSignature ?? storedCust;
+    setTechSig(nextTech);
+    setCustSig(nextCust);
+    // Grava na própria OS se veio de um cadastro salvo (sem exigir novo traço).
+    if (!so.technicianSignature && storedTech) update(so.id, { technicianSignature: storedTech });
+    if (!so.customerSignature && storedCust) update(so.id, { customerSignature: storedCust, hasCustomerSignature: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [so.id, techId]);
+
+  const saveTech = (d?: string) => {
+    setTechSig(d);
+    update(so.id, { technicianSignature: d });
+    if (d && techId) setEntitySignature(techId, d);
+  };
+  const saveCust = (d?: string) => {
+    setCustSig(d);
+    update(so.id, { customerSignature: d, hasCustomerSignature: !!d });
+    if (d) setEntitySignature(so.customerId, d);
+  };
 
   return (
     <Section title="Assinaturas eletrônicas">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <SignaturePad key={`tech-${so.id}`} label="Técnico" value={techSig} onChange={saveTech} height={130} />
-          {storedTechSig && !techSig && (
-            <Button size="sm" variant="outline" className="mt-1" onClick={() => saveTech(storedTechSig)}>Usar assinatura salva do técnico</Button>
-          )}
-        </div>
+        <SignaturePad key={`tech-${so.id}-${techId}`} label="Técnico" value={techSig} onChange={saveTech} height={130} />
         <SignaturePad key={`cust-${so.id}`} label="Cliente" value={custSig} onChange={saveCust} height={130} />
       </div>
     </Section>

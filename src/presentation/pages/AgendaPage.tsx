@@ -11,11 +11,11 @@ import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge
 import { Badge } from '../components/ui/Badge';
 import { Select } from '../components/ui/Field';
 import { AppointmentForm } from '../components/AppointmentForm';
-import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getServiceType, getUser } from '@/application/repository';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { logChange } from '@/store/auditStore';
 import { useMessagesStore } from '@/store/messagesStore';
+import { useUsersStore } from '@/store/entityStores';
 import { buildWhatsMessage, WHATS_TYPE_LABEL } from '@/lib/whatsapp';
 import { MessageCircle } from 'lucide-react';
 import { APPOINTMENT_STATUS_META, type AppointmentStatus } from '@/domain/enums';
@@ -33,6 +33,7 @@ const ROW_H = 76;
 const GRID_H = HOURS.length * ROW_H;
 
 export function AgendaPage() {
+  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico'));
   const [view, setView] = useState<View>('semana');
   const [ref, setRef] = useState(new Date());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -92,7 +93,7 @@ export function AgendaPage() {
             className="h-9 rounded-lg border border-input bg-surface px-3 text-sm text-foreground"
           >
             <option value="todos">Todos os técnicos</option>
-            {seed.technicians.map((t) => (
+            {technicians.map((t) => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
@@ -207,7 +208,7 @@ function WeekView({ refDate, appts, onSelect }: { refDate: Date; appts: Appointm
             {days.map((d) => {
               const laid = packDay(appts.filter((a) => isSameDay(parseISO(a.scheduledStart), d)));
               return (
-                <div key={d.toISOString()} className="relative overflow-hidden border-l border-border" style={{ height: GRID_H }}>
+                <div key={d.toISOString()} className="relative overflow-hidden border-l-2 border-border" style={{ height: GRID_H }}>
                   {HOURS.map((h) => <div key={h} style={{ height: ROW_H }} className="border-b border-border/60" />)}
                   {laid.map(({ a, col, cols }) => {
                     const start = parseISO(a.scheduledStart);
@@ -228,8 +229,8 @@ function WeekView({ refDate, appts, onSelect }: { refDate: Date; appts: Appointm
                         style={{
                           top,
                           height,
-                          left: `calc(${col * widthPct}% + 2px)`,
-                          width: `calc(${widthPct}% - 4px)`,
+                          left: `calc(${col * widthPct}% + 4px)`,
+                          width: `calc(${widthPct}% - 8px)`,
                           background: `${st?.color}1a`,
                           borderColor: st?.color,
                         }}
@@ -514,6 +515,7 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
 /** Reagendamento: altera data/hora/técnico e marca a visita como reagendada. */
 function RescheduleForm({ appt, onDone }: { appt: Appointment; onDone: () => void }) {
   const update = useAppointmentsStore((s) => s.update);
+  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico'));
   const toLocal = (iso: string) => {
     const d = new Date(iso); const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -544,7 +546,7 @@ function RescheduleForm({ appt, onDone }: { appt: Appointment; onDone: () => voi
         </label>
         <label className="block text-xs font-medium text-muted-foreground">Técnico responsável
           <Select value={technicianId} onChange={(e) => setTechnicianId(e.target.value)} className="mt-1">
-            {seed.technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </Select>
         </label>
         <div className="flex justify-end gap-2">

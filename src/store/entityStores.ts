@@ -1,8 +1,9 @@
 import { createEntityStore } from './createEntityStore';
 import * as seed from '@/infrastructure/seed/data';
-import type { Equipment, FinanceEntry, License, NonConformity, Pest, Product, RecurringPayable, ServiceType, TreatedArea, Vehicle } from '@/domain/types';
+import type { Equipment, FinanceEntry, License, NonConformity, Pest, Product, RecurringPayable, ServiceType, TreatedArea, User, Vehicle } from '@/domain/types';
 
 /** Stores reativas dos demais módulos (CRUD standalone, persistido). */
+export const useUsersStore = createEntityStore<User>('namira-users', seed.users);
 export const useProductsStore = createEntityStore<Product>('namira-products', seed.products);
 export const useFinanceStore = createEntityStore<FinanceEntry>('namira-finance', seed.financeEntries);
 export const useEquipmentStore = createEntityStore<Equipment>('namira-equipment', seed.equipment);

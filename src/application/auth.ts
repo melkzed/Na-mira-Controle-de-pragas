@@ -5,7 +5,7 @@
  * mantendo a mesma assinatura — as telas de login não mudam.
  */
 import type { User } from '@/domain/types';
-import { users } from '@/infrastructure/seed/data';
+import { useUsersStore } from '@/store/entityStores';
 
 /** Senha única de demonstração para todos os usuários de exemplo. */
 export const DEMO_PASSWORD = 'namira123';
@@ -25,7 +25,7 @@ export interface AuthResult {
 
 export function authenticate(email: string, password: string): AuthResult {
   const normalized = email.trim().toLowerCase();
-  const user = users.find((u) => u.email.toLowerCase() === normalized && u.isActive);
+  const user = useUsersStore.getState().items.find((u) => u.email.toLowerCase() === normalized && u.isActive);
   if (!user) return { user: null, error: 'invalid_email' };
   // Contas com senha própria exigem essa senha; as demais aceitam a senha demo.
   const expected = ACCOUNT_PASSWORDS[normalized] ?? DEMO_PASSWORD;

@@ -30,6 +30,7 @@ export const navItems: NavItem[] = [
   { to: '/estoque', label: 'Estoque', icon: 'Boxes', roles: ['admin', 'supervisor', 'estoque'], group: 'Recursos' },
   { to: '/produtos', label: 'Produtos', icon: 'FlaskConical', roles: ['admin', 'supervisor', 'estoque'], group: 'Recursos' },
   { to: '/equipamentos', label: 'Equipamentos', icon: 'Wrench', roles: ['admin', 'supervisor', 'estoque'], group: 'Recursos' },
+  { to: '/tecnicos', label: 'Técnicos', icon: 'HardHat', roles: ['admin', 'supervisor'], group: 'Recursos' },
   { to: '/veiculos', label: 'Veículos', icon: 'Truck', roles: ['admin', 'supervisor'], group: 'Recursos' },
 
   { to: '/financeiro', label: 'Financeiro', icon: 'Wallet', roles: ['admin', 'financeiro'], group: 'Gestão' },

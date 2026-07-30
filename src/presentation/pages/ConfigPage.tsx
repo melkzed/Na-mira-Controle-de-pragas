@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bug, MapPin, Plus, X } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
@@ -8,7 +8,7 @@ import { Button } from '../components/ui/Button';
 import { Field, Input, Select } from '../components/ui/Field';
 import { Table, type Column } from '../components/ui/Table';
 import * as seed from '@/infrastructure/seed/data';
-import { useAreasStore, usePestsStore, useProductsStore, useServiceTypesStore } from '@/store/entityStores';
+import { useAreasStore, usePestsStore, useProductsStore, useServiceTypesStore, useUsersStore } from '@/store/entityStores';
 import { useSettingsStore } from '@/store/settingsStore';
 import { uid } from '@/store/createEntityStore';
 import { toast } from '@/store/toastStore';
@@ -28,6 +28,7 @@ const permissionMatrix: { module: string; roles: UserRole[] }[] = [
 const ALL_ROLES: UserRole[] = ['admin', 'supervisor', 'financeiro', 'atendimento', 'estoque', 'tecnico'];
 
 export function ConfigPage() {
+  const users = useUsersStore((s) => s.items);
   const columns: Column<User>[] = [
     { key: 'name', header: 'Usuário', render: (u) => (
       <div className="flex items-center gap-2.5"><Avatar name={u.name} size="sm" /><div><p className="font-medium">{u.name}</p><p className="text-xs text-muted-foreground">{u.email}</p></div></div>
@@ -43,9 +44,9 @@ export function ConfigPage() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader title="Usuários e equipe" subtitle={`${seed.users.length} usuários`} />
+          <CardHeader title="Usuários e equipe" subtitle={`${users.length} usuários`} />
           <CardBody className="p-0">
-            <div className="px-4 pb-4"><Table columns={columns} rows={seed.users} keyField={(u) => u.id} /></div>
+            <div className="px-4 pb-4"><Table columns={columns} rows={users} keyField={(u) => u.id} /></div>
           </CardBody>
         </Card>
 
@@ -103,7 +104,9 @@ export function ConfigPage() {
 /** Assinaturas digitais da empresa e dos técnicos — incorporadas ao PDF da OS. */
 function SignaturesPanel() {
   const { companySignature, signatures, setCompanySignature, setUserSignature } = useSettingsStore();
-  const [userId, setUserId] = useState(seed.technicians[0]?.id ?? '');
+  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico'));
+  const [userId, setUserId] = useState('');
+  useEffect(() => { if (!userId && technicians[0]) setUserId(technicians[0].id); }, [userId, technicians]);
 
   return (
     <Card className="mt-4">
@@ -118,12 +121,12 @@ function SignaturesPanel() {
           <div className="mb-2 flex items-center gap-2">
             <p className="text-sm font-semibold text-foreground">Assinatura do técnico</p>
             <Select value={userId} onChange={(e) => setUserId(e.target.value)} className="h-8 w-auto text-xs">
-              {seed.technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </Select>
           </div>
           <SignaturePad key={userId} value={signatures[userId]} onChange={(d) => setUserSignature(userId, d)} />
           <div className="mt-2 flex flex-wrap gap-2">
-            {seed.technicians.filter((t) => signatures[t.id]).map((t) => (
+            {technicians.filter((t) => signatures[t.id]).map((t) => (
               <span key={t.id} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2 py-1 text-xs">
                 <img src={signatures[t.id]} alt={t.name} className="h-5 w-12 object-contain" /> {t.name.split(' ')[0]}
               </span>

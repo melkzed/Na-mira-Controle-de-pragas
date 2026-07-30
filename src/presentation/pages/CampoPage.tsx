@@ -15,15 +15,17 @@ import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge
 import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { PhotoCapture } from '../components/PhotoCapture';
 import { SignaturePad } from '../components/SignaturePad';
+import { Combobox } from '../components/ui/Combobox';
 import { useSettingsStore } from '@/store/settingsStore';
 import { appointmentsForTechnician, getCustomer, getProduct, getServiceType, technicianBalances } from '@/application/repository';
-import { useProductsStore } from '@/store/entityStores';
+import { useEquipmentStore, useProductsStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useStockRequestsStore } from '@/store/stockRequestsStore';
+import { useEquipmentRequestsStore } from '@/store/equipmentRequestsStore';
 import { toast } from '@/store/toastStore';
-import { X } from 'lucide-react';
+import { Wrench, X } from 'lucide-react';
 import type { Appointment, ServiceOrderPhoto } from '@/domain/types';
-import { fmtTime } from '@/lib/date';
+import { fmtDate, fmtTime } from '@/lib/date';
 import { cn } from '@/lib/utils';
 import { appleMapsLink, googleMapsRoute, wazeLink } from '@/lib/geo';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
@@ -88,6 +90,7 @@ export function CampoPage() {
             onDetail={() => setDetailAppt(active)}
             onStart={() => setStatus(active.id, 'em_atendimento')}
             onFinish={(signature) => { updateAppt(active.id, { technicianSignature: signature }); setStatus(active.id, 'finalizado'); toast('Visita finalizada e assinada.', { tone: 'success' }); }}
+            onPhotosChange={(photos) => updateAppt(active.id, { photos })}
           />
         )}
 
@@ -145,6 +148,9 @@ export function CampoPage() {
             ))}
           </CardBody>
         </Card>
+
+        {/* Ferramentas e equipamentos do técnico */}
+        <MyEquipment techId={techId} />
       </div>
 
       <VisitDetailDrawer appt={detailAppt} onClose={() => setDetailAppt(null)} onNavigate={(a) => { setDetailAppt(null); setNavAppt(a); }} />
@@ -168,6 +174,88 @@ function TechNote({ appt, onSave }: { appt: Appointment; onSave: (text: string) 
             <span className="text-xs text-muted-foreground">Aparece no sistema da empresa.</span>
             <Button size="sm" leftIcon={<FileText size={14} />} disabled={!dirty} onClick={() => onSave(text.trim())}>Salvar observação</Button>
           </div>
+        </CardBody>
+      </Card>
+    </div>
+  );
+}
+
+const EQUIPMENT_REQUEST_STATUS_LABEL: Record<string, string> = { pendente: 'Pendente', aprovada: 'Aprovada', negada: 'Negada' };
+
+/** Ferramentas/equipamentos do técnico — vinculados e solicitação ao almoxarifado. */
+function MyEquipment({ techId }: { techId: string }) {
+  const equipment = useEquipmentStore((s) => s.items);
+  const { requests, add } = useEquipmentRequestsStore();
+  const mine = equipment.filter((e) => e.checkedOutTo === techId);
+  const myRequests = requests.filter((r) => r.technicianId === techId).slice(0, 5);
+  const [equipmentId, setEquipmentId] = useState('');
+  const [note, setNote] = useState('');
+
+  const request = () => {
+    if (!equipmentId) return;
+    const eq = equipment.find((e) => e.id === equipmentId);
+    add({ technicianId: techId, equipmentId, note: note.trim() || undefined });
+    toast(`Solicitação de "${eq?.name}" enviada ao almoxarifado.`, { tone: 'success' });
+    setEquipmentId(''); setNote('');
+  };
+
+  return (
+    <div className="mt-6">
+      <p className="mb-2 px-1 text-sm font-semibold text-foreground">Ferramentas e equipamentos <span className="font-normal text-muted-foreground">· comigo e solicitações</span></p>
+      <Card>
+        <CardBody className="space-y-3">
+          {mine.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum equipamento retirado no momento.</p>
+          ) : (
+            <div className="space-y-2">
+              {mine.map((e) => (
+                <div key={e.id} className="flex items-center gap-2.5 rounded-lg border border-border/60 px-3 py-2">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><Wrench size={15} /></span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">{e.name}{e.code ? ` (${e.code})` : ''}</p>
+                    {e.expectedReturnAt && <p className="truncate text-xs text-muted-foreground">Devolução prevista: {fmtDate(e.expectedReturnAt)}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="rounded-xl border border-dashed border-border p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Solicitar equipamento</p>
+            <div className="space-y-2">
+              <Combobox
+                value={equipmentId}
+                onChange={setEquipmentId}
+                placeholder="Buscar equipamento…"
+                options={equipment.map((e) => ({ value: e.id, label: e.name, sub: e.code }))}
+              />
+              <div className="flex gap-2">
+                <input
+                  value={note}
+                  onChange={(ev) => setNote(ev.target.value)}
+                  placeholder="Observação (opcional)"
+                  className="h-9 flex-1 rounded-lg border border-input bg-surface px-2.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-ring/40"
+                />
+                <Button size="sm" disabled={!equipmentId} onClick={request}>Solicitar</Button>
+              </div>
+            </div>
+          </div>
+
+          {myRequests.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Minhas solicitações recentes</p>
+              {myRequests.map((r) => {
+                const eq = equipment.find((e) => e.id === r.equipmentId);
+                const tone = r.status === 'aprovada' ? 'success' : r.status === 'negada' ? 'danger' : 'warning';
+                return (
+                  <div key={r.id} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="truncate text-foreground">{eq?.name ?? r.equipmentId}</span>
+                    <Badge tone={tone}>{EQUIPMENT_REQUEST_STATUS_LABEL[r.status]}</Badge>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </CardBody>
       </Card>
     </div>
@@ -363,13 +451,14 @@ function HeaderStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish }: {
+function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onPhotosChange }: {
   appt: Appointment;
   techId: string;
   onNavigate: () => void;
   onDetail: () => void;
   onStart: () => void;
   onFinish: (signature?: string) => void;
+  onPhotosChange: (photos: ServiceOrderPhoto[]) => void;
 }) {
   const cust = getCustomer(appt.customerId);
   const st = getServiceType(appt.serviceTypeId);
@@ -441,6 +530,12 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish }: {
 
         {/* Produtos aplicados (padrão do serviço; técnico confirma o que usou) */}
         <AppliedProducts appt={appt} />
+
+        {/* Fotos de antes/depois — registradas direto na visita em destaque */}
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Fotos do atendimento (antes / depois)</p>
+          <PhotoCapture photos={appt.photos ?? []} onChange={onPhotosChange} compact />
+        </div>
 
         <div className="grid grid-cols-1 gap-2">
           {finished ? (
