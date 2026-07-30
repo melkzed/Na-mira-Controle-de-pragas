@@ -14,6 +14,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useLicensesStore } from '@/store/entityStores';
 import { currentBatch } from './batches';
 import { formatDocument } from './utils';
+import { logoSvgMarkup } from './logoSvg';
 import { toast } from '@/store/toastStore';
 
 function esc(s: unknown): string {
@@ -50,7 +51,7 @@ const SHELL_CSS = `
   .doc { max-width: 800px; margin: 0 auto; }
   .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #D32F2F; padding-bottom: 16px; }
   .brand { display: flex; gap: 12px; align-items: center; }
-  .logo { width: 46px; height: 46px; border-radius: 10px; background: #D32F2F; color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 20px; flex-shrink: 0; }
+  .logo { width: 46px; height: 46px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .brand h1 { font-size: 15px; margin: 0; } .brand p { margin: 2px 0 0; font-size: 11.5px; color: #64748b; }
   .title { text-align: right; } .title .t { font-size: 18px; font-weight: 800; color: #D32F2F; } .title .s { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
   .doctitle { text-align: center; font-size: 16px; font-weight: 800; letter-spacing: .01em; margin: 20px 0 4px; color: #1a1a1a; }
@@ -83,7 +84,7 @@ const SHELL_CSS = `
 function header(subtitle: string): string {
   const org = seed.orgProfile;
   return `<div class="head">
-    <div class="brand"><div class="logo">NM</div><div><h1>${esc(org.name)}</h1><p>${esc(org.legalName)} · CNPJ ${esc(org.cnpj)}</p><p>${esc(org.street)}, ${esc(org.district)} · ${esc(org.city)}/${esc(org.state)} · CEP ${esc(org.cep)}</p></div></div>
+    <div class="brand"><div class="logo">${logoSvgMarkup(42)}</div><div><h1>${esc(org.name)}</h1><p>${esc(org.legalName)} · CNPJ ${esc(org.cnpj)}</p><p>${esc(org.street)}, ${esc(org.district)} · ${esc(org.city)}/${esc(org.state)} · CEP ${esc(org.cep)}</p></div></div>
     <div class="title"><div class="s">${esc(subtitle)}</div><div class="t">${esc(org.name)}</div><div class="s">${new Date().toLocaleDateString('pt-BR')}</div></div>
   </div>`;
 }

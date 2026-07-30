@@ -10,6 +10,7 @@ import { WARRANTY_TYPE_LABEL, RECURRENCE_FREQ_LABEL } from '@/domain/enums';
 import { useSettingsStore } from '@/store/settingsStore';
 import { formatDocument } from './utils';
 import { currentBatch } from './batches';
+import { logoSvgMarkup } from './logoSvg';
 import { toast } from '@/store/toastStore';
 
 function esc(s: unknown): string {
@@ -107,7 +108,7 @@ export function printServiceOrder(so: ServiceOrder, options?: { includePhotos?: 
   .doc { max-width: 760px; margin: 0 auto; }
   .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #D32F2F; padding-bottom: 16px; }
   .brand { display: flex; gap: 12px; align-items: center; }
-  .logo { width: 44px; height: 44px; border-radius: 10px; background: #D32F2F; color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 20px; }
+  .logo { width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .brand h1 { font-size: 16px; margin: 0; }
   .brand p { margin: 2px 0 0; font-size: 12px; color: #64748b; }
   .osno { text-align: right; }
@@ -131,7 +132,7 @@ export function printServiceOrder(so: ServiceOrder, options?: { includePhotos?: 
   <div class="doc">
     <div class="head">
       <div class="brand">
-        <div class="logo">NM</div>
+        <div class="logo">${logoSvgMarkup(40)}</div>
         <div>
           <h1>${esc(org.name)}</h1>
           <p>${esc(org.legalName)} · CNPJ ${esc(org.cnpj)}</p>
