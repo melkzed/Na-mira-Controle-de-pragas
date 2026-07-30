@@ -164,6 +164,10 @@ export interface Product {
   supplierId?: string;
   registrationCode?: string;
   activeIngredient?: string;
+  /** Grupo químico (ex.: Piretróide, Neonicotinóide, Hidroxicumarina…) — laudos técnicos. */
+  chemicalGroup?: string;
+  /** Antídoto/conduta em caso de intoxicação — laudos técnicos. */
+  antidote?: string;
   applicationType?: string;
   dosage?: string;
   unit: string;

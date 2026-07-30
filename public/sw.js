@@ -1,12 +1,12 @@
 /**
- * Service worker — Na Mira · Controle de Pragas
+ * Service worker — Gestão Dedetizadora · Controle de Pragas
  * Estratégia conservadora (segura para deploys):
  *  - Navegações: network-first (sempre busca o HTML novo quando online),
  *    com fallback ao index em cache quando offline.
  *  - Assets (JS/CSS/imagens com hash): stale-while-revalidate.
  *  Caches antigos são removidos no activate.
  */
-const CACHE = 'namira-v1';
+const CACHE = 'namira-v2';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {

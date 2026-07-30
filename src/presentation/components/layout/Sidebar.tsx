@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useAppStore } from '@/store/appStore';
 import { navForRole } from '@/application/navigation';
 import { Icon } from '../ui/Icon';
+import { LogoMark } from '../ui/Logo';
 import { cn } from '@/lib/utils';
 import { ROLE_META } from '@/domain/enums';
 import { Avatar } from '../ui/Avatar';
@@ -21,12 +22,10 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     <div className="flex h-full flex-col bg-surface">
       {/* Marca */}
       <div className="flex h-16 items-center gap-2.5 border-b border-border px-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand text-brand-foreground shadow-glow">
-          <Icon name="ShieldCheck" size={20} />
-        </div>
+        <LogoMark size={32} className="shrink-0 text-brand" />
         <div className="leading-tight">
-          <p className="text-sm font-bold text-foreground">Na Mira</p>
-          <p className="text-[11px] text-muted-foreground">Controle de Pragas</p>
+          <p className="text-sm font-bold text-foreground">Gestão</p>
+          <p className="-mt-0.5 text-[11px] font-semibold text-muted-foreground">Dedetizadora</p>
         </div>
       </div>
 

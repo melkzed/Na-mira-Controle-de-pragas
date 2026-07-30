@@ -34,12 +34,12 @@ const SHELL_CSS = `
   * { box-sizing: border-box; }
   body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #0f172a; margin: 0; padding: 32px; }
   .doc { max-width: 820px; margin: 0 auto; }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #10b981; padding-bottom: 16px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #D32F2F; padding-bottom: 16px; }
   .brand { display: flex; gap: 12px; align-items: center; }
-  .logo { width: 44px; height: 44px; border-radius: 10px; background: #10b981; color: #fff; display: grid; place-items: center; font-weight: 700; }
+  .logo { width: 44px; height: 44px; border-radius: 10px; background: #D32F2F; color: #fff; display: grid; place-items: center; font-weight: 700; }
   .brand h1 { font-size: 16px; margin: 0; } .brand p { margin: 2px 0 0; font-size: 12px; color: #64748b; }
-  .title { text-align: right; } .title .t { font-size: 18px; font-weight: 800; color: #10b981; } .title .s { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
-  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #10b981; margin: 22px 0 8px; }
+  .title { text-align: right; } .title .t { font-size: 18px; font-weight: 800; color: #D32F2F; } .title .s { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #D32F2F; margin: 22px 0 8px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 13px; } .grid span { color: #64748b; }
   table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #e2e8f0; }
@@ -63,7 +63,7 @@ function header(subtitle: string): string {
 }
 
 function openPrint(title: string, body: string): void {
-  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/><title>${esc(title)}</title><style>${SHELL_CSS}</style></head><body><div class="doc">${body}<div class="foot">Documento gerado por Na Mira · Controle de Pragas</div></div><script>window.onload=function(){setTimeout(function(){window.print();},150);};</script></body></html>`;
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/><title>${esc(title)}</title><style>${SHELL_CSS}</style></head><body><div class="doc">${body}<div class="foot">Documento gerado por Gestão Dedetizadora</div></div><script>window.onload=function(){setTimeout(function(){window.print();},150);};</script></body></html>`;
   const w = window.open('', '_blank', 'width=900,height=1000');
   if (!w) { toast('Permita pop-ups para gerar o PDF.', { tone: 'warning' }); return; }
   w.document.open(); w.document.write(html); w.document.close();
@@ -103,7 +103,7 @@ export function printDataReport<T>(
     ${cards}
     <h2>Detalhamento (${rows.length})</h2>
     <table><thead>${head}</thead><tbody>${body}</tbody></table>`;
-  openPrint(`${title} · Na Mira`, html);
+  openPrint(`${title} · Gestão Dedetizadora`, html);
 }
 
 export function printTrapReport(customer: Customer, traps: TrapDevice[], inspections: TrapInspection[]): void {

@@ -1,11 +1,12 @@
 import { Suspense, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, CalendarCheck, FlaskConical, LogOut, Map, Moon, ShieldCheck, Sun } from 'lucide-react';
+import { ArrowLeft, CalendarCheck, FlaskConical, LogOut, Map, Moon, Sun } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import { ROLE_META } from '@/domain/enums';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
+import { LogoMark } from '../ui/Logo';
 import { PageLoader } from '../RouteError';
 import { FieldTechProvider } from '../field/FieldTech';
 import { cn } from '@/lib/utils';
@@ -37,11 +38,9 @@ export function FieldLayout() {
     <div className="flex min-h-screen flex-col bg-background">
       <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border glass px-4">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand text-brand-foreground shadow-glow">
-            <ShieldCheck size={18} />
-          </div>
+          <LogoMark size={30} className="shrink-0 text-brand" />
           <div className="leading-tight">
-            <p className="text-sm font-bold text-foreground">Na Mira</p>
+            <p className="text-sm font-bold text-foreground">Gestão Dedetizadora</p>
             <p className="text-[11px] text-muted-foreground">App do Técnico</p>
           </div>
         </div>

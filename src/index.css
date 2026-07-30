@@ -16,18 +16,18 @@
   --color-muted-foreground: 100 116 139; /* slate-500 */
   --color-border: 226 232 240;       /* slate-200 */
   --color-input: 226 232 240;
-  --color-ring: 16 185 129;          /* emerald-500 */
+  --color-ring: 211 47 47;           /* vermelho da marca */
 
-  --color-brand: 16 185 129;         /* emerald-500 */
+  --color-brand: 211 47 47;          /* #D32F2F — vermelho da logo Gestão Dedetizadora */
   --color-brand-foreground: 255 255 255;
-  --color-brand-soft: 209 250 229;   /* emerald-100 */
+  --color-brand-soft: 254 226 226;   /* red-100 */
 
   --color-success: 16 185 129;
   --color-success-soft: 209 250 229;
   --color-warning: 245 158 11;
   --color-warning-soft: 254 243 199;
-  --color-danger: 239 68 68;
-  --color-danger-soft: 254 226 226;
+  --color-danger: 225 29 72;         /* rose-600 — distinto do vermelho da marca */
+  --color-danger-soft: 255 228 230;
   --color-info: 14 165 233;
   --color-info-soft: 224 242 254;
 }
@@ -41,18 +41,18 @@
   --color-muted-foreground: 148 163 184;
   --color-border: 38 47 66;
   --color-input: 44 54 74;
-  --color-ring: 16 185 129;
+  --color-ring: 239 83 80;
 
-  --color-brand: 16 185 129;
-  --color-brand-foreground: 6 20 15;
-  --color-brand-soft: 6 44 34;
+  --color-brand: 239 83 80;          /* #EF5350 — vermelho mais claro p/ contraste no escuro */
+  --color-brand-foreground: 25 8 8;
+  --color-brand-soft: 61 20 20;
 
   --color-success: 34 197 94;
   --color-success-soft: 8 45 30;
   --color-warning: 251 191 36;
   --color-warning-soft: 55 42 8;
-  --color-danger: 248 113 113;
-  --color-danger-soft: 55 20 20;
+  --color-danger: 251 113 133;       /* rose-400 */
+  --color-danger-soft: 58 16 26;
   --color-info: 56 189 248;
   --color-info-soft: 12 40 56;
 }

@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, LogIn, ShieldCheck, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, LogIn, Sparkles } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import { DEMO_PASSWORD, demoAccounts, landingPathFor } from '@/application/auth';
 import { Button } from '../components/ui/Button';
 import { Field, Input } from '../components/ui/Field';
 import { Badge } from '../components/ui/Badge';
+import { LogoMark } from '../components/ui/Logo';
 
 export function LoginPage() {
   const { currentUser, login } = useAppStore();
@@ -53,15 +54,15 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen bg-background">
       {/* Painel de marca (desktop) */}
-      <div className="relative hidden w-1/2 overflow-hidden bg-gradient-to-br from-brand to-emerald-700 lg:flex lg:flex-col lg:justify-between lg:p-12 text-white">
+      <div className="relative hidden w-1/2 overflow-hidden bg-gradient-to-br from-brand to-red-900 lg:flex lg:flex-col lg:justify-between lg:p-12 text-white">
         <div className="dot-grid pointer-events-none absolute inset-0 opacity-20" />
         <div className="relative flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 backdrop-blur">
-            <ShieldCheck size={24} />
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur">
+            <LogoMark size={30} className="text-white" />
           </div>
           <div>
-            <p className="text-lg font-bold">Na Mira</p>
-            <p className="text-sm text-white/70">Controle de Pragas</p>
+            <p className="text-lg font-bold">Gestão</p>
+            <p className="-mt-1 text-lg font-bold">Dedetizadora</p>
           </div>
         </div>
 
@@ -93,7 +94,7 @@ export function LoginPage() {
         </div>
 
         <p className="relative text-xs text-white/60">
-          © {new Date().getFullYear()} Na Mira · Plataforma de gestão operacional
+          © {new Date().getFullYear()} Gestão Dedetizadora · O controle inteligente das suas operações
         </p>
       </div>
 
@@ -107,12 +108,10 @@ export function LoginPage() {
         >
           {/* Marca (mobile) */}
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-brand-foreground">
-              <ShieldCheck size={20} />
-            </div>
+            <LogoMark size={34} className="shrink-0 text-brand" />
             <div className="leading-tight">
-              <p className="font-bold text-foreground">Na Mira</p>
-              <p className="text-xs text-muted-foreground">Controle de Pragas</p>
+              <p className="font-bold text-foreground">Gestão</p>
+              <p className="-mt-0.5 font-bold text-foreground">Dedetizadora</p>
             </div>
           </div>
 

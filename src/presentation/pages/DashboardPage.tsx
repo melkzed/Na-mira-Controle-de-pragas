@@ -47,7 +47,7 @@ export function DashboardPage() {
 
   const toneColor: Record<string, string> = {
     neutral: '#94a3b8', info: '#0ea5e9', warning: '#f59e0b',
-    brand: '#10b981', success: '#22c55e', danger: '#ef4444',
+    brand: '#D32F2F', success: '#22c55e', danger: '#e11d48',
   };
 
   return (

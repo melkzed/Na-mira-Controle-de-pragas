@@ -62,7 +62,7 @@ export function CampoPage() {
       <div>
         {/* Cabeçalho do técnico */}
         <Card className="mb-4 overflow-hidden">
-          <div className="bg-gradient-to-br from-brand to-emerald-600 p-5 text-white">
+          <div className="bg-gradient-to-br from-brand to-red-900 p-5 text-white">
             <div className="flex items-center gap-3">
               <Avatar name={techName} size="lg" className="ring-white/30" />
               <div>
