@@ -3,13 +3,14 @@
  * modelo de mercado (CES — Comprovante de Execução de Serviço):
  *  - Certificado Sanitário de Combate a Vetores e Pragas Urbanas
  *  - Laudo Técnico completo (produtos, métodos, pragas, segurança, CIT)
- * Reaproveitam os dados da OS, as licenças ativas, a emergência (CIT) e as
- * assinaturas digitais configuradas. Client-side, sem dependências.
+ * Layout compacto (fonte reduzida, colunas no checklist) para caber em uma
+ * única folha sempre que possível. Reaproveitam os dados da OS, as licenças
+ * ativas, a emergência (CIT) e as assinaturas digitais configuradas.
+ * Client-side, sem dependências.
  */
 import type { License, Pest, ServiceOrder } from '@/domain/types';
 import { getCustomer, getProduct, getServiceType, getUser } from '@/application/repository';
 import * as seed from '@/infrastructure/seed/data';
-import { WARRANTY_TYPE_LABEL } from '@/domain/enums';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useLicensesStore } from '@/store/entityStores';
 import { currentBatch } from './batches';
@@ -17,11 +18,11 @@ import { formatDocument } from './utils';
 import { logoSvgMarkup } from './logoSvg';
 import { toast } from '@/store/toastStore';
 
-function esc(s: unknown): string {
+export function esc(s: unknown): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—');
-const fmtDateTime = (iso?: string) => {
+export const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—');
+export const fmtDateTime = (iso?: string) => {
   if (!iso) return '—';
   const d = new Date(iso);
   const meiaNoite = d.getHours() === 0 && d.getMinutes() === 0;
@@ -45,80 +46,78 @@ function daysToExtenso(days: number): string {
   return withExtenso(days, days === 1 ? 'dia' : 'dias');
 }
 
-const SHELL_CSS = `
+/** CSS compacto e com borda decorativa — compartilhado por Certificado e Laudo. */
+export const SHELL_CSS = `
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1a1a1a; margin: 0; padding: 32px; font-size: 12.5px; }
-  .doc { max-width: 800px; margin: 0 auto; }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #D32F2F; padding-bottom: 16px; }
-  .brand { display: flex; gap: 12px; align-items: center; }
-  .logo { width: 46px; height: 46px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-  .brand h1 { font-size: 15px; margin: 0; } .brand p { margin: 2px 0 0; font-size: 11.5px; color: #64748b; }
-  .title { text-align: right; } .title .t { font-size: 18px; font-weight: 800; color: #D32F2F; } .title .s { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
-  .doctitle { text-align: center; font-size: 16px; font-weight: 800; letter-spacing: .01em; margin: 20px 0 4px; color: #1a1a1a; }
-  .doctitle .sub { display: block; font-size: 12px; font-weight: 600; color: #64748b; text-transform: none; margin-top: 2px; }
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1a1a1a; margin: 0; padding: 14px; font-size: 10.5px; line-height: 1.35; }
+  .doc { max-width: 800px; margin: 0 auto; border: 2px solid #D32F2F; border-radius: 6px; padding: 16px 22px; position: relative; }
+  .doc::before { content: ''; position: absolute; inset: 5px; border: 1px solid #D32F2F; opacity: .3; border-radius: 3px; pointer-events: none; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #D32F2F; padding-bottom: 8px; }
+  .brand { display: flex; gap: 8px; align-items: center; }
+  .logo { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .brand h1 { font-size: 13px; margin: 0; } .brand p { margin: 1px 0 0; font-size: 9.5px; color: #64748b; }
+  .title { text-align: right; } .title .t { font-size: 14px; font-weight: 800; color: #D32F2F; } .title .s { font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
+  .doctitle { text-align: center; font-size: 13px; font-weight: 800; letter-spacing: .01em; margin: 10px 0 3px; color: #1a1a1a; }
+  .doctitle .sub { display: block; font-size: 10px; font-weight: 600; color: #64748b; text-transform: none; margin-top: 1px; }
   .center { text-align: center; }
-  h2 { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: #D32F2F; margin: 20px 0 8px; border-bottom: 1px solid #f1d6d6; padding-bottom: 4px; }
-  h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #475569; margin: 0 0 6px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 12.5px; } .grid span { color: #64748b; }
-  .lead { font-size: 13px; line-height: 1.7; text-align: justify; margin: 10px 0; }
-  .cesrow { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; background: #fafafa; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 14px; font-size: 12px; margin: 14px 0; }
-  table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 4px; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
-  th { background: #fbebeb; font-size: 9.5px; text-transform: uppercase; letter-spacing: .03em; color: #7a2e2e; }
+  h2 { font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; color: #D32F2F; margin: 10px 0 4px; border-bottom: 1px solid #f1d6d6; padding-bottom: 2px; }
+  h3 { font-size: 9px; text-transform: uppercase; letter-spacing: .03em; color: #475569; margin: 0 0 3px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 16px; font-size: 10.5px; } .grid span { color: #64748b; }
+  .lead { font-size: 10.5px; line-height: 1.45; text-align: justify; margin: 5px 0; }
+  .cesrow { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; background: #fafafa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 5px 10px; font-size: 10px; margin: 8px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 9.5px; margin-top: 2px; }
+  th, td { text-align: left; padding: 3px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  th { background: #fbebeb; font-size: 8.5px; text-transform: uppercase; letter-spacing: .02em; color: #7a2e2e; }
   td.r, th.r { text-align: right; }
-  .tags span { display: inline-block; border: 1px solid #e2e8f0; border-radius: 999px; padding: 2px 10px; font-size: 12px; margin: 0 4px 4px 0; }
-  .lic { font-size: 11px; color: #475569; }
-  .emg { margin-top: 16px; border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; border-radius: 8px; padding: 10px 14px; font-size: 12px; }
-  .checklist { list-style: none; margin: 6px 0; padding: 0; font-size: 12px; line-height: 1.9; }
+  .lic { font-size: 9px; color: #475569; }
+  .emg { margin-top: 8px; border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; border-radius: 6px; padding: 5px 10px; font-size: 9.5px; }
+  .checklist { list-style: none; margin: 3px 0; padding: 0; font-size: 9.5px; line-height: 1.5; columns: 2; column-gap: 20px; }
+  .checklist li { break-inside: avoid; }
   .checklist li:before { content: '✔ '; color: #D32F2F; font-weight: 700; }
-  .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 18px; }
-  .sign { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 40px; align-items: end; }
-  .sign2 { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 60px; align-items: end; }
-  .sign .line, .sign2 .line { border-top: 1px solid #94a3b8; padding-top: 6px; text-align: center; font-size: 11px; color: #64748b; }
-  .foot { margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 10px; font-size: 10.5px; color: #94a3b8; text-align: center; }
-  .execline { margin-top: 16px; font-size: 12.5px; }
-  .page2 { page-break-before: always; padding-top: 40px; }
-  @media print { body { padding: 0; } @page { margin: 15mm; } }
+  .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; }
+  .sign { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 20px; align-items: end; }
+  .sign2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 26px; align-items: end; }
+  .sign .line, .sign2 .line { border-top: 1px solid #94a3b8; padding-top: 3px; text-align: center; font-size: 9px; color: #64748b; }
+  .execline { margin-top: 8px; font-size: 10.5px; }
+  .page2 { page-break-before: always; padding-top: 20px; }
+  @media print { body { padding: 0; } @page { margin: 10mm; } }
 `;
 
-function header(subtitle: string): string {
+export function header(subtitle: string): string {
   const org = seed.orgProfile;
   return `<div class="head">
-    <div class="brand"><div class="logo">${logoSvgMarkup(42)}</div><div><h1>${esc(org.name)}</h1><p>${esc(org.legalName)} · CNPJ ${esc(org.cnpj)}</p><p>${esc(org.street)}, ${esc(org.district)} · ${esc(org.city)}/${esc(org.state)} · CEP ${esc(org.cep)}</p></div></div>
+    <div class="brand"><div class="logo">${logoSvgMarkup(34)}</div><div><h1>${esc(org.name)}</h1><p>${esc(org.legalName)} · CNPJ ${esc(org.cnpj)}</p><p>${esc(org.street)}, ${esc(org.district)} · ${esc(org.city)}/${esc(org.state)} · CEP ${esc(org.cep)}</p></div></div>
     <div class="title"><div class="s">${esc(subtitle)}</div><div class="t">${esc(org.name)}</div><div class="s">${new Date().toLocaleDateString('pt-BR')}</div></div>
   </div>`;
 }
 
-/** Licenças ativas (não vencidas) para exibir nos documentos. */
-function activeLicenses(): License[] {
-  return useLicensesStore.getState().items.filter((l) => !l.expiresAt || new Date(l.expiresAt).getTime() >= Date.now());
+/** Licenças ativas (não vencidas) para exibir nos documentos — a Autorização de
+ *  Funcionamento fica de fora, mostramos só as licenças sanitária/ambiental. */
+export function activeLicenses(): License[] {
+  return useLicensesStore.getState().items
+    .filter((l) => !l.expiresAt || new Date(l.expiresAt).getTime() >= Date.now())
+    .filter((l) => !/autoriza(ç|c)ão de funcionamento/i.test(l.name));
 }
-function licensesBlock(): string {
+export function licensesBlock(): string {
   const lics = activeLicenses();
   if (!lics.length) return '';
   const rows = lics.map((l) => `${esc(l.name)}: ${esc(l.number ?? '—')}${l.expiresAt ? ` · Validade: ${fmtDate(l.expiresAt)}` : ''}`).join(' &nbsp;|&nbsp; ');
   return `<p class="lic">${rows}</p>`;
 }
 
-function warrantyText(so: ServiceOrder): string {
+export function warrantyText(so: ServiceOrder): string {
   const w = so.warranty;
   if (!w || !w.has) return 'Sem garantia';
   if (w.value) return withExtenso(w.value, w.unit === 'dias' ? (w.value === 1 ? 'dia' : 'dias') : (w.value === 1 ? 'mês' : 'meses'));
   return 'Com garantia';
 }
-function warrantyNote(so: ServiceOrder): string {
-  const w = so.warranty;
-  if (!w?.has) return '';
-  const tipo = w.type ? ` · ${WARRANTY_TYPE_LABEL[w.type]}` : '';
-  return `Garantia de ${warrantyText(so)}${tipo}.`;
-}
 
 /** Texto de garantia/validade específico da praga (usa o cadastro da praga; sem isso, cai na garantia geral da OS). */
-function pestWarrantyText(pest: Pest | undefined, so: ServiceOrder): string {
+export function pestWarrantyText(pest: Pest | undefined, so: ServiceOrder): string {
   if (pest?.defaultWarrantyDays != null) return daysToExtenso(pest.defaultWarrantyDays);
   return warrantyText(so);
 }
-function pestValidityDate(pest: Pest | undefined, so: ServiceOrder): string {
+export function pestValidityDate(pest: Pest | undefined, so: ServiceOrder): string {
   const base = so.executionDate ?? so.finishedAt ?? so.startedAt ?? so.createdAt;
   if (pest?.defaultValidityDays != null && base) {
     const d = new Date(base);
@@ -128,43 +127,49 @@ function pestValidityDate(pest: Pest | undefined, so: ServiceOrder): string {
   return so.validityDate ? fmtDate(so.validityDate) : '—';
 }
 
-function signaturesBlock(so: ServiceOrder, withClient = true): string {
+/** Assinatura do Responsável Técnico (empresa) — único signatário do Certificado. */
+export function responsibleSignatureLine(): string {
   const s = useSettingsStore.getState();
-  const techId = so.technicianIds?.[0] ?? so.technicianId;
-  const techSig = so.technicianSignature ?? (techId ? s.signatures[techId] : undefined);
-  const img = (src?: string) => (src ? `<img src="${src}" alt="assinatura" style="height:46px;object-fit:contain;margin:0 auto 2px;display:block" />` : '<div style="height:46px"></div>');
-  const techNames = (so.technicianIds?.length ? so.technicianIds : [so.technicianId]).map((id) => getUser(id)?.name).filter(Boolean).join(', ') || '—';
-  const c = getCustomer(so.customerId);
-  if (withClient) {
-    return `<div class="sign2 page2">
-      <div class="line">${img(so.customerSignature)}${esc(c?.name ?? 'Cliente')}${c?.document ? `<br/>${esc(formatDocument(c.document))}` : ''}<br/>Assinatura Cliente</div>
-      <div class="line">${img(techSig)}${esc(techNames)}<br/>Técnico de Execução</div>
-    </div>`;
-  }
-  return `<div class="sign">
-    <div class="line">${img(techSig)}${esc(techNames)} · Técnico</div>
+  const org = seed.orgProfile;
+  const img = (src?: string) => (src ? `<img src="${src}" alt="assinatura" style="height:36px;object-fit:contain;margin:0 auto 2px;display:block" />` : '<div style="height:36px"></div>');
+  return `<div class="sign" style="grid-template-columns:1fr;max-width:260px;margin:20px auto 0;">
+    <div class="line">${img(s.companySignature)}${esc(org.technicalResponsibleName)}<br/>${esc(org.technicalResponsibleRole)} · ${esc(org.technicalResponsibleRegistry)}</div>
   </div>`;
 }
 
-function emergencyBlock(): string {
+/** Assinaturas de cliente e técnico de execução — fecham o Laudo. */
+export function clientTechSignatures(so: ServiceOrder): string {
+  const s = useSettingsStore.getState();
+  const techId = so.technicianIds?.[0] ?? so.technicianId;
+  const techSig = so.technicianSignature ?? (techId ? s.signatures[techId] : undefined);
+  const img = (src?: string) => (src ? `<img src="${src}" alt="assinatura" style="height:38px;object-fit:contain;margin:0 auto 2px;display:block" />` : '<div style="height:38px"></div>');
+  const techNames = (so.technicianIds?.length ? so.technicianIds : [so.technicianId]).map((id) => getUser(id)?.name).filter(Boolean).join(', ') || '—';
+  const c = getCustomer(so.customerId);
+  return `<div class="sign2">
+    <div class="line">${img(so.customerSignature)}${esc(c?.name ?? 'Cliente')}${c?.document ? `<br/>${esc(formatDocument(c.document))}` : ''}<br/>Assinatura Cliente</div>
+    <div class="line">${img(techSig)}${esc(techNames)}<br/>Técnico de Execução</div>
+  </div>`;
+}
+
+export function emergencyBlock(): string {
   const s = useSettingsStore.getState();
   return `<div class="emg"><strong>Informações toxicológicas:</strong> Suspeita de intoxicação ligar para o CEATOX ${esc(s.emergencyPhone)}${s.emergencyInfo ? ` — ${esc(s.emergencyInfo)}` : ''}</div>`;
 }
 
-function openPrint(title: string, body: string): void {
-  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/><title>${esc(title)}</title><style>${SHELL_CSS}</style></head><body><div class="doc">${body}<div class="foot">Documento gerado por Gestão Dedetizadora em ${new Date().toLocaleString('pt-BR')}</div></div><script>window.onload=function(){setTimeout(function(){window.print();},150);};</script></body></html>`;
+export function openPrint(title: string, body: string): void {
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/><title>${esc(title)}</title><style>${SHELL_CSS}</style></head><body><div class="doc">${body}</div><script>window.onload=function(){setTimeout(function(){window.print();},150);};</script></body></html>`;
   const w = window.open('', '_blank', 'width=900,height=1000');
   if (!w) { toast('Permita pop-ups para gerar o documento.', { tone: 'warning' }); return; }
   w.document.open(); w.document.write(html); w.document.close();
 }
 
-function serviceNames(so: ServiceOrder): string {
+export function serviceNames(so: ServiceOrder): string {
   return (so.serviceTypeIds?.length ? so.serviceTypeIds : [so.serviceTypeId]).map((id) => getServiceType(id)?.name).filter(Boolean).join(' + ') || '—';
 }
-function osPests(so: ServiceOrder): (Pest | undefined)[] {
+export function osPests(so: ServiceOrder): (Pest | undefined)[] {
   return so.pestIds.map((id) => seed.pests.find((p) => p.id === id));
 }
-function address(c: ReturnType<typeof getCustomer>): string {
+export function address(c: ReturnType<typeof getCustomer>): string {
   return c ? [c.street && `${c.street}, ${c.number ?? 's/n'}`, c.district, c.city && `${c.city}/${c.state ?? ''}`].filter(Boolean).join(' — ') : '';
 }
 
@@ -193,7 +198,6 @@ export function printCertificate(so: ServiceOrder): void {
     <div class="grid">
       <div style="grid-column:1/3"><span>Serviço(s):</span> ${esc(serviceNames(so))} [${esc(warrantyText(so))}]</div>
       <div style="grid-column:1/3"><span>Área tratada:</span> ${esc(so.areaTreated || '—')}</div>
-      ${warrantyNote(so) ? `<div style="grid-column:1/3"><span>Garantia:</span> ${esc(warrantyNote(so))}</div>` : ''}
       <div style="grid-column:1/3"><span>Praga(s)/Garantia:</span> ${pests.map((p) => `${esc(p?.name)} [${esc(pestWarrantyText(p, so))}]`).join(', ') || '—'}</div>
     </div>
 
@@ -203,7 +207,7 @@ export function printCertificate(so: ServiceOrder): void {
 
     <p class="execline"><strong>Data de execução do serviço:</strong> ${esc(dataExec)}</p>
 
-    ${signaturesBlock(so, false)}
+    ${responsibleSignatureLine()}
     ${emergencyBlock()}
     ${licensesBlock()}`;
   openPrint(`Certificado · ${c?.name ?? ''}`, body);
@@ -290,12 +294,9 @@ export function printLaudo(so: ServiceOrder): void {
     <table><thead><tr><th>Praga</th><th>Garantia</th><th>Validade</th></tr></thead>
     <tbody>${pestRows || '<tr><td colspan="3" style="color:#94a3b8">—</td></tr>'}</tbody></table>
 
-    <h2>Observações para execução e/ou local tratamento pragas</h2>
+    <h2>Descrição do serviço executado</h2>
     <p class="lead">${esc(so.areaTreated || 'Não informado.')}</p>
     ${so.procedures ? `<p class="lead">${esc(so.procedures)}</p>` : ''}
-
-    <h2>Garantia</h2>
-    <p class="lead">${esc(warrantyNote(so) || 'Conforme contratado, descrito na Garantia/Validade acima.')}</p>
 
     <h2>Medidas de Segurança / Orientações</h2>
     <ul class="checklist">${SAFETY_MEASURES.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
@@ -303,14 +304,14 @@ export function printLaudo(so: ServiceOrder): void {
     <div class="twocol">
       <div>
         <h3>Dados do Responsável Técnico</h3>
-        <div class="sign"><div class="line" style="grid-column:1/4">${esc(org.technicalResponsibleName)}<br/>${esc(org.technicalResponsibleRole)}<br/>${esc(org.technicalResponsibleRegistry)}</div></div>
+        ${responsibleSignatureLine()}
       </div>
       <div>
         <h3>Dados de Emergência (CIT)</h3>
-        <p>Suspeita de intoxicação ligar para o CEATOX ${esc(useSettingsStore.getState().emergencyPhone)}</p>
+        <p class="lead" style="margin-top:0">Suspeita de intoxicação ligar para o CEATOX ${esc(useSettingsStore.getState().emergencyPhone)}</p>
       </div>
     </div>
     ${licensesBlock()}
-    ${signaturesBlock(so, true)}`;
+    ${clientTechSignatures(so)}`;
   openPrint(`Laudo · ${c?.name ?? ''}`, body);
 }
