@@ -11,15 +11,16 @@ import { ServiceOrderStatusBadge } from '../components/StatusBadge';
 import * as seed from '@/infrastructure/seed/data';
 import { appointmentsForCustomer, getCustomer, getProduct, getServiceType, getUser, lastOrderForCustomer } from '@/application/repository';
 import type { Pest, ServiceOrder, ServiceType, TreatedArea } from '@/domain/types';
-import type { RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
+import type { AppointmentStatus, RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
 import { PAYMENT_METHODS, RECURRENCE_FREQ_DAYS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
 import { fmtDate } from '@/lib/date';
 import { downloadCsv } from '@/lib/export';
 import { printServiceOrder } from '@/lib/printOrder';
-import { printCertificate, printLaudo, certificateValidityText } from '@/lib/printDocuments';
+import { printCertificate, printLaudo, certificateValidityText, address } from '@/lib/printDocuments';
 import { currentBatch } from '@/lib/batches';
 import { useInvoicesStore } from '@/store/invoicesStore';
 import { useServiceOrdersStore, type ServiceOrderInput } from '@/store/serviceOrdersStore';
+import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useCustomersStore } from '@/store/customersStore';
 import { usePestsStore, useAreasStore, useEquipmentStore, useServiceTypesStore, useUsersStore, useLicensesStore } from '@/store/entityStores';
 import { logChange } from '@/store/auditStore';
@@ -180,6 +181,9 @@ export function OrdensPage() {
  *  garantia, recorrência, equipe, datas e sugestão automática de produtos. */
 function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (so: ServiceOrder) => void }) {
   const add = useServiceOrdersStore((s) => s.add);
+  const updateOs = useServiceOrdersStore((s) => s.update);
+  const addAppointment = useAppointmentsStore((s) => s.add);
+  const updateAppointment = useAppointmentsStore((s) => s.update);
   const customers = useCustomersStore((s) => s.customers);
   const serviceTypes = useServiceTypesStore((s) => s.items);
   const addServiceType = useServiceTypesStore((s) => s.add);
@@ -421,8 +425,35 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     equipmentIds.forEach((id) => checkoutEquipment(id, {
       status: 'em_uso', checkedOutAt: now, checkedOutTo: technicianIds[0], checkedOutOsId: so.id, expectedReturnAt: returnIso,
     }));
+
+    // Sincroniza com a Agenda: se a OS já estava vinculada a um agendamento,
+    // atualiza o status dele; senão, cria um novo agendamento para que a OS
+    // apareça diretamente na Agenda (em vez de ficar só na lista de OS).
+    const apptStatus: AppointmentStatus = status === 'concluida' ? 'finalizado' : status === 'em_andamento' ? 'em_atendimento' : status === 'cancelada' ? 'cancelado' : 'confirmado';
+    if (appointmentId) {
+      updateAppointment(appointmentId, { status: apptStatus, technicianId: technicianIds[0] });
+    } else {
+      const svc = serviceTypes.find((s) => s.id === serviceTypeIds[0]);
+      const durationMin = duration ? Number(duration) : (svc?.defaultDurationMin ?? 60);
+      const startIso = execDate ? new Date(execDate).toISOString() : now;
+      const endIso = new Date(new Date(startIso).getTime() + durationMin * 60000).toISOString();
+      const newAppt = addAppointment({
+        customerId,
+        serviceTypeId: serviceTypeIds[0],
+        technicianId: technicianIds[0],
+        status: apptStatus,
+        priority: 'normal',
+        scheduledStart: startIso,
+        scheduledEnd: endIso,
+        estimatedMinutes: durationMin,
+        address: address(cust),
+        products: suggestedProducts.map((p) => ({ productId: p.productId, plannedQty: p.qty })),
+      });
+      updateOs(so.id, { appointmentId: newAppt.id });
+    }
+
     logChange('criação', 'ordem de serviço', `OS #${so.number} · ${getCustomer(customerId)?.name ?? ''}`, so.id);
-    toast(`OS #${so.number} criada.`, { tone: 'success' });
+    toast(`OS #${so.number} criada e adicionada à Agenda.`, { tone: 'success' });
     onCreated(so);
   };
 

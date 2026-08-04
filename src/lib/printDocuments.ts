@@ -49,9 +49,10 @@ function daysToExtenso(days: number): string {
 /** CSS compacto e com borda decorativa — compartilhado por Certificado e Laudo. */
 export const SHELL_CSS = `
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1a1a1a; margin: 0; padding: 14px; font-size: 10.5px; line-height: 1.35; }
-  .doc { max-width: 800px; margin: 0 auto; border: 2px solid #D32F2F; border-radius: 6px; padding: 16px 22px; position: relative; }
-  .doc::before { content: ''; position: absolute; inset: 5px; border: 1px solid #D32F2F; opacity: .3; border-radius: 3px; pointer-events: none; }
+  .doc { width: 100%; min-height: 100%; border: 2px solid #D32F2F; padding: 16px 22px; position: relative; }
+  .doc::before { content: ''; position: absolute; inset: 5px; border: 1px solid #D32F2F; opacity: .3; pointer-events: none; }
   .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #D32F2F; padding-bottom: 8px; }
   .brand { display: flex; gap: 8px; align-items: center; }
   .logo { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
@@ -80,7 +81,7 @@ export const SHELL_CSS = `
   .sign .line, .sign2 .line { border-top: 1px solid #94a3b8; padding-top: 3px; text-align: center; font-size: 9px; color: #64748b; }
   .execline { margin-top: 8px; font-size: 10.5px; }
   .page2 { page-break-before: always; padding-top: 20px; }
-  @media print { body { padding: 0; } @page { margin: 10mm; } }
+  @media print { body { padding: 0; margin: 0; } @page { margin: 6mm; } }
 `;
 
 export function header(subtitle: string): string {
