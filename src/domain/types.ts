@@ -80,6 +80,46 @@ export interface Customer {
   tags: string[];
   isActive: boolean;
   createdAt: string;
+
+  // ── Cadastro Completo (clientes recorrentes/contrato) ──────────────────
+  /** 'basico' = cadastro rápido (nome/endereço/telefone); 'completo' = com
+   *  estrutura do local, armadilhas, reservatórios, contratos etc. Sem valor
+   *  definido é tratado como completo (clientes cadastrados antes desta divisão). */
+  registrationTier?: 'basico' | 'completo';
+  /** Ambientes do local, conforme o segmento do cliente (ex.: Cozinha, Câmara Fria). */
+  localStructure?: string[];
+  reservoirs?: Reservoir[];
+  contactSchedule?: ContactSchedule;
+  contracts?: ServiceContract[];
+  /** Serviços complementares contratados (ex.: Limpeza de Coifa, Sanitização). */
+  complementaryServices?: string[];
+}
+
+/** Reservatório de água do cliente (caixa d'água, cisterna, reservatório elevado…). */
+export interface Reservoir {
+  id: string;
+  type: string;
+  location?: string;
+  notes?: string;
+}
+
+/** Agenda de contato comercial/pós-venda do cliente. */
+export interface ContactSchedule {
+  nextContactAt?: string;
+  responsibleId?: string;
+  notes?: string;
+}
+
+export type ContractStatus = 'ativo' | 'vencido' | 'renovacao_pendente' | 'cancelado';
+
+/** Contrato de prestação de serviço vinculado ao cliente. */
+export interface ServiceContract {
+  id: string;
+  startDate?: string;
+  endDate?: string;
+  renewal?: string;
+  status: ContractStatus;
+  notes?: string;
 }
 
 export interface Supplier {
@@ -102,6 +142,12 @@ export interface TrapDevice {
   type: string; // Porta-isca, Luminosa, Cola, Mecânica, Feromônio...
   location?: string; // ponto de instalação
   status: TrapStatus;
+  /** Data da instalação do dispositivo (distinta de createdAt, que é o registro no sistema). */
+  installedAt?: string;
+  /** Próxima inspeção prevista — permite planejar/alertar visitas de monitoramento. */
+  nextInspectionAt?: string;
+  /** Responsável fixo pela armadilha (normalmente o técnico da rota do cliente). */
+  responsibleId?: string;
   createdAt: string;
 }
 
