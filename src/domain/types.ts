@@ -334,6 +334,33 @@ export interface Vehicle {
   inOperation?: boolean;
 }
 
+// ── App do Técnico: ponto e combustível ─────────────────────────────────────
+
+/** Registro de abastecimento — controle de combustível × quilometragem do técnico. */
+export interface FuelLog {
+  id: string;
+  orgId: string;
+  technicianId: string;
+  vehicleId?: string;
+  date: string; // ISO
+  odometerStart: number;
+  odometerEnd: number;
+  liters: number;
+  amount: number;
+  notes?: string;
+}
+
+export type TimeClockType = 'entrada' | 'saida';
+
+/** Marcação de ponto (entrada/saída) do técnico. */
+export interface TimeClockEntry {
+  id: string;
+  orgId: string;
+  technicianId: string;
+  type: TimeClockType;
+  timestamp: string; // ISO
+}
+
 export interface ServiceType {
   id: string;
   orgId: string;

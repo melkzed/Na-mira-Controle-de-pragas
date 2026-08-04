@@ -1,7 +1,7 @@
 import { Suspense, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, CalendarCheck, FlaskConical, LogOut, Map, Moon, Sun } from 'lucide-react';
+import { ArrowLeft, CalendarCheck, CalendarRange, Clock, Fuel, LogOut, Moon, Package, Sun } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import { ROLE_META } from '@/domain/enums';
 import { Avatar } from '../ui/Avatar';
@@ -11,10 +11,13 @@ import { PageLoader } from '../RouteError';
 import { FieldTechProvider } from '../field/FieldTech';
 import { cn } from '@/lib/utils';
 
+/** Menu principal do App do Técnico — ordenado pelas funcionalidades mais usadas. */
 const FIELD_TABS = [
-  { to: '/campo', label: 'Visitas', icon: CalendarCheck, end: true },
-  { to: '/campo/mapa', label: 'Mapa', icon: Map, end: false },
-  { to: '/campo/produtos', label: 'Produtos', icon: FlaskConical, end: false },
+  { to: '/campo', label: 'Visitas do Dia', icon: CalendarCheck, end: true },
+  { to: '/campo/semana', label: 'Semana', icon: CalendarRange, end: false },
+  { to: '/campo/estoque', label: 'Estoque', icon: Package, end: false },
+  { to: '/campo/ponto', label: 'Meu Ponto', icon: Clock, end: false },
+  { to: '/campo/combustivel', label: 'Combustível', icon: Fuel, end: false },
 ];
 
 /**

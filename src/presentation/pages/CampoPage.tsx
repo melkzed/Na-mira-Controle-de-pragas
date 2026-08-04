@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  CheckCircle2, ChevronRight, Clock, FileText, Info, MapPin, Navigation, Package, PackagePlus,
+  CheckCircle2, ChevronRight, Clock, FileText, Info, Map, MapPin, Navigation,
   PhoneCall, Play, TriangleAlert,
 } from 'lucide-react';
 import { Card, CardBody } from '../components/ui/Card';
@@ -15,17 +16,14 @@ import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge
 import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { PhotoCapture } from '../components/PhotoCapture';
 import { SignaturePad } from '../components/SignaturePad';
-import { Combobox } from '../components/ui/Combobox';
 import { useSettingsStore } from '@/store/settingsStore';
-import { appointmentsForTechnician, getCustomer, getProduct, getServiceType, serviceOrderForAppointment, technicianBalances } from '@/application/repository';
-import { useEquipmentStore, useProductsStore } from '@/store/entityStores';
+import { appointmentsForTechnician, getCustomer, getProduct, getServiceType, serviceOrderForAppointment } from '@/application/repository';
+import { useProductsStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
-import { useStockRequestsStore } from '@/store/stockRequestsStore';
-import { useEquipmentRequestsStore } from '@/store/equipmentRequestsStore';
 import { toast } from '@/store/toastStore';
-import { Wrench, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { Appointment, ServiceOrderPhoto } from '@/domain/types';
-import { fmtDate, fmtTime } from '@/lib/date';
+import { fmtTime } from '@/lib/date';
 import { cn } from '@/lib/utils';
 import { appleMapsLink, googleMapsRoute, wazeLink } from '@/lib/geo';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
@@ -41,14 +39,11 @@ export function CampoPage() {
   const setStatus = useAppointmentsStore((s) => s.setStatus);
   const updateAppt = useAppointmentsStore((s) => s.update);
   const storeAppts = useAppointmentsStore((s) => s.appointments); // reatividade
-  const requestRestock = useStockRequestsStore((s) => s.add);
 
   const todayIso = new Date().toISOString();
   const appts = useMemo(() => appointmentsForTechnician(techId, todayIso), [techId, todayIso, storeAppts]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const active = appts.find((a) => a.id === activeId) ?? appts[0];
-  const loc = `loc-${techId.replace('u-', '')}`;
-  const stock = technicianBalances(loc);
 
   const [detailAppt, setDetailAppt] = useState<Appointment | null>(null);
   const [navAppt, setNavAppt] = useState<Appointment | null>(null);
@@ -95,7 +90,10 @@ export function CampoPage() {
         )}
 
         {/* Rota do dia — toque abre; toque duplo abre os detalhes da visita */}
-        <p className="mb-2 mt-6 px-1 text-sm font-semibold text-foreground">Rota de hoje <span className="font-normal text-muted-foreground">· toque duplo p/ detalhes</span></p>
+        <div className="mb-2 mt-6 flex items-center justify-between px-1">
+          <p className="text-sm font-semibold text-foreground">Rota de hoje <span className="font-normal text-muted-foreground">· toque duplo p/ detalhes</span></p>
+          <Link to="/campo/mapa" className="flex items-center gap-1 text-xs font-medium text-brand hover:underline"><Map size={13} /> Mapa</Link>
+        </div>
         <div className="space-y-2">
           {appts.map((a, i) => {
             const cust = getCustomer(a.customerId);
@@ -124,33 +122,6 @@ export function CampoPage() {
 
         {/* Observação do técnico (aparece no sistema da empresa) */}
         {active && <TechNote appt={active} onSave={(text) => { updateAppt(active.id, { technicianNotes: text }); toast('Observação salva no sistema.', { tone: 'success' }); }} />}
-
-        {/* Estoque do técnico */}
-        <p className="mb-2 mt-6 px-1 text-sm font-semibold text-foreground">Meu estoque <span className="font-normal text-muted-foreground">· solicite reposição ao estoque</span></p>
-        <Card>
-          <CardBody className="space-y-2.5">
-            {stock.length === 0 && <p className="text-sm text-muted-foreground">Sem produtos alocados.</p>}
-            {stock.map(({ product, quantity }) => (
-              <div key={product.id} className="flex items-center gap-2.5">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><Package size={15} /></span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">{product.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{product.activeIngredient ?? product.manufacturer}</p>
-                </div>
-                <Badge tone={quantity <= 2 ? 'warning' : 'neutral'}>{quantity} {product.unit}</Badge>
-                <button
-                  onClick={() => { requestRestock({ productId: product.id, quantity: Math.max(product.minQuantity, 5), requestedBy: techId, appointmentId: active?.id }); toast(`Reposição de ${product.name} solicitada ao estoque.`, { tone: 'success' }); }}
-                  aria-label={`Solicitar reposição de ${product.name}`}
-                  className="shrink-0 rounded-lg border border-border p-1.5 text-brand transition hover:bg-brand-soft"
-                  title="Solicitar reposição"
-                ><PackagePlus size={15} /></button>
-              </div>
-            ))}
-          </CardBody>
-        </Card>
-
-        {/* Ferramentas e equipamentos do técnico */}
-        <MyEquipment techId={techId} />
       </div>
 
       <VisitDetailDrawer appt={detailAppt} onClose={() => setDetailAppt(null)} onNavigate={(a) => { setDetailAppt(null); setNavAppt(a); }} />
@@ -174,88 +145,6 @@ function TechNote({ appt, onSave }: { appt: Appointment; onSave: (text: string) 
             <span className="text-xs text-muted-foreground">Aparece no sistema da empresa.</span>
             <Button size="sm" leftIcon={<FileText size={14} />} disabled={!dirty} onClick={() => onSave(text.trim())}>Salvar observação</Button>
           </div>
-        </CardBody>
-      </Card>
-    </div>
-  );
-}
-
-const EQUIPMENT_REQUEST_STATUS_LABEL: Record<string, string> = { pendente: 'Pendente', aprovada: 'Aprovada', negada: 'Negada' };
-
-/** Ferramentas/equipamentos do técnico — vinculados e solicitação ao almoxarifado. */
-function MyEquipment({ techId }: { techId: string }) {
-  const equipment = useEquipmentStore((s) => s.items);
-  const { requests, add } = useEquipmentRequestsStore();
-  const mine = equipment.filter((e) => e.checkedOutTo === techId);
-  const myRequests = requests.filter((r) => r.technicianId === techId).slice(0, 5);
-  const [equipmentId, setEquipmentId] = useState('');
-  const [note, setNote] = useState('');
-
-  const request = () => {
-    if (!equipmentId) return;
-    const eq = equipment.find((e) => e.id === equipmentId);
-    add({ technicianId: techId, equipmentId, note: note.trim() || undefined });
-    toast(`Solicitação de "${eq?.name}" enviada ao almoxarifado.`, { tone: 'success' });
-    setEquipmentId(''); setNote('');
-  };
-
-  return (
-    <div className="mt-6">
-      <p className="mb-2 px-1 text-sm font-semibold text-foreground">Ferramentas e equipamentos <span className="font-normal text-muted-foreground">· comigo e solicitações</span></p>
-      <Card>
-        <CardBody className="space-y-3">
-          {mine.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhum equipamento retirado no momento.</p>
-          ) : (
-            <div className="space-y-2">
-              {mine.map((e) => (
-                <div key={e.id} className="flex items-center gap-2.5 rounded-lg border border-border/60 px-3 py-2">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><Wrench size={15} /></span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-foreground">{e.name}{e.code ? ` (${e.code})` : ''}</p>
-                    {e.expectedReturnAt && <p className="truncate text-xs text-muted-foreground">Devolução prevista: {fmtDate(e.expectedReturnAt)}</p>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="rounded-xl border border-dashed border-border p-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Solicitar equipamento</p>
-            <div className="space-y-2">
-              <Combobox
-                value={equipmentId}
-                onChange={setEquipmentId}
-                placeholder="Buscar equipamento…"
-                options={equipment.map((e) => ({ value: e.id, label: e.name, sub: e.code }))}
-              />
-              <div className="flex gap-2">
-                <input
-                  value={note}
-                  onChange={(ev) => setNote(ev.target.value)}
-                  placeholder="Observação (opcional)"
-                  className="h-9 flex-1 rounded-lg border border-input bg-surface px-2.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-ring/40"
-                />
-                <Button size="sm" disabled={!equipmentId} onClick={request}>Solicitar</Button>
-              </div>
-            </div>
-          </div>
-
-          {myRequests.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Minhas solicitações recentes</p>
-              {myRequests.map((r) => {
-                const eq = equipment.find((e) => e.id === r.equipmentId);
-                const tone = r.status === 'aprovada' ? 'success' : r.status === 'negada' ? 'danger' : 'warning';
-                return (
-                  <div key={r.id} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="truncate text-foreground">{eq?.name ?? r.equipmentId}</span>
-                    <Badge tone={tone}>{EQUIPMENT_REQUEST_STATUS_LABEL[r.status]}</Badge>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </CardBody>
       </Card>
     </div>

@@ -114,6 +114,22 @@ export function appointmentsForTechnician(
     .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
 }
 
+/** Agendamentos do técnico num intervalo de datas (ex.: semana atual) — ordenados cronologicamente. */
+export function appointmentsForTechnicianRange(
+  technicianId: string,
+  startIso: string,
+  endIso: string,
+): Appointment[] {
+  const start = startIso.slice(0, 10);
+  const end = endIso.slice(0, 10);
+  return useAppointmentsStore.getState().appointments
+    .filter((a) => {
+      const day = a.scheduledStart.slice(0, 10);
+      return a.technicianId === technicianId && day >= start && day <= end;
+    })
+    .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
+}
+
 /** Histórico de visitas do técnico (todas as datas) — mais recentes primeiro. */
 export function appointmentsHistoryForTechnician(technicianId: string): Appointment[] {
   return useAppointmentsStore.getState().appointments
