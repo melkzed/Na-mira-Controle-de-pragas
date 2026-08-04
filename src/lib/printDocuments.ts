@@ -167,7 +167,13 @@ export function emergencyBlock(): string {
 
 export function openPrint(title: string, body: string): void {
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/><title>${esc(title)}</title><style>${SHELL_CSS}</style></head><body><div class="doc">${body}</div><script>window.onload=function(){setTimeout(function(){window.print();},150);};</script></body></html>`;
-  const w = window.open('', '_blank', 'width=900,height=1000');
+  // Centraliza a janela na tela do usuário (em vez de nascer num canto), com
+  // tamanho generoso para exibir melhor o documento antes da impressão.
+  const width = Math.min(1000, Math.round(window.screen.width * 0.85));
+  const height = Math.min(1100, Math.round(window.screen.height * 0.9));
+  const left = Math.max(0, Math.round((window.screen.width - width) / 2));
+  const top = Math.max(0, Math.round((window.screen.height - height) / 2));
+  const w = window.open('', '_blank', `width=${width},height=${height},left=${left},top=${top}`);
   if (!w) { toast('Permita pop-ups para gerar o documento.', { tone: 'warning' }); return; }
   w.document.open(); w.document.write(html); w.document.close();
 }
