@@ -1,17 +1,48 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Cloud, Loader2, Search } from 'lucide-react';
+import { Check, Cloud, Loader2, Plus, Search, Trash2 } from 'lucide-react';
 import { Drawer } from './ui/Drawer';
 import { Button } from './ui/Button';
 import { Field, Input, Select, Textarea } from './ui/Field';
 import { Segmented } from './ui/Segmented';
 import { Badge } from './ui/Badge';
 import { useCustomersStore, type CustomerInput } from '@/store/customersStore';
-import type { Customer } from '@/domain/types';
+import { useUsersStore } from '@/store/entityStores';
+import { uid } from '@/store/createEntityStore';
+import type { ContractStatus, Customer, Reservoir, ServiceContract } from '@/domain/types';
 import type { CustomerType } from '@/domain/enums';
 import { isEmail, isValidDocument, maskCep, maskDocument, maskPhone } from '@/lib/validation';
 import { lookupCnpj } from '@/lib/cnpj';
+import { fmtDate } from '@/lib/date';
 
 const DRAFT_KEY = 'namira-cliente-draft';
+
+const LOCAL_STRUCTURE_PRESETS = ['Cozinha', 'Produção', 'Escritório', 'Câmara Fria', 'Estoque', 'Refeitório', 'Área Externa'];
+const COMPLEMENTARY_SERVICE_PRESETS = ["Limpeza de Coifa", "Higienização de Caixa d'Água", 'Limpeza de Reservatórios', 'Sanitização', 'Outros'];
+const RESERVOIR_TYPES = ["Caixa d'água", 'Cisterna', 'Reservatório elevado'];
+const CONTRACT_STATUS_LABEL: Record<ContractStatus, string> = {
+  ativo: 'Ativo', vencido: 'Vencido', renovacao_pendente: 'Renovação pendente', cancelado: 'Cancelado',
+};
+
+/** Chips com toggle + adição de item personalizado — usado em Estrutura do Local e Outros Serviços. */
+function TagChips({ presets, value, onChange }: { presets: string[]; value: string[]; onChange: (next: string[]) => void }) {
+  const [custom, setCustom] = useState('');
+  const all = [...new Set([...presets, ...value])];
+  const toggle = (name: string) => onChange(value.includes(name) ? value.filter((v) => v !== name) : [...value, name]);
+  const addCustom = () => { const n = custom.trim(); if (n && !all.includes(n)) { onChange([...value, n]); setCustom(''); } };
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {all.map((name) => (
+          <button key={name} type="button" onClick={() => toggle(name)} className={`rounded-full border px-2.5 py-1 text-xs transition ${value.includes(name) ? 'border-brand bg-brand-soft text-brand' : 'border-border text-muted-foreground hover:bg-muted'}`}>{name}</button>
+        ))}
+      </div>
+      <div className="mt-2 flex gap-2">
+        <input value={custom} onChange={(e) => setCustom(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }} placeholder="Adicionar personalizado…" className="h-8 flex-1 rounded-lg border border-input bg-surface px-2.5 text-xs text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-ring/40" />
+        <Button type="button" size="sm" variant="outline" onClick={addCustom} disabled={!custom.trim()}>Adicionar</Button>
+      </div>
+    </div>
+  );
+}
 
 type FormState = {
   type: CustomerType;
@@ -97,17 +128,35 @@ export function CustomerForm({
   onSaved: (c: Customer, isNew: boolean) => void;
 }) {
   const { add, update } = useCustomersStore();
+  const staff = useUsersStore((s) => s.items);
   const isEdit = !!initial;
   const [form, setForm] = useState<FormState>(empty);
   const [touched, setTouched] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout>>();
 
+  const [tier, setTier] = useState<'basico' | 'completo'>('completo');
+  const [localStructure, setLocalStructure] = useState<string[]>([]);
+  const [reservoirs, setReservoirs] = useState<Reservoir[]>([]);
+  const [contactNextAt, setContactNextAt] = useState('');
+  const [contactResponsibleId, setContactResponsibleId] = useState('');
+  const [contactNotes, setContactNotes] = useState('');
+  const [contracts, setContracts] = useState<ServiceContract[]>([]);
+  const [complementary, setComplementary] = useState<string[]>([]);
+
   // Inicializa o formulário quando abre.
   useEffect(() => {
     if (!open) return;
     if (initial) {
       setForm(fromCustomer(initial));
+      setTier(initial.registrationTier ?? 'completo');
+      setLocalStructure(initial.localStructure ?? []);
+      setReservoirs(initial.reservoirs ?? []);
+      setContactNextAt(initial.contactSchedule?.nextContactAt?.slice(0, 10) ?? '');
+      setContactResponsibleId(initial.contactSchedule?.responsibleId ?? '');
+      setContactNotes(initial.contactSchedule?.notes ?? '');
+      setContracts(initial.contracts ?? []);
+      setComplementary(initial.complementaryServices ?? []);
     } else {
       // restaura rascunho (auto-save) de um cadastro não finalizado
       try {
@@ -117,6 +166,8 @@ export function CustomerForm({
       } catch {
         setForm(empty);
       }
+      setTier('basico');
+      setLocalStructure([]); setReservoirs([]); setContactNextAt(''); setContactResponsibleId(''); setContactNotes(''); setContracts([]); setComplementary([]);
     }
     setTouched(false);
   }, [open, initial]);
@@ -185,7 +236,17 @@ export function CustomerForm({
   const submit = () => {
     setTouched(true);
     if (Object.keys(errors).length) return;
-    const input = toInput(form);
+    const input: CustomerInput = {
+      ...toInput(form),
+      registrationTier: tier,
+      localStructure: tier === 'completo' && localStructure.length ? localStructure : undefined,
+      reservoirs: tier === 'completo' && reservoirs.length ? reservoirs : undefined,
+      contactSchedule: tier === 'completo' && (contactNextAt || contactResponsibleId || contactNotes.trim())
+        ? { nextContactAt: contactNextAt ? new Date(contactNextAt).toISOString() : undefined, responsibleId: contactResponsibleId || undefined, notes: contactNotes.trim() || undefined }
+        : undefined,
+      contracts: tier === 'completo' && contracts.length ? contracts : undefined,
+      complementaryServices: tier === 'completo' && complementary.length ? complementary : undefined,
+    };
     if (initial) {
       update(initial.id, input);
       onSaved({ ...initial, ...input } as Customer, false);
@@ -223,6 +284,17 @@ export function CustomerForm({
       }
     >
       <div className="space-y-4">
+        <div>
+          <Segmented
+            value={tier}
+            onChange={(v) => setTier(v)}
+            options={[{ value: 'basico', label: 'Cadastro Básico' }, { value: 'completo', label: 'Cadastro Completo' }]}
+          />
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {tier === 'basico' ? 'Rápido — apenas nome, endereço e telefone. Ideal para clientes ocasionais.' : 'Com estrutura do local, reservatórios, contratos e outros dados de clientes recorrentes.'}
+          </p>
+        </div>
+
         <Segmented
           value={form.type}
           onChange={(v) => set('type', v)}
@@ -234,37 +306,43 @@ export function CustomerForm({
             <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Nome" />
             {touched && errors.name && <Err msg={errors.name} />}
           </Field>
-          {form.type === 'pj' && (
+          {tier === 'completo' && form.type === 'pj' && (
             <Field label="Razão social / Empresa">
               <Input value={form.companyName} onChange={(e) => set('companyName', e.target.value)} />
             </Field>
           )}
-          <Field label={form.type === 'pf' ? 'CPF' : 'CNPJ'}>
-            <div className="flex gap-2">
-              <Input value={form.document} onChange={(e) => set('document', maskDocument(e.target.value, form.type))} placeholder={form.type === 'pf' ? '000.000.000-00' : '00.000.000/0000-00'} inputMode="numeric" />
-              {form.type === 'pj' && (
-                <Button type="button" variant="outline" size="icon" onClick={doLookupCnpj} disabled={cnpjLoading} title="Consultar na Receita" aria-label="Consultar CNPJ na Receita">
-                  {cnpjLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-                </Button>
+          {tier === 'completo' && (
+            <Field label={form.type === 'pf' ? 'CPF' : 'CNPJ'}>
+              <div className="flex gap-2">
+                <Input value={form.document} onChange={(e) => set('document', maskDocument(e.target.value, form.type))} placeholder={form.type === 'pf' ? '000.000.000-00' : '00.000.000/0000-00'} inputMode="numeric" />
+                {form.type === 'pj' && (
+                  <Button type="button" variant="outline" size="icon" onClick={doLookupCnpj} disabled={cnpjLoading} title="Consultar na Receita" aria-label="Consultar CNPJ na Receita">
+                    {cnpjLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                  </Button>
+                )}
+              </div>
+              {touched && errors.document && <Err msg={errors.document} />}
+              {cnpjMsg === 'ok' && <span className="mt-1 block text-xs text-success">Dados preenchidos pela Receita.</span>}
+              {cnpjMsg && cnpjMsg !== 'ok' && <span className="mt-1 block text-xs text-danger">{cnpjMsg}</span>}
+              {form.type === 'pj' && form.registrationStatus && (
+                <span className="mt-1 inline-flex"><Badge tone={/ativa/i.test(form.registrationStatus) ? 'success' : 'warning'}>{form.registrationStatus}</Badge></span>
               )}
-            </div>
-            {touched && errors.document && <Err msg={errors.document} />}
-            {cnpjMsg === 'ok' && <span className="mt-1 block text-xs text-success">Dados preenchidos pela Receita.</span>}
-            {cnpjMsg && cnpjMsg !== 'ok' && <span className="mt-1 block text-xs text-danger">{cnpjMsg}</span>}
-            {form.type === 'pj' && form.registrationStatus && (
-              <span className="mt-1 inline-flex"><Badge tone={/ativa/i.test(form.registrationStatus) ? 'success' : 'warning'}>{form.registrationStatus}</Badge></span>
-            )}
-          </Field>
-          <Field label="E-mail">
-            <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="cliente@email.com" />
-            {touched && errors.email && <Err msg={errors.email} />}
-          </Field>
+            </Field>
+          )}
+          {tier === 'completo' && (
+            <Field label="E-mail">
+              <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="cliente@email.com" />
+              {touched && errors.email && <Err msg={errors.email} />}
+            </Field>
+          )}
           <Field label="Telefone">
             <Input value={form.phone} onChange={(e) => set('phone', maskPhone(e.target.value))} placeholder="(11) 90000-0000" inputMode="tel" />
           </Field>
-          <Field label="WhatsApp">
-            <Input value={form.whatsapp} onChange={(e) => set('whatsapp', maskPhone(e.target.value))} placeholder="(11) 90000-0000" inputMode="tel" />
-          </Field>
+          {tier === 'completo' && (
+            <Field label="WhatsApp">
+              <Input value={form.whatsapp} onChange={(e) => set('whatsapp', maskPhone(e.target.value))} placeholder="(11) 90000-0000" inputMode="tel" />
+            </Field>
+          )}
         </div>
 
         <div className="border-t border-border pt-4">
@@ -280,37 +358,133 @@ export function CustomerForm({
           </div>
         </div>
 
-        <div className="border-t border-border pt-4">
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Imóvel e observações</p>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Tipo de imóvel">
-              <Select value={form.propertyType} onChange={(e) => set('propertyType', e.target.value)}>
-                <option value="">—</option>
-                {['Residencial', 'Comercial', 'Industrial', 'Condomínio', 'Rural', 'Institucional'].map((o) => <option key={o} value={o}>{o}</option>)}
-              </Select>
-            </Field>
-            <Field label="Área aproximada (m²)"><Input value={form.areaM2} onChange={(e) => set('areaM2', e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" /></Field>
-            <Field label="Etiquetas (separadas por vírgula)" className="col-span-2"><Input value={form.tags} onChange={(e) => set('tags', e.target.value)} placeholder="Contrato mensal, Alimentício" /></Field>
-            <Field label="Observações" className="col-span-2"><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
-          </div>
-        </div>
+        {tier === 'completo' && (
+          <>
+            <div className="border-t border-border pt-4">
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Imóvel e observações</p>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Tipo de imóvel">
+                  <Select value={form.propertyType} onChange={(e) => set('propertyType', e.target.value)}>
+                    <option value="">—</option>
+                    {['Residencial', 'Comercial', 'Industrial', 'Condomínio', 'Rural', 'Institucional'].map((o) => <option key={o} value={o}>{o}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Área aproximada (m²)"><Input value={form.areaM2} onChange={(e) => set('areaM2', e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" /></Field>
+                <Field label="Etiquetas (separadas por vírgula)" className="col-span-2"><Input value={form.tags} onChange={(e) => set('tags', e.target.value)} placeholder="Contrato mensal, Alimentício" /></Field>
+                <Field label="Observações" className="col-span-2"><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
+              </div>
+            </div>
 
-        {/* Complementos do contrato */}
-        <div className="border-t border-border pt-4">
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Contrato e monitoramento</p>
-          <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3">
-            <input type="checkbox" checked={form.monitoring} onChange={(e) => set('monitoring', e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-border" />
-            <span>
-              <span className="block text-sm font-medium text-foreground">Monitoramento contratado</span>
-              <span className="block text-xs text-muted-foreground">Habilita armadilhas, MIP e relatórios específicos para este cliente.</span>
-            </span>
-          </label>
-          <Field label="Observações permanentes do contrato" hint="Aparecem automaticamente na Ordem de Serviço, na agenda e no app do técnico." className="mt-4">
-            <Textarea value={form.permanentNotes} onChange={(e) => set('permanentNotes', e.target.value)} placeholder="Ex.: acessar pela portaria lateral; ligar antes de chegar; usar EPI específico; horário permitido…" />
-          </Field>
-        </div>
+            {/* Complementos do contrato */}
+            <div className="border-t border-border pt-4">
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Contrato e monitoramento</p>
+              <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3">
+                <input type="checkbox" checked={form.monitoring} onChange={(e) => set('monitoring', e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-border" />
+                <span>
+                  <span className="block text-sm font-medium text-foreground">Monitoramento contratado</span>
+                  <span className="block text-xs text-muted-foreground">Habilita armadilhas, MIP e relatórios específicos para este cliente.</span>
+                </span>
+              </label>
+              <Field label="Observações permanentes do contrato" hint="Aparecem automaticamente na Ordem de Serviço, na agenda e no app do técnico." className="mt-4">
+                <Textarea value={form.permanentNotes} onChange={(e) => set('permanentNotes', e.target.value)} placeholder="Ex.: acessar pela portaria lateral; ligar antes de chegar; usar EPI específico; horário permitido…" />
+              </Field>
+            </div>
+
+            <div className="border-t border-border pt-4">
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Estrutura do local</p>
+              <TagChips presets={LOCAL_STRUCTURE_PRESETS} value={localStructure} onChange={setLocalStructure} />
+            </div>
+
+            <div className="border-t border-border pt-4">
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Reservatórios</p>
+              <ReservoirsPanel value={reservoirs} onChange={setReservoirs} />
+            </div>
+
+            <div className="border-t border-border pt-4">
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Agenda de contato</p>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Próximo contato"><Input type="date" value={contactNextAt} onChange={(e) => setContactNextAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+                <Field label="Responsável">
+                  <Select value={contactResponsibleId} onChange={(e) => setContactResponsibleId(e.target.value)}><option value="">—</option>{staff.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</Select>
+                </Field>
+                <Field label="Observações" className="col-span-2"><Textarea value={contactNotes} onChange={(e) => setContactNotes(e.target.value)} placeholder="Ex.: ligar para renovar contrato, enviar proposta…" /></Field>
+              </div>
+            </div>
+
+            <div className="border-t border-border pt-4">
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Contratos</p>
+              <ContractsPanel value={contracts} onChange={setContracts} />
+            </div>
+
+            <div className="border-t border-border pt-4">
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Outros serviços</p>
+              <TagChips presets={COMPLEMENTARY_SERVICE_PRESETS} value={complementary} onChange={setComplementary} />
+            </div>
+          </>
+        )}
       </div>
     </Drawer>
+  );
+}
+
+/** Lista de reservatórios (caixa d'água, cisterna…) com adição/remoção inline. */
+function ReservoirsPanel({ value, onChange }: { value: Reservoir[]; onChange: (next: Reservoir[]) => void }) {
+  const [type, setType] = useState(RESERVOIR_TYPES[0]);
+  const [location, setLocation] = useState('');
+  const add = () => { onChange([...value, { id: uid('res'), type, location: location.trim() || undefined }]); setLocation(''); };
+  const remove = (id: string) => onChange(value.filter((r) => r.id !== id));
+  return (
+    <div className="space-y-2">
+      {value.map((r) => (
+        <div key={r.id} className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2 text-sm">
+          <span className="text-foreground">{r.type}{r.location ? ` · ${r.location}` : ''}</span>
+          <button type="button" onClick={() => remove(r.id)} className="text-muted-foreground hover:text-danger" aria-label={`Remover ${r.type}`}><Trash2 size={14} /></button>
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <Select value={type} onChange={(e) => setType(e.target.value)} className="max-w-[200px]">{RESERVOIR_TYPES.map((t) => <option key={t}>{t}</option>)}</Select>
+        <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Localização (opcional)" className="h-9 flex-1 rounded-lg border border-input bg-surface px-2.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-ring/40" />
+        <Button type="button" size="sm" variant="outline" leftIcon={<Plus size={14} />} onClick={add}>Adicionar</Button>
+      </div>
+    </div>
+  );
+}
+
+/** Lista de contratos vinculados ao cliente com adição/remoção inline. */
+function ContractsPanel({ value, onChange }: { value: ServiceContract[]; onChange: (next: ServiceContract[]) => void }) {
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [renewal, setRenewal] = useState('Automática');
+  const [status, setStatus] = useState<ContractStatus>('ativo');
+  const add = () => {
+    onChange([...value, {
+      id: uid('contract'),
+      startDate: startDate ? new Date(startDate).toISOString() : undefined,
+      endDate: endDate ? new Date(endDate).toISOString() : undefined,
+      renewal,
+      status,
+    }]);
+    setStartDate(''); setEndDate('');
+  };
+  const remove = (id: string) => onChange(value.filter((c) => c.id !== id));
+  return (
+    <div className="space-y-2">
+      {value.map((c) => (
+        <div key={c.id} className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2 text-sm">
+          <span className="text-foreground">
+            {c.startDate ? fmtDate(c.startDate) : '—'} → {c.endDate ? fmtDate(c.endDate) : '—'} · {c.renewal} · <Badge tone={c.status === 'ativo' ? 'success' : c.status === 'vencido' ? 'danger' : c.status === 'renovacao_pendente' ? 'warning' : 'neutral'}>{CONTRACT_STATUS_LABEL[c.status]}</Badge>
+          </span>
+          <button type="button" onClick={() => remove(c.id)} className="text-muted-foreground hover:text-danger" aria-label="Remover contrato"><Trash2 size={14} /></button>
+        </div>
+      ))}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Field label="Início"><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+        <Field label="Vencimento"><Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+        <Field label="Renovação"><Select value={renewal} onChange={(e) => setRenewal(e.target.value)}>{['Automática', 'Manual', 'Não renova'].map((o) => <option key={o}>{o}</option>)}</Select></Field>
+        <Field label="Situação"><Select value={status} onChange={(e) => setStatus(e.target.value as ContractStatus)}>{(Object.keys(CONTRACT_STATUS_LABEL) as ContractStatus[]).map((s) => <option key={s} value={s}>{CONTRACT_STATUS_LABEL[s]}</option>)}</Select></Field>
+      </div>
+      <Button type="button" size="sm" variant="outline" leftIcon={<Plus size={14} />} onClick={add}>Adicionar contrato</Button>
+    </div>
   );
 }
 

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Building2, Download, Mail, MapPin, Pencil, Phone, Plus, Radar, Search, Trash2, User } from 'lucide-react';
+import { Award, Building2, Download, FileText, Mail, MapPin, Pencil, Phone, Plus, Search, Trash2, User } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -11,13 +11,22 @@ import { Drawer } from '../components/ui/Drawer';
 import { Input } from '../components/ui/Field';
 import { CustomerForm } from '../components/CustomerForm';
 import { ServiceOrderStatusBadge } from '../components/StatusBadge';
+import { TrapsPanel } from '../components/client/TrapsPanel';
 import { useCustomersStore } from '@/store/customersStore';
+import { useUsersStore } from '@/store/entityStores';
 import { logChange } from '@/store/auditStore';
-import { getServiceType, serviceOrdersForCustomer } from '@/application/repository';
-import type { Customer } from '@/domain/types';
+import { getServiceType, getUser, serviceOrdersForCustomer } from '@/application/repository';
+import * as seed from '@/infrastructure/seed/data';
+import type { Customer, ContractStatus } from '@/domain/types';
 import { formatDocument } from '@/lib/utils';
 import { downloadCsv } from '@/lib/export';
 import { fmtDate } from '@/lib/date';
+import { printServiceOrder } from '@/lib/printOrder';
+import { printCertificate, printLaudo } from '@/lib/printDocuments';
+
+const CONTRACT_STATUS_LABEL: Record<ContractStatus, string> = {
+  ativo: 'Ativo', vencido: 'Vencido', renovacao_pendente: 'Renovação pendente', cancelado: 'Cancelado',
+};
 
 export function ClientesPage() {
   const [params] = useSearchParams();
@@ -132,8 +141,10 @@ function ClienteDetail({
   onDelete: (c: Customer) => void;
 }) {
   const [confirmDel, setConfirmDel] = useState(false);
+  const staff = useUsersStore((s) => s.items);
   if (!customer) return null;
   const history = serviceOrdersForCustomer(customer.id);
+  const isBasico = customer.registrationTier === 'basico';
 
   return (
     <Drawer
@@ -167,10 +178,20 @@ function ClienteDetail({
         <div className="flex items-center gap-3">
           <Avatar name={customer.name} size="lg" />
           <div>
-            <Badge tone={customer.type === 'pj' ? 'info' : 'neutral'}>{customer.type === 'pj' ? 'Pessoa Jurídica' : 'Pessoa Física'}</Badge>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge tone={customer.type === 'pj' ? 'info' : 'neutral'}>{customer.type === 'pj' ? 'Pessoa Jurídica' : 'Pessoa Física'}</Badge>
+              <Badge tone={isBasico ? 'warning' : 'neutral'}>{isBasico ? 'Cadastro básico' : 'Cadastro completo'}</Badge>
+            </div>
             {customer.companyName && <p className="mt-1 text-sm text-muted-foreground">{customer.companyName}</p>}
           </div>
         </div>
+
+        {isBasico && (
+          <div className="flex items-center justify-between rounded-lg border border-warning/30 bg-warning-soft/50 px-3 py-2 text-sm">
+            <span className="text-warning">Cadastro rápido — sem estrutura do local, contratos ou armadilhas.</span>
+            <button onClick={() => onEdit(customer)} className="shrink-0 font-medium text-warning underline">Completar cadastro</button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-2">
           {customer.phone && <ContactRow icon={<Phone size={14} />} value={customer.phone} />}
@@ -187,13 +208,6 @@ function ClienteDetail({
           <Info label="Cliente desde" value={fmtDate(customer.createdAt)} />
         </div>
 
-        {customer.monitoringContracted && (
-          <a href={`/monitoramento?client=${customer.id}`} className="flex items-center justify-between rounded-lg border border-info/30 bg-info-soft/50 px-3 py-2 text-sm transition hover:brightness-105">
-            <span className="flex items-center gap-2 font-medium text-info"><Radar size={15} /> Monitoramento contratado (armadilhas / MIP)</span>
-            <span className="text-xs text-info">Abrir →</span>
-          </a>
-        )}
-
         {customer.permanentNotes && (
           <div className="rounded-lg border border-warning/30 bg-warning-soft/60 p-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-warning">Observações permanentes do contrato</p>
@@ -201,19 +215,91 @@ function ClienteDetail({
           </div>
         )}
 
+        {!!customer.localStructure?.length && (
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Estrutura do local</p>
+            <div className="flex flex-wrap gap-1.5">{customer.localStructure.map((s) => <Badge key={s} tone="neutral">{s}</Badge>)}</div>
+          </div>
+        )}
+
+        {!!customer.reservoirs?.length && (
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Reservatórios</p>
+            <div className="space-y-1.5">
+              {customer.reservoirs.map((r) => <div key={r.id} className="rounded-lg border border-border/60 px-3 py-1.5 text-sm text-foreground">{r.type}{r.location ? ` · ${r.location}` : ''}</div>)}
+            </div>
+          </div>
+        )}
+
+        {customer.contactSchedule && (customer.contactSchedule.nextContactAt || customer.contactSchedule.responsibleId || customer.contactSchedule.notes) && (
+          <div className="rounded-lg border border-info/30 bg-info-soft/40 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-info">Agenda de contato</p>
+            <p className="mt-0.5 text-sm text-foreground">
+              {customer.contactSchedule.nextContactAt ? `Próximo contato: ${fmtDate(customer.contactSchedule.nextContactAt)}` : 'Sem próximo contato definido'}
+              {customer.contactSchedule.responsibleId ? ` · ${staff.find((u) => u.id === customer.contactSchedule?.responsibleId)?.name ?? ''}` : ''}
+            </p>
+            {customer.contactSchedule.notes && <p className="mt-0.5 text-xs text-muted-foreground">{customer.contactSchedule.notes}</p>}
+          </div>
+        )}
+
+        {!!customer.contracts?.length && (
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Contratos</p>
+            <div className="space-y-1.5">
+              {customer.contracts.map((c) => (
+                <div key={c.id} className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-1.5 text-sm">
+                  <span className="text-foreground">{c.startDate ? fmtDate(c.startDate) : '—'} → {c.endDate ? fmtDate(c.endDate) : '—'} · {c.renewal}</span>
+                  <Badge tone={c.status === 'ativo' ? 'success' : c.status === 'vencido' ? 'danger' : c.status === 'renovacao_pendente' ? 'warning' : 'neutral'}>{CONTRACT_STATUS_LABEL[c.status]}</Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!!customer.complementaryServices?.length && (
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Outros serviços</p>
+            <div className="flex flex-wrap gap-1.5">{customer.complementaryServices.map((s) => <Badge key={s} tone="brand">{s}</Badge>)}</div>
+          </div>
+        )}
+
+        {customer.monitoringContracted && (
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Monitoramento (armadilhas / MIP)</p>
+            <TrapsPanel customerId={customer.id} compact />
+          </div>
+        )}
+
         <div>
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Histórico de atendimentos ({history.length})</p>
           <div className="space-y-2">
             {history.length === 0 && <p className="text-sm text-muted-foreground">Nenhum atendimento registrado.</p>}
-            {history.map((so) => (
-              <div key={so.id} className="flex items-center justify-between rounded-lg border border-border p-3">
-                <div>
-                  <p className="text-sm font-medium text-foreground">OS #{so.number} · {getServiceType(so.serviceTypeId)?.name}</p>
-                  <p className="text-xs text-muted-foreground">{fmtDate(so.createdAt)} · {so.totalMinutes ? `${so.totalMinutes} min` : 'em aberto'}</p>
+            {history.map((so) => {
+              const pestNames = so.pestIds.map((id) => seed.pests.find((p) => p.id === id)?.name).filter(Boolean).join(', ');
+              const productNames = so.products.map((p) => seed.products.find((x) => x.id === p.productId)?.name).filter(Boolean).join(', ');
+              const techNames = (so.technicianIds?.length ? so.technicianIds : [so.technicianId]).map((id) => getUser(id)?.name).filter(Boolean).join(', ');
+              return (
+                <div key={so.id} className="rounded-lg border border-border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">OS #{so.number} · {getServiceType(so.serviceTypeId)?.name}</p>
+                      <p className="text-xs text-muted-foreground">{fmtDate(so.createdAt)} · {so.totalMinutes ? `${so.totalMinutes} min` : 'em aberto'}</p>
+                    </div>
+                    <ServiceOrderStatusBadge status={so.status} />
+                  </div>
+                  <div className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
+                    {techNames && <p>Técnico(s): {techNames}</p>}
+                    {pestNames && <p>Pragas: {pestNames}</p>}
+                    {productNames && <p>Produtos: {productNames}</p>}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <Button size="sm" variant="outline" leftIcon={<Download size={13} />} onClick={() => printServiceOrder(so)}>OS</Button>
+                    <Button size="sm" variant="outline" leftIcon={<Award size={13} />} onClick={() => printCertificate(so)}>Certificado</Button>
+                    <Button size="sm" variant="outline" leftIcon={<FileText size={13} />} onClick={() => printLaudo(so)}>Laudo</Button>
+                  </div>
                 </div>
-                <ServiceOrderStatusBadge status={so.status} />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

@@ -78,7 +78,6 @@ export const serviceTypes: ServiceType[] = [
   { id: 'st-des', orgId: ORG, name: 'Desratização', defaultDurationMin: 75, defaultPrice: 280, color: '#6366f1', defaultProducts: [{ productId: 'prod-2', qty: 2 }, { productId: 'prod-7', qty: 1 }] },
   { id: 'st-san', orgId: ORG, name: 'Sanitização', defaultDurationMin: 60, defaultPrice: 240, color: '#0ea5e9', defaultProducts: [{ productId: 'prod-5', qty: 3 }, { productId: 'prod-6', qty: 1 }] },
   { id: 'st-cup', orgId: ORG, name: 'Descupinização', defaultDurationMin: 120, defaultPrice: 540, color: '#f59e0b', defaultProducts: [{ productId: 'prod-4', qty: 1 }], defaultValidityDays: 365 },
-  { id: 'st-esc', orgId: ORG, name: 'Escorpião/Aranha', defaultDurationMin: 80, defaultPrice: 360, color: '#ef4444', defaultProducts: [{ productId: 'prod-1', qty: 1 }] },
 ];
 
 export const pests: Pest[] = [
@@ -104,8 +103,11 @@ export const stockRequests: StockRequest[] = [
 ];
 
 export const treatedAreas: TreatedArea[] = [
+  { id: 'ar-qua', orgId: ORG, name: 'Quarto' },
+  { id: 'ar-sal', orgId: ORG, name: 'Sala' },
   { id: 'ar-coz', orgId: ORG, name: 'Cozinha' },
   { id: 'ar-ban', orgId: ORG, name: 'Banheiro' },
+  { id: 'ar-gal', orgId: ORG, name: 'Galpão' },
   { id: 'ar-for', orgId: ORG, name: 'Forro' },
   { id: 'ar-cxa', orgId: ORG, name: "Caixa d'água" },
   { id: 'ar-jar', orgId: ORG, name: 'Jardim' },
@@ -247,7 +249,7 @@ export const appointments: Appointment[] = [
   A('a-3c', 'c-5', 'st-des', 'u-t1', 0, 17, 60, 'agendado', 'baixa', 5),
   A('a-4', 'c-4', 'st-cup', 'u-t3', 0, 9, 120, 'em_deslocamento', 'urgente', 1),
   A('a-5', 'c-7', 'st-ded', 'u-t3', 0, 14, 90, 'agendado', 'normal', 2),
-  A('a-6', 'c-2', 'st-esc', 'u-t2', 0, 11, 80, 'confirmado', 'alta', 1),
+  A('a-6', 'c-2', 'st-ded', 'u-t2', 0, 11, 80, 'confirmado', 'alta', 1),
   A('a-7', 'c-5', 'st-san', 'u-t4', 0, 15, 60, 'agendado', 'baixa', 1),
   // Amanhã (offset 1)
   A('a-8', 'c-8', 'st-ded', 'u-t2', 1, 9, 90, 'confirmado', 'normal', 1),
@@ -261,7 +263,7 @@ export const appointments: Appointment[] = [
   A('a-14', 'c-2', 'st-ded', 'u-t2', 3, 9, 90, 'agendado', 'normal', 1),
   A('a-15', 'c-5', 'st-san', 'u-t4', 3, 13, 60, 'agendado', 'baixa', 1),
   A('a-16', 'c-6', 'st-des', 'u-t1', 4, 8, 75, 'agendado', 'normal', 1),
-  A('a-17', 'c-8', 'st-esc', 'u-t2', 4, 11, 80, 'agendado', 'alta', 1),
+  A('a-17', 'c-8', 'st-ded', 'u-t2', 4, 11, 80, 'agendado', 'alta', 1),
   // ontem (histórico)
   A('a-18', 'c-1', 'st-ded', 'u-t1', -1, 9, 90, 'finalizado', 'normal', 1),
   A('a-19', 'c-3', 'st-san', 'u-t4', -1, 14, 60, 'finalizado', 'normal', 1),

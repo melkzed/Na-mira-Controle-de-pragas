@@ -31,6 +31,10 @@ const HistoricoPage = named(() => import('./presentation/pages/HistoricoPage'), 
 const CampoPage = named(() => import('./presentation/pages/CampoPage'), 'CampoPage');
 const CampoMapaPage = named(() => import('./presentation/pages/CampoMapaPage'), 'CampoMapaPage');
 const CampoProdutosPage = named(() => import('./presentation/pages/CampoProdutosPage'), 'CampoProdutosPage');
+const CampoSemanaPage = named(() => import('./presentation/pages/CampoSemanaPage'), 'CampoSemanaPage');
+const CampoEstoquePage = named(() => import('./presentation/pages/CampoEstoquePage'), 'CampoEstoquePage');
+const CampoPontoPage = named(() => import('./presentation/pages/CampoPontoPage'), 'CampoPontoPage');
+const CampoCombustivelPage = named(() => import('./presentation/pages/CampoCombustivelPage'), 'CampoCombustivelPage');
 const NotFoundPage = named(() => import('./presentation/pages/NotFoundPage'), 'NotFoundPage');
 
 export const router = createBrowserRouter([
@@ -46,6 +50,10 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { index: true, element: <CampoPage /> },
+      { path: 'semana', element: <CampoSemanaPage /> },
+      { path: 'estoque', element: <CampoEstoquePage /> },
+      { path: 'ponto', element: <CampoPontoPage /> },
+      { path: 'combustivel', element: <CampoCombustivelPage /> },
       { path: 'mapa', element: <CampoMapaPage /> },
       { path: 'produtos', element: <CampoProdutosPage /> },
     ],

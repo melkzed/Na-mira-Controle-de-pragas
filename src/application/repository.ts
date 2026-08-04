@@ -88,6 +88,18 @@ export function lastOrderForCustomer(customerId: string): ServiceOrder | undefin
   return serviceOrdersForCustomer(customerId)[0];
 }
 
+/** OS vinculada a um agendamento — usada para trazer a "Mensagem para o Técnico" (uso interno) ao app de campo. */
+export function serviceOrderForAppointment(appointmentId: string): ServiceOrder | undefined {
+  return useServiceOrdersStore.getState().orders.find((so) => so.appointmentId === appointmentId);
+}
+
+/** Agendamentos em aberto do cliente — usados para vincular a OS a uma visita. */
+export function appointmentsForCustomer(customerId: string): Appointment[] {
+  return useAppointmentsStore.getState().appointments
+    .filter((a) => a.customerId === customerId && a.status !== 'cancelado')
+    .sort((a, b) => b.scheduledStart.localeCompare(a.scheduledStart));
+}
+
 export function appointmentsForTechnician(
   technicianId: string,
   dayIso: string,
@@ -99,6 +111,22 @@ export function appointmentsForTechnician(
         a.technicianId === technicianId &&
         a.scheduledStart.slice(0, 10) === day,
     )
+    .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
+}
+
+/** Agendamentos do técnico num intervalo de datas (ex.: semana atual) — ordenados cronologicamente. */
+export function appointmentsForTechnicianRange(
+  technicianId: string,
+  startIso: string,
+  endIso: string,
+): Appointment[] {
+  const start = startIso.slice(0, 10);
+  const end = endIso.slice(0, 10);
+  return useAppointmentsStore.getState().appointments
+    .filter((a) => {
+      const day = a.scheduledStart.slice(0, 10);
+      return a.technicianId === technicianId && day >= start && day <= end;
+    })
     .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
 }
 
