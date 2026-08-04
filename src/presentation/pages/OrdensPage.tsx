@@ -9,14 +9,14 @@ import { Field, Input, Select, Textarea } from '../components/ui/Field';
 import { Table, type Column } from '../components/ui/Table';
 import { ServiceOrderStatusBadge } from '../components/StatusBadge';
 import * as seed from '@/infrastructure/seed/data';
-import { getCustomer, getProduct, getServiceType, getUser, lastOrderForCustomer } from '@/application/repository';
+import { appointmentsForCustomer, getCustomer, getProduct, getServiceType, getUser, lastOrderForCustomer } from '@/application/repository';
 import type { Pest, ServiceOrder, ServiceType, TreatedArea } from '@/domain/types';
 import type { RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
-import { PAYMENT_METHODS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
+import { PAYMENT_METHODS, RECURRENCE_FREQ_DAYS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
 import { fmtDate } from '@/lib/date';
 import { downloadCsv } from '@/lib/export';
 import { printServiceOrder } from '@/lib/printOrder';
-import { printCertificate, printLaudo } from '@/lib/printDocuments';
+import { printCertificate, printLaudo, certificateValidityText } from '@/lib/printDocuments';
 import { currentBatch } from '@/lib/batches';
 import { useInvoicesStore } from '@/store/invoicesStore';
 import { useServiceOrdersStore, type ServiceOrderInput } from '@/store/serviceOrdersStore';
@@ -24,14 +24,12 @@ import { useCustomersStore } from '@/store/customersStore';
 import { usePestsStore, useAreasStore, useEquipmentStore, useServiceTypesStore, useUsersStore, useLicensesStore } from '@/store/entityStores';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
-import { PhotoCapture } from '../components/PhotoCapture';
 import { SignaturePad } from '../components/SignaturePad';
 import { QuickAddChip } from '../components/QuickAddChip';
 import { Combobox, MultiCombobox } from '../components/ui/Combobox';
 import { useSettingsStore } from '@/store/settingsStore';
 import { computeTaxes } from '@/application/fiscal/tax';
 import { formatCurrency } from '@/lib/utils';
-import type { ServiceOrderPhoto } from '@/domain/types';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { Award, FileCode, FileText, Receipt } from 'lucide-react';
 import { uid } from '@/store/createEntityStore';
@@ -119,16 +117,29 @@ export function OrdensPage() {
                 <Info label="Duração" value={selected.totalMinutes ? `${selected.totalMinutes} min` : 'em aberto'} />
                 <Info label="Técnico(s)" value={(selected.technicianIds?.length ? selected.technicianIds : [selected.technicianId]).map((id) => getUser(id)?.name?.split(' ')[0]).filter(Boolean).join(', ') || '—'} />
                 <Info label="Vendedor" value={selected.sellerId ? getUser(selected.sellerId)?.name ?? '—' : '—'} />
-                <Info label="Execução" value={selected.executionDate ? fmtDate(selected.executionDate) : (selected.startedAt ? fmtDate(selected.startedAt) : '—')} />
-                <Info label="Validade" value={selected.validityDate ? fmtDate(selected.validityDate) : '—'} />
+                <Info label="Data do Serviço" value={selected.executionDate ? fmtDate(selected.executionDate) : (selected.startedAt ? fmtDate(selected.startedAt) : '—')} />
+                <Info label="Vencimento do Pagamento" value={selected.dueDate ? fmtDate(selected.dueDate) : '—'} />
+                <Info label="Validade do Serviço" value={selected.validityDate ? fmtDate(selected.validityDate) : '—'} />
+                <Info label="Validade do Certificado" value={certificateValidityText(selected)} />
+                {selected.recurrence?.enabled && <Info label="Próxima Visita" value={selected.nextVisitDate ? fmtDate(selected.nextVisitDate) : '—'} />}
               </div>
             </Section>
 
             {selected.procedures && <Section title="Procedimentos realizados"><p className="text-sm text-foreground">{selected.procedures}</p></Section>}
 
+            {selected.technicianMessage && (
+              <div className="rounded-lg border border-brand/30 bg-brand-soft/30 p-2.5 text-xs text-brand">
+                <span className="font-semibold">Mensagem interna para o técnico (não aparece em documentos):</span> {selected.technicianMessage}
+              </div>
+            )}
+
             <Section title="Pragas combatidas">
               <div className="flex flex-wrap gap-1.5">
-                {selected.pestIds.map((id) => <Badge key={id} tone="warning">{seed.pests.find((p) => p.id === id)?.name}</Badge>)}
+                {selected.pestIds.map((id) => {
+                  const p = seed.pests.find((x) => x.id === id);
+                  const override = selected.pestValidity?.find((pv) => pv.pestId === id)?.validityDate;
+                  return <Badge key={id} tone="warning">{p?.name}{override ? ` · val. ${fmtDate(override)}` : ''}</Badge>;
+                })}
                 {selected.pestIds.length === 0 && <span className="text-sm text-muted-foreground">—</span>}
               </div>
             </Section>
@@ -183,14 +194,17 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const sellers = allStaffUsers.filter((u) => u.role !== 'tecnico');
 
   const [customerId, setCustomerId] = useState('');
+  const [appointmentId, setAppointmentId] = useState('');
   const [serviceTypeIds, setServiceTypeIds] = useState<string[]>([]);
   const [technicianIds, setTechnicianIds] = useState<string[]>([]);
   const [sellerId, setSellerId] = useState('');
   const [status, setStatus] = useState<ServiceOrderStatus>('em_andamento');
-  const [areaIds, setAreaIds] = useState<string[]>([]);
+  const [areaQty, setAreaQty] = useState<Record<string, number>>({});
   const [pestIds, setPestIds] = useState<string[]>([]);
+  const [pestValidity, setPestValidity] = useState<Record<string, string>>({});
   const [duration, setDuration] = useState('');
   const [procedures, setProcedures] = useState('');
+  const [technicianMessage, setTechnicianMessage] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<string>('');
   const [warrantyHas, setWarrantyHas] = useState(true);
   const [warrantyValue, setWarrantyValue] = useState('3');
@@ -201,26 +215,42 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const [execDate, setExecDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [validityDate, setValidityDate] = useState('');
+  const [certValidityDate, setCertValidityDate] = useState('');
+  const [certValidityTouched, setCertValidityTouched] = useState(false);
+  const [nextVisitDate, setNextVisitDate] = useState('');
+  const [nextVisitTouched, setNextVisitTouched] = useState(false);
   const [equipmentIds, setEquipmentIds] = useState<string[]>([]);
   const [returnAt, setReturnAt] = useState('');
-  const [photos, setPhotos] = useState<ServiceOrderPhoto[]>([]);
   const [touched, setTouched] = useState(false);
   const [filledFrom, setFilledFrom] = useState<number | null>(null);
   const [validityTouched, setValidityTouched] = useState(false);
   const licenses = useLicensesStore((s) => s.items);
 
   const cust = customers.find((c) => c.id === customerId);
+  const areaIds = Object.keys(areaQty);
+
+  /** Só equipamentos disponíveis (sem dono fixo) podem ser retirados temporariamente
+   *  para a OS — o kit fixo/permanente do técnico não deve aparecer aqui. */
+  const availableEquipment = equipment.filter((e) => !e.assignedTo && e.status === 'disponivel');
+
+  const toggleArea = (id: string) => setAreaQty((m) => {
+    if (m[id] != null) { const n = { ...m }; delete n[id]; return n; }
+    return { ...m, [id]: 1 };
+  });
+  const setAreaQtyVal = (id: string, qty: number) => setAreaQty((m) => ({ ...m, [id]: Math.max(1, qty) }));
 
   useEffect(() => {
     if (open) {
       const c0 = customers[0]?.id ?? '';
       setCustomerId(c0);
+      setAppointmentId('');
       setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
       setTechnicianIds(technicianUsers[0] ? [technicianUsers[0].id] : []);
-      setSellerId(''); setStatus('em_andamento'); setAreaIds([]); setPestIds([]); setDuration(''); setProcedures('');
+      setSellerId(''); setStatus('em_andamento'); setAreaQty({}); setPestIds([]); setPestValidity({}); setDuration(''); setProcedures(''); setTechnicianMessage('');
       setPaymentMethod(''); setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
       setRecEnabled(false); setRecFreq('mensal'); setExecDate(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
-      setEquipmentIds([]); setReturnAt(''); setPhotos([]); setTouched(false); setFilledFrom(null);
+      setCertValidityDate(''); setCertValidityTouched(false); setNextVisitDate(''); setNextVisitTouched(false);
+      setEquipmentIds([]); setReturnAt(''); setTouched(false); setFilledFrom(null);
     }
   }, [open, customers, serviceTypes]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -230,9 +260,11 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     if (!last) { setFilledFrom(null); return; }
     setServiceTypeIds(last.serviceTypeIds?.length ? last.serviceTypeIds : (last.serviceTypeId ? [last.serviceTypeId] : []));
     setPestIds(last.pestIds ?? []);
-    if (last.areaIds?.length) setAreaIds(last.areaIds);
-    else if (last.areaTreated) { const names = last.areaTreated.split(',').map((s) => s.trim()); setAreaIds(areas.filter((a) => names.includes(a.name)).map((a) => a.id)); }
-    else setAreaIds([]);
+    setPestValidity(Object.fromEntries((last.pestValidity ?? []).filter((pv) => pv.validityDate).map((pv) => [pv.pestId, pv.validityDate!.slice(0, 10)])));
+    if (last.areaQty && Object.keys(last.areaQty).length) setAreaQty(last.areaQty);
+    else if (last.areaIds?.length) setAreaQty(Object.fromEntries(last.areaIds.map((id) => [id, 1])));
+    else if (last.areaTreated) { const names = last.areaTreated.split(',').map((s) => s.trim()); setAreaQty(Object.fromEntries(areas.filter((a) => names.some((n) => n.includes(a.name))).map((a) => [a.id, 1]))); }
+    else setAreaQty({});
     if (last.technicianIds?.length) setTechnicianIds(last.technicianIds);
     if (last.paymentMethod) setPaymentMethod(last.paymentMethod);
     if (last.warranty) {
@@ -246,11 +278,12 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   };
 
   // Ao selecionar o cliente, tenta preencher a partir do histórico.
-  useEffect(() => { if (open && customerId) applyHistory(customerId); }, [customerId, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (open && customerId) { applyHistory(customerId); setAppointmentId(''); } }, [customerId, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const customerAppointments = customerId ? appointmentsForCustomer(customerId) : [];
 
   const clearFill = () => {
     setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
-    setPestIds([]); setAreaIds([]); setPaymentMethod(''); setRecEnabled(false); setFilledFrom(null);
+    setPestIds([]); setPestValidity({}); setAreaQty({}); setPaymentMethod(''); setRecEnabled(false); setFilledFrom(null);
     setValidityDate(''); setValidityTouched(false);
   };
 
@@ -273,7 +306,7 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const quickAddArea = (name: string) => {
     const a: TreatedArea = { id: uid('area'), orgId: 'org-namira', name };
     addArea(a);
-    setAreaIds((arr) => [...arr, a.id]);
+    setAreaQty((m) => ({ ...m, [a.id]: 1 }));
     toast(`Área "${name}" cadastrada.`, { tone: 'success' });
   };
 
@@ -293,6 +326,42 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     setValidityDate(d.toISOString().slice(0, 10));
   }, [suggestedValidityDays, validityTouched]);
 
+  // Validade do certificado — segue a validade do serviço enquanto não for editada
+  // manualmente; sem garantia, o certificado não se aplica (fica em branco).
+  useEffect(() => {
+    if (certValidityTouched) return;
+    setCertValidityDate(warrantyHas ? validityDate : '');
+  }, [validityDate, warrantyHas, certValidityTouched]);
+
+  // Próxima visita sugerida — data de execução + intervalo da recorrência escolhida.
+  useEffect(() => {
+    if (!recEnabled) { if (!nextVisitTouched) setNextVisitDate(''); return; }
+    if (nextVisitTouched) return;
+    const base = execDate ? new Date(execDate) : new Date();
+    base.setDate(base.getDate() + RECURRENCE_FREQ_DAYS[recFreq]);
+    setNextVisitDate(base.toISOString().slice(0, 10));
+  }, [recEnabled, recFreq, execDate, nextVisitTouched]);
+
+  // Validade individual por praga — sugerida pelo cadastro da praga (ou pela
+  // sugestão geral da OS), editável por praga; some quando a praga é removida.
+  useEffect(() => {
+    setPestValidity((m) => {
+      const next = { ...m };
+      pestIds.forEach((id) => {
+        if (next[id]) return;
+        const p = pests.find((x) => x.id === id);
+        const days = p?.defaultValidityDays ?? suggestedValidityDays;
+        if (days != null) {
+          const base = execDate ? new Date(execDate) : new Date();
+          base.setDate(base.getDate() + days);
+          next[id] = base.toISOString().slice(0, 10);
+        }
+      });
+      Object.keys(next).forEach((id) => { if (!pestIds.includes(id)) delete next[id]; });
+      return next;
+    });
+  }, [pestIds, execDate, pests, suggestedValidityDays]);
+
   // Certificações/licenças da empresa vencidas — alertadas na geração da OS.
   const expiredLicenses = licenses.filter((l) => l.expiresAt && new Date(l.expiresAt) < new Date());
 
@@ -310,9 +379,14 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const submit = () => {
     setTouched(true);
     if (!customerId) return;
+    if (equipmentIds.length > 0 && !returnAt) {
+      toast('Informe a previsão de devolução dos equipamentos retirados.', { tone: 'warning' });
+      return;
+    }
     const now = new Date().toISOString();
     const input: ServiceOrderInput = {
       customerId,
+      appointmentId: appointmentId || undefined,
       serviceTypeId: serviceTypeIds[0],
       serviceTypeIds,
       technicianId: technicianIds[0],
@@ -320,12 +394,15 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       sellerId: sellerId || undefined,
       status,
       areaIds,
-      areaTreated: areaIds.map((id) => areas.find((a) => a.id === id)?.name).filter(Boolean).join(', ') || undefined,
+      areaQty: Object.keys(areaQty).length ? areaQty : undefined,
+      areaTreated: areaIds.map((id) => { const a = areas.find((x) => x.id === id); return a ? `${areaQty[id] ?? 1} ${a.name}` : null; }).filter(Boolean).join(', ') || undefined,
       procedures: procedures.trim() || undefined,
+      technicianMessage: technicianMessage.trim() || undefined,
       totalMinutes: duration ? Number(duration) : undefined,
       startedAt: status !== 'rascunho' ? now : undefined,
       finishedAt: status === 'concluida' ? now : undefined,
       pestIds,
+      pestValidity: pestIds.length ? pestIds.map((id) => ({ pestId: id, validityDate: pestValidity[id] ? new Date(pestValidity[id]).toISOString() : undefined })) : undefined,
       products: suggestedProducts.map((p) => ({ productId: p.productId, usedQty: p.qty })),
       paymentMethod: paymentMethod || undefined,
       warranty: { has: warrantyHas, value: warrantyHas ? Number(warrantyValue) || undefined : undefined, unit: warrantyHas ? warrantyUnit : undefined, type: warrantyHas ? warrantyType : undefined },
@@ -333,8 +410,9 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       executionDate: execDate ? new Date(execDate).toISOString() : undefined,
       dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
       validityDate: validityDate ? new Date(validityDate).toISOString() : undefined,
+      certificateValidityDate: certValidityDate ? new Date(certValidityDate).toISOString() : undefined,
+      nextVisitDate: nextVisitDate ? new Date(nextVisitDate).toISOString() : undefined,
       equipmentIds,
-      photos: photos.length ? photos : undefined,
       hasCustomerSignature: false,
     };
     const so = add(input);
@@ -364,6 +442,15 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
           {touched && !customerId && <span className="mt-1 block text-xs text-danger">Selecione um cliente.</span>}
         </Field>
 
+        {customerAppointments.length > 0 && (
+          <Field label="Agendamento vinculado" hint="Opcional — permite que a Mensagem para o Técnico chegue ao app de campo">
+            <Select value={appointmentId} onChange={(e) => setAppointmentId(e.target.value)}>
+              <option value="">Nenhum (OS avulsa)</option>
+              {customerAppointments.map((a) => <option key={a.id} value={a.id}>{fmtDate(a.scheduledStart)} · {getServiceType(a.serviceTypeId)?.name ?? ''}</option>)}
+            </Select>
+          </Field>
+        )}
+
         {filledFrom != null && (
           <div className="flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft/40 p-2.5 text-xs text-brand">
             <Zap size={14} className="shrink-0" />
@@ -386,16 +473,43 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
           </div>
         </Field>
 
-        <Field label="Pragas combatidas">
+        <Field label="Pragas combatidas" hint="Cada praga pode ter validade própria, independente da validade geral do serviço">
           <div className="flex flex-wrap items-center gap-1.5">
             {pests.map((p) => <Chip key={p.id} active={pestIds.includes(p.id)} onClick={() => toggle(setPestIds, p.id)}>{p.name}</Chip>)}
             <QuickAddChip label="praga" onAdd={quickAddPest} />
           </div>
+          {pestIds.length > 0 && (
+            <div className="mt-2 space-y-1.5 rounded-xl border border-border bg-muted/30 p-2.5">
+              {pestIds.map((id) => {
+                const p = pests.find((x) => x.id === id);
+                return (
+                  <div key={id} className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-foreground">{p?.name}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-muted-foreground">Validade</span>
+                      <input type="date" value={pestValidity[id] ?? ''} onChange={(e) => setPestValidity((m) => ({ ...m, [id]: e.target.value }))} onClick={(e) => e.currentTarget.showPicker?.()} className="h-7 rounded-md border border-input bg-surface px-1.5 text-xs text-foreground focus:border-brand focus:outline-none" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </Field>
 
-        <Field label="Áreas tratadas">
+        <Field label="Áreas tratadas" hint="Toque para selecionar; ajuste a quantidade com + / −">
           <div className="flex flex-wrap items-center gap-1.5">
-            {areas.map((a) => <Chip key={a.id} active={areaIds.includes(a.id)} onClick={() => toggle(setAreaIds, a.id)}>{a.name}</Chip>)}
+            {areas.map((a) => (
+              <div key={a.id} className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition ${areaQty[a.id] != null ? 'border-brand bg-brand-soft text-brand' : 'border-border text-muted-foreground hover:bg-muted'}`}>
+                <button type="button" onClick={() => toggleArea(a.id)}>{a.name}</button>
+                {areaQty[a.id] != null && (
+                  <span className="flex items-center gap-1 border-l border-brand/30 pl-1">
+                    <button type="button" aria-label={`Diminuir quantidade de ${a.name}`} onClick={() => setAreaQtyVal(a.id, areaQty[a.id] - 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">−</button>
+                    <span className="w-3.5 text-center font-semibold">{areaQty[a.id]}</span>
+                    <button type="button" aria-label={`Aumentar quantidade de ${a.name}`} onClick={() => setAreaQtyVal(a.id, areaQty[a.id] + 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">+</button>
+                  </span>
+                )}
+              </div>
+            ))}
             <QuickAddChip label="área" onAdd={quickAddArea} />
           </div>
         </Field>
@@ -428,17 +542,25 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
         <div className="rounded-xl border border-border bg-muted/30 p-3">
           <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={recEnabled} onChange={(e) => setRecEnabled(e.target.checked)} className="h-4 w-4 rounded border-border" /> Serviço recorrente</label>
           {recEnabled && (
-            <Select value={recFreq} onChange={(e) => setRecFreq(e.target.value as RecurrenceFreq)} className="mt-2">{(Object.keys(RECURRENCE_FREQ_LABEL) as RecurrenceFreq[]).map((r) => <option key={r} value={r}>{RECURRENCE_FREQ_LABEL[r]}</option>)}</Select>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Select value={recFreq} onChange={(e) => setRecFreq(e.target.value as RecurrenceFreq)}>{(Object.keys(RECURRENCE_FREQ_LABEL) as RecurrenceFreq[]).map((r) => <option key={r} value={r}>{RECURRENCE_FREQ_LABEL[r]}</option>)}</Select>
+              <Field label="Próxima visita">
+                <Input type="date" value={nextVisitDate} onChange={(e) => { setNextVisitDate(e.target.value); setNextVisitTouched(true); }} onClick={(e) => e.currentTarget.showPicker?.()} />
+              </Field>
+            </div>
           )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Forma de pagamento"><Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}><option value="">—</option>{PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}</Select></Field>
           <Field label="Status"><Select value={status} onChange={(e) => setStatus(e.target.value as ServiceOrderStatus)}>{(Object.keys(OS_STATUS_LABEL) as ServiceOrderStatus[]).map((s) => <option key={s} value={s}>{OS_STATUS_LABEL[s]}</option>)}</Select></Field>
-          <Field label="Data de execução"><Input type="date" value={execDate} onChange={(e) => setExecDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
-          <Field label="Vencimento"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
-          <Field label="Validade do serviço" hint={!validityTouched && suggestedValidityDays != null ? `Sugerida pelo serviço/praga: ${suggestedValidityDays} dias` : undefined}>
+          <Field label="Data do Serviço"><Input type="date" value={execDate} onChange={(e) => setExecDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+          <Field label="Data de Vencimento do Pagamento"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+          <Field label="Validade do Serviço" hint={!validityTouched && suggestedValidityDays != null ? `Sugerida pelo serviço/praga: ${suggestedValidityDays} dias` : 'Validade do serviço executado, com ou sem garantia'}>
             <Input type="date" value={validityDate} onChange={(e) => { setValidityDate(e.target.value); setValidityTouched(true); }} onClick={(e) => e.currentTarget.showPicker?.()} />
+          </Field>
+          <Field label="Validade do Certificado" hint={!warrantyHas ? 'Não aplicável — serviço sem garantia' : 'Validade do certificado a ser emitido'}>
+            <Input type="date" disabled={!warrantyHas} value={certValidityDate} onChange={(e) => { setCertValidityDate(e.target.value); setCertValidityTouched(true); }} onClick={(e) => e.currentTarget.showPicker?.()} />
           </Field>
           <Field label="Duração (min)"><Input type="number" min={0} value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="—" /></Field>
         </div>
@@ -450,23 +572,26 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
         </Field>
         <Field label="Vendedor responsável"><Select value={sellerId} onChange={(e) => setSellerId(e.target.value)}><option value="">—</option>{sellers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></Field>
 
-        <Field label="Equipamentos utilizados" hint="Busque pelo nome ou código — ficam marcados como 'em uso' até a devolução">
+        <Field label="Equipamentos utilizados" hint="Apenas retirada temporária — o kit fixo do técnico não aparece aqui">
           <MultiCombobox
             values={equipmentIds}
             onChange={setEquipmentIds}
-            placeholder="Buscar equipamento…"
-            options={equipment.map((e) => ({ value: e.id, label: e.name, sub: e.code }))}
+            placeholder="Buscar equipamento disponível…"
+            options={availableEquipment.map((e) => ({ value: e.id, label: e.name, sub: e.code }))}
           />
         </Field>
         {equipmentIds.length > 0 && (
-          <Field label="Previsão de devolução dos equipamentos"><Input type="datetime-local" value={returnAt} onChange={(e) => setReturnAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+          <Field label="Previsão de devolução dos equipamentos" required>
+            <Input type="datetime-local" value={returnAt} onChange={(e) => setReturnAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} />
+            {touched && !returnAt && <span className="mt-1 block text-xs text-danger">Informe a previsão de devolução.</span>}
+          </Field>
         )}
 
-        <Field label="Fotos (antes / durante / após)">
-          <PhotoCapture photos={photos} onChange={setPhotos} />
-        </Field>
-
         <Field label="Procedimentos / observações"><Textarea value={procedures} onChange={(e) => setProcedures(e.target.value)} placeholder="Descreva o que foi feito no atendimento…" /></Field>
+
+        <Field label="Mensagem para o Técnico" hint="Uso interno — visível apenas no app de campo, nunca aparece na OS, Certificado ou Laudo impressos">
+          <Textarea value={technicianMessage} onChange={(e) => setTechnicianMessage(e.target.value)} placeholder="Ex.: cliente pediu para não usar produto com cheiro forte…" />
+        </Field>
       </div>
     </Drawer>
   );

@@ -118,6 +118,8 @@ export function pestWarrantyText(pest: Pest | undefined, so: ServiceOrder): stri
   return warrantyText(so);
 }
 export function pestValidityDate(pest: Pest | undefined, so: ServiceOrder): string {
+  const override = pest && so.pestValidity?.find((pv) => pv.pestId === pest.id)?.validityDate;
+  if (override) return fmtDate(override);
   const base = so.executionDate ?? so.finishedAt ?? so.startedAt ?? so.createdAt;
   if (pest?.defaultValidityDays != null && base) {
     const d = new Date(base);
@@ -125,6 +127,13 @@ export function pestValidityDate(pest: Pest | undefined, so: ServiceOrder): stri
     return fmtDate(d.toISOString());
   }
   return so.validityDate ? fmtDate(so.validityDate) : '—';
+}
+
+/** Validade do certificado — distinta da validade do serviço: só se aplica
+ *  quando o atendimento teve garantia; sem garantia, não há certificado válido. */
+export function certificateValidityText(so: ServiceOrder): string {
+  if (!so.warranty?.has) return 'Não aplicável — serviço sem garantia';
+  return fmtDate(so.certificateValidityDate ?? so.validityDate);
 }
 
 /** Assinatura do Responsável Técnico (empresa) — único signatário do Certificado. */
@@ -178,7 +187,7 @@ export function printCertificate(so: ServiceOrder): void {
   const c = getCustomer(so.customerId);
   const org = seed.orgProfile;
   const dataExec = fmtDate(so.executionDate ?? so.finishedAt ?? so.startedAt ?? so.createdAt);
-  const validade = so.validityDate ? fmtDate(so.validityDate) : '—';
+  const validade = certificateValidityText(so);
   const pests = osPests(so);
 
   const productRows = so.products.map((p) => {

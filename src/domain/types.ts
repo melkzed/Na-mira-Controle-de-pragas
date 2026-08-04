@@ -383,12 +383,25 @@ export interface ServiceOrder {
   warranty?: WarrantyInfo;
   /** Recorrência do serviço. */
   recurrence?: OsRecurrence;
-  /** Datas do serviço. */
+  /** Data do serviço (execução). */
   executionDate?: string;
+  /** Data de vencimento do pagamento. */
   dueDate?: string;
+  /** Validade do serviço executado (proteção contra as pragas tratadas). */
   validityDate?: string;
-  /** Fotos antes/durante/após. */
-  photos?: ServiceOrderPhoto[];
+  /** Validade do certificado emitido — pode divergir da validade do serviço
+   *  quando o serviço foi feito sem garantia (certificado não se aplica). */
+  certificateValidityDate?: string;
+  /** Data prevista da próxima visita (quando o serviço é recorrente). */
+  nextVisitDate?: string;
+  /** Validade individual por praga combatida — sobrepõe o padrão do cadastro
+   *  da praga (Pest.defaultValidityDays) quando informada nesta OS. */
+  pestValidity?: { pestId: string; validityDate?: string }[];
+  /** Quantidade por área tratada (ex.: 2 Quartos, 1 Sala) — chave é o id de TreatedArea. */
+  areaQty?: Record<string, number>;
+  /** Mensagem interna para o técnico — visível apenas no app de campo;
+   *  nunca deve aparecer na OS impressa, no Certificado ou no Laudo. */
+  technicianMessage?: string;
   /** Localização registrada durante o atendimento (app do técnico). */
   location?: { lat: number; lng: number };
   /** Assinaturas eletrônicas (dataURL) incorporadas ao PDF. */

@@ -88,6 +88,18 @@ export function lastOrderForCustomer(customerId: string): ServiceOrder | undefin
   return serviceOrdersForCustomer(customerId)[0];
 }
 
+/** OS vinculada a um agendamento — usada para trazer a "Mensagem para o Técnico" (uso interno) ao app de campo. */
+export function serviceOrderForAppointment(appointmentId: string): ServiceOrder | undefined {
+  return useServiceOrdersStore.getState().orders.find((so) => so.appointmentId === appointmentId);
+}
+
+/** Agendamentos em aberto do cliente — usados para vincular a OS a uma visita. */
+export function appointmentsForCustomer(customerId: string): Appointment[] {
+  return useAppointmentsStore.getState().appointments
+    .filter((a) => a.customerId === customerId && a.status !== 'cancelado')
+    .sort((a, b) => b.scheduledStart.localeCompare(a.scheduledStart));
+}
+
 export function appointmentsForTechnician(
   technicianId: string,
   dayIso: string,

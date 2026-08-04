@@ -119,7 +119,7 @@ export const ROLE_META: Record<UserRole, { label: string }> = {
 // ── Ordem de Serviço avançada ──────────────────────────────────────────────
 export type WarrantyUnit = 'dias' | 'meses';
 export type WarrantyType = 'preventivo' | 'corretivo' | 'monitoramento';
-export type RecurrenceFreq = 'semanal' | 'quinzenal' | 'mensal' | 'bimestral' | 'trimestral' | 'semestral' | 'anual';
+export type RecurrenceFreq = 'semanal' | 'quinzenal' | '45dias' | 'mensal' | 'bimestral' | 'trimestral' | 'semestral' | 'anual';
 
 export const WARRANTY_TYPE_LABEL: Record<WarrantyType, string> = {
   preventivo: 'Controle preventivo',
@@ -130,11 +130,24 @@ export const WARRANTY_TYPE_LABEL: Record<WarrantyType, string> = {
 export const RECURRENCE_FREQ_LABEL: Record<RecurrenceFreq, string> = {
   semanal: 'Semanal',
   quinzenal: 'Quinzenal',
+  '45dias': '45 dias',
   mensal: 'Mensal',
   bimestral: 'Bimestral',
   trimestral: 'Trimestral',
   semestral: 'Semestral',
   anual: 'Anual',
+};
+
+/** Aproximação em dias de cada frequência — usada para sugerir a próxima visita na OS. */
+export const RECURRENCE_FREQ_DAYS: Record<RecurrenceFreq, number> = {
+  semanal: 7,
+  quinzenal: 15,
+  '45dias': 45,
+  mensal: 30,
+  bimestral: 60,
+  trimestral: 90,
+  semestral: 180,
+  anual: 365,
 };
 
 /** Formas de pagamento comuns (usadas na OS). */

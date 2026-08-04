@@ -19,18 +19,6 @@ import {
   openPrint, serviceNames, osPests,
 } from './printDocuments';
 
-const PHASE_LABEL: Record<string, string> = { antes: 'Antes', durante: 'Durante', apos: 'Após' };
-/** Blocos de fotos agrupados por fase (antes/durante/após) — só quando existirem. */
-function photosHtml(so: ServiceOrder): string {
-  const phases: ('antes' | 'durante' | 'apos')[] = ['antes', 'durante', 'apos'];
-  return phases.map((ph) => {
-    const list = (so.photos ?? []).filter((p) => p.phase === ph);
-    if (!list.length) return '';
-    const imgs = list.map((p) => `<img src="${p.dataUrl}" alt="${esc(p.name ?? ph)}" style="width:110px;height:82px;object-fit:cover;border-radius:5px;border:1px solid #e2e8f0" />`).join('');
-    return `<p style="margin:5px 0 3px;font-size:9.5px;color:#64748b"><strong>${PHASE_LABEL[ph]}</strong></p><div style="display:flex;gap:6px;flex-wrap:wrap">${imgs}</div>`;
-  }).join('');
-}
-
 /** Valor do serviço — soma o preço padrão dos tipos de serviço selecionados. */
 function serviceValue(so: ServiceOrder): number {
   return (so.serviceTypeIds?.length ? so.serviceTypeIds : [so.serviceTypeId])
@@ -38,8 +26,7 @@ function serviceValue(so: ServiceOrder): number {
     .reduce((s, v) => s + v, 0);
 }
 
-export function printServiceOrder(so: ServiceOrder, options?: { includePhotos?: boolean }): void {
-  const includePhotos = options?.includePhotos ?? true;
+export function printServiceOrder(so: ServiceOrder): void {
   const c = getCustomer(so.customerId);
   const org = seed.orgProfile;
   const techIds = so.technicianIds?.length ? so.technicianIds : [so.technicianId];
@@ -49,6 +36,7 @@ export function printServiceOrder(so: ServiceOrder, options?: { includePhotos?: 
   const dataHora = fmtDateTime(so.startedAt ?? so.executionDate ?? so.createdAt);
   const validade = so.validityDate ? fmtDate(so.validityDate) : '—';
   const recorrencia = so.recurrence?.enabled ? (so.recurrence.frequency ? RECURRENCE_FREQ_LABEL[so.recurrence.frequency] : 'Sim') : 'Não';
+  const proximaVisita = so.recurrence?.enabled && so.nextVisitDate ? fmtDate(so.nextVisitDate) : undefined;
   const equipNames = (so.equipmentIds ?? []).map((id) => seed.equipment.find((e) => e.id === id)?.name).filter(Boolean).join(', ');
   const pests = osPests(so);
   const valor = serviceValue(so);
@@ -108,6 +96,7 @@ export function printServiceOrder(so: ServiceOrder, options?: { includePhotos?: 
       <span><strong>Valor do Serviço:</strong> ${esc(formatCurrency(valor))}</span>
       <span><strong>Forma de pagamento:</strong> ${esc(so.paymentMethod || '—')}</span>
       <span><strong>Recorrência:</strong> ${esc(recorrencia)}</span>
+      ${proximaVisita ? `<span><strong>Próxima visita:</strong> ${esc(proximaVisita)}</span>` : ''}
     </div>
 
     <h2>Produtos químicos e métodos empregados</h2>
@@ -122,8 +111,6 @@ export function printServiceOrder(so: ServiceOrder, options?: { includePhotos?: 
     <p class="lead">${esc(so.areaTreated || 'Não informado.')}${equipNames ? ` · Equipamentos: ${esc(equipNames)}` : ''}</p>
     ${so.procedures ? `<p class="lead">${esc(so.procedures)}</p>` : ''}
     ${c?.permanentNotes ? `<p class="lead"><strong>Observações do contrato:</strong> ${esc(c.permanentNotes)}</p>` : ''}
-
-    ${includePhotos && so.photos && so.photos.length ? `<h2>Registro fotográfico</h2>${photosHtml(so)}` : ''}
 
     <div class="twocol">
       <div>

@@ -17,7 +17,7 @@ import { PhotoCapture } from '../components/PhotoCapture';
 import { SignaturePad } from '../components/SignaturePad';
 import { Combobox } from '../components/ui/Combobox';
 import { useSettingsStore } from '@/store/settingsStore';
-import { appointmentsForTechnician, getCustomer, getProduct, getServiceType, technicianBalances } from '@/application/repository';
+import { appointmentsForTechnician, getCustomer, getProduct, getServiceType, serviceOrderForAppointment, technicianBalances } from '@/application/repository';
 import { useEquipmentStore, useProductsStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useStockRequestsStore } from '@/store/stockRequestsStore';
@@ -271,6 +271,7 @@ function VisitDetailDrawer({ appt, onClose, onNavigate }: { appt: Appointment | 
   const savePhotos = (next: ServiceOrderPhoto[]) => { setPhotos(next); updateAppt(appt.id, { photos: next }); };
   const cust = getCustomer(appt.customerId);
   const st = getServiceType(appt.serviceTypeId);
+  const linkedOs = serviceOrderForAppointment(appt.id);
   const planned = appt.products?.length ? appt.products.map((p) => ({ productId: p.productId, qty: p.plannedQty })) : (st?.defaultProducts ?? []);
   const phone = cust?.phone?.replace(/[^\d+]/g, '');
 
@@ -313,6 +314,12 @@ function VisitDetailDrawer({ appt, onClose, onNavigate }: { appt: Appointment | 
           <PhotoCapture photos={photos} onChange={savePhotos} />
         </Section>
 
+        {linkedOs?.technicianMessage && (
+          <div className="rounded-lg border border-brand/30 bg-brand-soft/40 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-brand">Mensagem para o técnico</p>
+            <p className="mt-0.5 text-sm text-foreground">{linkedOs.technicianMessage}</p>
+          </div>
+        )}
         {appt.notes && <Section title="Solicitação / observações do agendamento"><p className="text-sm text-foreground">{appt.notes}</p></Section>}
         {cust?.permanentNotes && (
           <div className="rounded-lg border border-warning/30 bg-warning-soft/60 p-3">
@@ -462,6 +469,7 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onPh
 }) {
   const cust = getCustomer(appt.customerId);
   const st = getServiceType(appt.serviceTypeId);
+  const linkedOs = serviceOrderForAppointment(appt.id);
   const started = appt.status === 'em_atendimento';
   const finished = appt.status === 'finalizado';
   const checklist = ['Equipamentos', 'EPIs', 'Produtos', 'Veículo', 'Documentação'];
@@ -502,6 +510,15 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onPh
         )}
         {cust?.monitoringContracted && (
           <Badge tone="info" dot>Cliente com monitoramento contratado</Badge>
+        )}
+        {linkedOs?.technicianMessage && (
+          <div className="flex items-start gap-2 rounded-xl border border-brand/30 bg-brand-soft/40 p-3 text-sm">
+            <Info size={16} className="mt-0.5 shrink-0 text-brand" />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-brand">Mensagem para o técnico</p>
+              <p className="text-foreground">{linkedOs.technicianMessage}</p>
+            </div>
+          </div>
         )}
 
         <div className="grid grid-cols-2 gap-2">
