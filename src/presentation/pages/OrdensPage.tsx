@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Download, Plus, Zap } from 'lucide-react';
+import { Check, Download, Pencil, Plus, Zap } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -23,7 +23,7 @@ import { useServiceOrdersStore, type ServiceOrderInput } from '@/store/serviceOr
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useCustomersStore } from '@/store/customersStore';
 import { usePestsStore, useAreasStore, useEquipmentStore, useFinanceStore, useServiceTypesStore, useUsersStore, useLicensesStore } from '@/store/entityStores';
-import { logChange } from '@/store/auditStore';
+import { logChange, useAuditStore, type AuditEntry } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
 import { SignaturePad } from '../components/SignaturePad';
 import { QuickAddChip } from '../components/QuickAddChip';
@@ -51,8 +51,17 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 
 export function OrdensPage() {
   const orders = useServiceOrdersStore((s) => s.orders);
+  const auditEntries = useAuditStore((s) => s.entries);
   const [selected, setSelected] = useState<ServiceOrder | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [editingOs, setEditingOs] = useState<ServiceOrder | null>(null);
+
+  // Ao editar uma OS já selecionada, mantém o painel de detalhe sincronizado
+  // com a versão mais recente após salvar.
+  useEffect(() => {
+    if (selected) setSelected(orders.find((o) => o.id === selected.id) ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders]);
 
   const exportCsv = () => {
     downloadCsv('ordens-de-servico', orders, [
@@ -87,13 +96,18 @@ export function OrdensPage() {
         actions={
           <>
             <Button variant="outline" leftIcon={<Download size={16} />} onClick={exportCsv}>Exportar CSV</Button>
-            <Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Nova OS</Button>
+            <Button leftIcon={<Plus size={16} />} onClick={() => { setEditingOs(null); setFormOpen(true); }}>Nova OS</Button>
           </>
         }
       />
       <Table columns={columns} rows={orders} keyField={(so) => so.id} onRowClick={setSelected} />
 
-      <NovaOsForm open={formOpen} onClose={() => setFormOpen(false)} onCreated={(so) => { setFormOpen(false); setSelected(so); }} />
+      <NovaOsForm
+        open={formOpen}
+        initial={editingOs}
+        onClose={() => { setFormOpen(false); setEditingOs(null); }}
+        onCreated={(so) => { setFormOpen(false); setEditingOs(null); setSelected(so); }}
+      />
 
       <Drawer
         open={!!selected}
@@ -101,10 +115,13 @@ export function OrdensPage() {
         title={`Ordem de Serviço #${selected?.number}`}
         subtitle={selected ? getCustomer(selected.customerId)?.name : ''}
         centered
-        footer={<div className="flex flex-wrap justify-end gap-2">
-          <Button variant="outline" size="sm" leftIcon={<Download size={14} />} onClick={() => selected && printServiceOrder(selected)}>OS (PDF)</Button>
-          <Button variant="outline" size="sm" leftIcon={<Award size={14} />} onClick={() => selected && printCertificate(selected)}>Certificado</Button>
-          <Button variant="outline" size="sm" leftIcon={<FileText size={14} />} onClick={() => selected && printLaudo(selected)}>Laudo</Button>
+        footer={<div className="flex flex-wrap justify-between gap-2">
+          <Button variant="outline" size="sm" leftIcon={<Pencil size={14} />} onClick={() => { if (selected) { setEditingOs(selected); setFormOpen(true); } }}>Editar</Button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" size="sm" leftIcon={<Download size={14} />} onClick={() => selected && printServiceOrder(selected)}>OS (PDF)</Button>
+            <Button variant="outline" size="sm" leftIcon={<Award size={14} />} onClick={() => selected && printCertificate(selected)}>Certificado</Button>
+            <Button variant="outline" size="sm" leftIcon={<FileText size={14} />} onClick={() => selected && printLaudo(selected)}>Laudo</Button>
+          </div>
         </div>}
       >
         {selected && (
@@ -169,6 +186,8 @@ export function OrdensPage() {
                   {selected.products.length === 0 && <span className="text-sm text-muted-foreground">Nenhum produto lançado.</span>}
                 </div>
               </Section>
+
+              <OsHistorySection entries={auditEntries.filter((e) => e.entityType === 'ordem de serviço' && e.entityId === selected.id)} />
             </div>
 
             <div className="space-y-5">
@@ -187,12 +206,14 @@ export function OrdensPage() {
 
 /** Formulário de nova Ordem de Serviço — múltiplos serviços/pragas/áreas,
  *  garantia, recorrência, equipe, datas e sugestão automática de produtos. */
-function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (so: ServiceOrder) => void }) {
+function NovaOsForm({ open, initial, onClose, onCreated }: { open: boolean; initial?: ServiceOrder | null; onClose: () => void; onCreated: (so: ServiceOrder) => void }) {
   const add = useServiceOrdersStore((s) => s.add);
   const updateOs = useServiceOrdersStore((s) => s.update);
   const addAppointment = useAppointmentsStore((s) => s.add);
   const updateAppointment = useAppointmentsStore((s) => s.update);
+  const financeEntries = useFinanceStore((s) => s.items);
   const addFinanceEntry = useFinanceStore((s) => s.add);
+  const updateFinanceEntry = useFinanceStore((s) => s.update);
   const customers = useCustomersStore((s) => s.customers);
   const serviceTypes = useServiceTypesStore((s) => s.items);
   const addServiceType = useServiceTypesStore((s) => s.add);
@@ -241,14 +262,19 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const [touched, setTouched] = useState(false);
   const [filledFrom, setFilledFrom] = useState<number | null>(null);
   const [validityTouched, setValidityTouched] = useState(false);
+  /** Texto livre de "áreas tratadas" de OS antigas (anteriores ao seletor por
+   *  chips) — preservado ao editar quando nenhuma área com id correspondente
+   *  está selecionada, para não perder a informação original. */
+  const [legacyAreaText, setLegacyAreaText] = useState('');
   const licenses = useLicensesStore((s) => s.items);
 
   const cust = customers.find((c) => c.id === customerId);
   const areaIds = Object.keys(areaQty);
 
   /** Só equipamentos disponíveis (sem dono fixo) podem ser retirados temporariamente
-   *  para a OS — o kit fixo/permanente do técnico não deve aparecer aqui. */
-  const availableEquipment = equipment.filter((e) => !e.assignedTo && e.status === 'disponivel');
+   *  para a OS — o kit fixo/permanente do técnico não deve aparecer aqui. Em modo
+   *  edição, mantém visível o que já está retirado nesta própria OS. */
+  const availableEquipment = equipment.filter((e) => (!e.assignedTo && e.status === 'disponivel') || (initial && e.checkedOutOsId === initial.id));
 
   const toggleArea = (id: string) => setAreaQty((m) => {
     if (m[id] != null) { const n = { ...m }; delete n[id]; return n; }
@@ -256,21 +282,67 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   });
   const setAreaQtyVal = (id: string, qty: number) => setAreaQty((m) => ({ ...m, [id]: Math.max(1, qty) }));
 
+  /** Converte um ISO (armazenado) de volta para o formato de <input type=date>,
+   *  usando getters locais — evita o desvio de fuso do bug de datas. */
+  const toInput = (iso?: string) => (iso ? toDateInputValue(new Date(iso)) : '');
+
   useEffect(() => {
-    if (open) {
-      const c0 = customers[0]?.id ?? '';
-      setCustomerId(c0);
-      setAppointmentId('');
-      setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
-      setTechnicianIds(technicianUsers[0] ? [technicianUsers[0].id] : []);
-      setSellerId(''); setStatus('em_andamento'); setAreaQty({}); setPestIds([]); setPestValidity({}); setDuration(''); setProcedures(''); setTechnicianMessage('');
-      setPaymentMethod(''); setServiceValue(''); setServiceValueTouched(false); setPaymentStatus('pendente'); setPaymentDate('');
-      setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
-      setRecEnabled(false); setRecFreq('mensal'); setExecDate(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
-      setCertValidityDate(''); setCertValidityTouched(false); setNextVisitDate(''); setNextVisitTouched(false);
-      setEquipmentIds([]); setReturnAt(''); setTouched(false); setFilledFrom(null);
+    if (!open) return;
+    if (initial) {
+      // Modo edição: repopula todos os campos a partir da OS selecionada.
+      setCustomerId(initial.customerId);
+      setAppointmentId(initial.appointmentId ?? '');
+      setServiceTypeIds(initial.serviceTypeIds?.length ? initial.serviceTypeIds : (initial.serviceTypeId ? [initial.serviceTypeId] : []));
+      setTechnicianIds(initial.technicianIds?.length ? initial.technicianIds : (initial.technicianId ? [initial.technicianId] : []));
+      setSellerId(initial.sellerId ?? '');
+      setStatus(initial.status);
+      const initialAreaQty = initial.areaQty && Object.keys(initial.areaQty).length ? initial.areaQty : Object.fromEntries((initial.areaIds ?? []).map((id) => [id, 1]));
+      setAreaQty(initialAreaQty);
+      // OS antigas guardavam "áreas tratadas" como texto livre, sem ids — preserva
+      // esse texto para não perdê-lo caso nenhuma área com id seja reselecionada.
+      setLegacyAreaText(Object.keys(initialAreaQty).length === 0 ? (initial.areaTreated ?? '') : '');
+      setPestIds(initial.pestIds ?? []);
+      setPestValidity(Object.fromEntries((initial.pestValidity ?? []).filter((pv) => pv.validityDate).map((pv) => [pv.pestId, toInput(pv.validityDate)])));
+      setDuration(initial.totalMinutes ? String(initial.totalMinutes) : '');
+      setProcedures(initial.procedures ?? '');
+      setTechnicianMessage(initial.technicianMessage ?? '');
+      setPaymentMethod(initial.paymentMethod ?? '');
+      setServiceValue(initial.serviceValue != null ? String(initial.serviceValue) : '');
+      setServiceValueTouched(true);
+      setPaymentStatus(initial.paymentStatus ?? 'pendente');
+      setPaymentDate(toInput(initial.paymentDate));
+      setWarrantyHas(initial.warranty?.has ?? false);
+      setWarrantyValue(initial.warranty?.value != null ? String(initial.warranty.value) : '3');
+      setWarrantyUnit(initial.warranty?.unit ?? 'meses');
+      setWarrantyType(initial.warranty?.type ?? 'corretivo');
+      setRecEnabled(initial.recurrence?.enabled ?? false);
+      setRecFreq(initial.recurrence?.frequency ?? 'mensal');
+      setExecDate(toInput(initial.executionDate));
+      setDueDate(toInput(initial.dueDate));
+      setValidityDate(toInput(initial.validityDate));
+      setValidityTouched(true);
+      setCertValidityDate(toInput(initial.certificateValidityDate));
+      setCertValidityTouched(true);
+      setNextVisitDate(toInput(initial.nextVisitDate));
+      setNextVisitTouched(true);
+      setEquipmentIds(initial.equipmentIds ?? []);
+      setReturnAt('');
+      setTouched(false);
+      setFilledFrom(null);
+      return;
     }
-  }, [open, customers, serviceTypes]); // eslint-disable-line react-hooks/exhaustive-deps
+    const c0 = customers[0]?.id ?? '';
+    setCustomerId(c0);
+    setAppointmentId('');
+    setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
+    setTechnicianIds(technicianUsers[0] ? [technicianUsers[0].id] : []);
+    setSellerId(''); setStatus('em_andamento'); setAreaQty({}); setLegacyAreaText(''); setPestIds([]); setPestValidity({}); setDuration(''); setProcedures(''); setTechnicianMessage('');
+    setPaymentMethod(''); setServiceValue(''); setServiceValueTouched(false); setPaymentStatus('pendente'); setPaymentDate('');
+    setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
+    setRecEnabled(false); setRecFreq('mensal'); setExecDate(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
+    setCertValidityDate(''); setCertValidityTouched(false); setNextVisitDate(''); setNextVisitTouched(false);
+    setEquipmentIds([]); setReturnAt(''); setTouched(false); setFilledFrom(null);
+  }, [open, initial, customers, serviceTypes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Preenchimento inteligente: repete o último atendimento do cliente. */
   const applyHistory = (cid: string) => {
@@ -295,13 +367,14 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     setFilledFrom(last.number);
   };
 
-  // Ao selecionar o cliente, tenta preencher a partir do histórico.
-  useEffect(() => { if (open && customerId) { applyHistory(customerId); setAppointmentId(''); } }, [customerId, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Ao selecionar o cliente, tenta preencher a partir do histórico — mas não
+  // em modo edição, para não sobrescrever os dados já preenchidos da OS.
+  useEffect(() => { if (open && customerId && !initial) { applyHistory(customerId); setAppointmentId(''); } }, [customerId, open]); // eslint-disable-line react-hooks/exhaustive-deps
   const customerAppointments = customerId ? appointmentsForCustomer(customerId) : [];
 
   const clearFill = () => {
     setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
-    setPestIds([]); setPestValidity({}); setAreaQty({}); setPaymentMethod(''); setRecEnabled(false); setFilledFrom(null);
+    setPestIds([]); setPestValidity({}); setAreaQty({}); setLegacyAreaText(''); setPaymentMethod(''); setRecEnabled(false); setFilledFrom(null);
     setValidityDate(''); setValidityTouched(false);
   };
 
@@ -408,7 +481,10 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const submit = () => {
     setTouched(true);
     if (!customerId) return;
-    if (equipmentIds.length > 0 && !returnAt) {
+    const prevEquipmentIds = initial?.equipmentIds ?? [];
+    const addedEquipmentIds = equipmentIds.filter((id) => !prevEquipmentIds.includes(id));
+    const removedEquipmentIds = prevEquipmentIds.filter((id) => !equipmentIds.includes(id));
+    if (addedEquipmentIds.length > 0 && !returnAt) {
       toast('Informe a previsão de devolução dos equipamentos retirados.', { tone: 'warning' });
       return;
     }
@@ -424,12 +500,12 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       status,
       areaIds,
       areaQty: Object.keys(areaQty).length ? areaQty : undefined,
-      areaTreated: areaIds.map((id) => { const a = areas.find((x) => x.id === id); return a ? `${areaQty[id] ?? 1} ${a.name}` : null; }).filter(Boolean).join(', ') || undefined,
+      areaTreated: areaIds.map((id) => { const a = areas.find((x) => x.id === id); return a ? `${areaQty[id] ?? 1} ${a.name}` : null; }).filter(Boolean).join(', ') || legacyAreaText || undefined,
       procedures: procedures.trim() || undefined,
       technicianMessage: technicianMessage.trim() || undefined,
       totalMinutes: duration ? Number(duration) : undefined,
-      startedAt: status !== 'rascunho' ? now : undefined,
-      finishedAt: status === 'concluida' ? now : undefined,
+      startedAt: initial?.startedAt ?? (status !== 'rascunho' ? now : undefined),
+      finishedAt: status === 'concluida' ? (initial?.finishedAt ?? now) : undefined,
       pestIds,
       pestValidity: pestIds.length ? pestIds.map((id) => ({ pestId: id, validityDate: pestValidity[id] ? dateInputToIso(pestValidity[id]) : undefined })) : undefined,
       products: suggestedProducts.map((p) => ({ productId: p.productId, usedQty: p.qty })),
@@ -445,11 +521,66 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       certificateValidityDate: certValidityDate ? dateInputToIso(certValidityDate) : undefined,
       nextVisitDate: nextVisitDate ? dateInputToIso(nextVisitDate) : undefined,
       equipmentIds,
-      hasCustomerSignature: false,
+      hasCustomerSignature: initial?.hasCustomerSignature ?? false,
     };
-    const so = add(input);
-    // Retirada dos equipamentos utilizados (em uso, com previsão de devolução).
+
     const returnIso = returnAt ? new Date(returnAt).toISOString() : undefined;
+    const apptStatus: AppointmentStatus = status === 'concluida' ? 'finalizado' : status === 'em_andamento' ? 'em_atendimento' : status === 'cancelada' ? 'cancelado' : 'confirmado';
+    const custName = getCustomer(customerId)?.name ?? '';
+
+    if (initial) {
+      // ---- Edição: atualiza a OS existente e registra o que mudou no histórico ----
+      const changes: string[] = [];
+      if (initial.status !== status) changes.push(`status: ${OS_STATUS_LABEL[initial.status]} → ${OS_STATUS_LABEL[status]}`);
+      if ((initial.serviceValue ?? 0) !== (input.serviceValue ?? 0)) changes.push(`valor: ${formatCurrency(initial.serviceValue ?? 0)} → ${formatCurrency(input.serviceValue ?? 0)}`);
+      if ((initial.paymentStatus ?? 'pendente') !== paymentStatus) changes.push(`pagamento: ${PAYMENT_STATUS_LABEL[initial.paymentStatus ?? 'pendente']} → ${PAYMENT_STATUS_LABEL[paymentStatus]}`);
+      if ((initial.executionDate ?? '') !== (input.executionDate ?? '')) changes.push('data do serviço alterada');
+      if ((initial.dueDate ?? '') !== (input.dueDate ?? '')) changes.push('vencimento do pagamento alterado');
+      if ((initial.procedures ?? '') !== (input.procedures ?? '')) changes.push('procedimentos atualizados');
+      if (JSON.stringify([...(initial.pestIds ?? [])].sort()) !== JSON.stringify([...pestIds].sort())) changes.push('pragas atualizadas');
+      const initialSvcIds = initial.serviceTypeIds?.length ? initial.serviceTypeIds : [initial.serviceTypeId];
+      if (JSON.stringify([...initialSvcIds].sort()) !== JSON.stringify([...serviceTypeIds].sort())) changes.push('serviços atualizados');
+      const initialTechIds = initial.technicianIds?.length ? initial.technicianIds : [initial.technicianId];
+      if (JSON.stringify([...initialTechIds].sort()) !== JSON.stringify([...technicianIds].sort())) changes.push('equipe técnica atualizada');
+      if (addedEquipmentIds.length || removedEquipmentIds.length) changes.push('equipamentos atualizados');
+
+      updateOs(initial.id, input);
+      const so: ServiceOrder = { ...initial, ...input };
+
+      removedEquipmentIds.forEach((id) => checkoutEquipment(id, {
+        status: 'disponivel', checkedOutAt: undefined, checkedOutTo: undefined, checkedOutOsId: undefined, expectedReturnAt: undefined,
+      }));
+      addedEquipmentIds.forEach((id) => checkoutEquipment(id, {
+        status: 'em_uso', checkedOutAt: now, checkedOutTo: technicianIds[0], checkedOutOsId: initial.id, expectedReturnAt: returnIso,
+      }));
+
+      // Agenda: só atualiza o agendamento já vinculado — edição de OS nunca
+      // cria um novo agendamento, para não duplicar a Agenda.
+      if (appointmentId) updateAppointment(appointmentId, { status: apptStatus, technicianId: technicianIds[0] });
+
+      // Financeiro: atualiza o lançamento vinculado a esta OS, se existir;
+      // cria um novo apenas se a OS passou a ter valor e ainda não tinha lançamento.
+      const existingFe = financeEntries.find((f) => f.serviceOrderId === initial.id);
+      if (input.serviceValue) {
+        const feData = {
+          amount: input.serviceValue,
+          status: (paymentStatus === 'pago' ? 'pago' : 'pendente') as 'pago' | 'pendente',
+          description: `OS #${initial.number} · ${custName}${paymentMethod ? ` · ${paymentMethod}` : ''}`,
+          dueDate: dueDate || undefined,
+          paidAt: paymentStatus === 'pago' ? (input.paymentDate ?? now) : undefined,
+        };
+        if (existingFe) updateFinanceEntry(existingFe.id, feData);
+        else addFinanceEntry({ id: uid('fe'), orgId: 'org-namira', type: 'receita', customerId, serviceOrderId: initial.id, createdAt: now, ...feData });
+      }
+
+      logChange('edição', 'ordem de serviço', changes.length ? `OS #${initial.number} · ${changes.join('; ')}` : `OS #${initial.number} · dados atualizados`, initial.id);
+      toast(`OS #${initial.number} atualizada.`, { tone: 'success' });
+      onCreated(so);
+      return;
+    }
+
+    // ---- Criação: nova OS ----
+    const so = add(input);
     equipmentIds.forEach((id) => checkoutEquipment(id, {
       status: 'em_uso', checkedOutAt: now, checkedOutTo: technicianIds[0], checkedOutOsId: so.id, expectedReturnAt: returnIso,
     }));
@@ -457,7 +588,6 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     // Sincroniza com a Agenda: se a OS já estava vinculada a um agendamento,
     // atualiza o status dele; senão, cria um novo agendamento para que a OS
     // apareça diretamente na Agenda (em vez de ficar só na lista de OS).
-    const apptStatus: AppointmentStatus = status === 'concluida' ? 'finalizado' : status === 'em_andamento' ? 'em_atendimento' : status === 'cancelada' ? 'cancelado' : 'confirmado';
     if (appointmentId) {
       updateAppointment(appointmentId, { status: apptStatus, technicianId: technicianIds[0] });
     } else {
@@ -483,7 +613,6 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     // Alimenta o Financeiro automaticamente: toda OS com valor vira um lançamento
     // de receita — pendente (Serviços a Receber) ou já pago, conforme informado.
     if (so.serviceValue) {
-      const custName = getCustomer(customerId)?.name ?? '';
       addFinanceEntry({
         id: uid('fe'), orgId: 'org-namira', type: 'receita',
         status: paymentStatus === 'pago' ? 'pago' : 'pendente',
@@ -496,14 +625,17 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       });
     }
 
-    logChange('criação', 'ordem de serviço', `OS #${so.number} · ${getCustomer(customerId)?.name ?? ''}`, so.id);
+    logChange('criação', 'ordem de serviço', `OS #${so.number} · ${custName}`, so.id);
     toast(`OS #${so.number} criada e adicionada à Agenda.`, { tone: 'success' });
     onCreated(so);
   };
 
   return (
-    <Drawer open={open} onClose={onClose} title="Nova Ordem de Serviço" subtitle="Preenchimento rápido — serviços, pragas e áreas em toques" width="max-w-xl"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!customerId}>Criar OS</Button></div>}>
+    <Drawer open={open} onClose={onClose}
+      title={initial ? `Editar Ordem de Serviço #${initial.number}` : 'Nova Ordem de Serviço'}
+      subtitle={initial ? 'Altere os dados necessários — as mudanças ficam registradas no histórico da OS' : 'Preenchimento rápido — serviços, pragas e áreas em toques'}
+      width="max-w-xl"
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!customerId}>{initial ? 'Salvar alterações' : 'Criar OS'}</Button></div>}>
       <div className="space-y-5">
         <Field label="Cliente" required>
           <Combobox
@@ -824,6 +956,31 @@ function TaxBreakdown({ amount, t }: { amount: number; t: import('@/domain/types
       {row('CSLL', t.csll, true)}
       <div className="flex justify-between border-t border-border/60 pt-0.5 font-semibold"><span className="text-foreground">Líquido a receber</span><span className="text-brand">{formatCurrency(t.net)}</span></div>
     </div>
+  );
+}
+
+/** Histórico de alterações e processos da OS — criação, edições (com o que
+ *  mudou), emissões fiscais e demais eventos registrados na auditoria. */
+function OsHistorySection({ entries }: { entries: AuditEntry[] }) {
+  const sorted = [...entries].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return (
+    <Section title={`Histórico (${sorted.length})`}>
+      {sorted.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nenhum evento registrado.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {sorted.map((e) => (
+            <div key={e.id} className="rounded-lg border border-border/60 px-3 py-2 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-foreground">{e.description}</span>
+                <Badge tone="neutral" className="shrink-0 text-[10px] capitalize">{e.action}</Badge>
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">{e.userName ?? 'Sistema'} · {new Date(e.createdAt).toLocaleString('pt-BR')}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
   );
 }
 
