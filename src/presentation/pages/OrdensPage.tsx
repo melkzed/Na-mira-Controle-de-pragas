@@ -6,14 +6,14 @@ import { Badge } from '../components/ui/Badge';
 import { Drawer } from '../components/ui/Drawer';
 import { Avatar } from '../components/ui/Avatar';
 import { Field, Input, Select, Textarea } from '../components/ui/Field';
+import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
 import { ServiceOrderStatusBadge } from '../components/StatusBadge';
-import * as seed from '@/infrastructure/seed/data';
-import { appointmentsForCustomer, getCustomer, getProduct, getServiceType, getUser, lastOrderForCustomer } from '@/application/repository';
-import type { Pest, ServiceOrder, ServiceType, TreatedArea } from '@/domain/types';
+import { appointmentsForCustomer, getCustomer, getPest, getProduct, getServiceType, getUser, lastOrderForCustomer } from '@/application/repository';
+import type { Pest, PaymentStatus, ServiceOrder, ServiceType, TreatedArea } from '@/domain/types';
 import type { AppointmentStatus, RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
 import { PAYMENT_METHODS, RECURRENCE_FREQ_DAYS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
-import { fmtDate } from '@/lib/date';
+import { dateInputToIso, fmtDate, parseDateInput, toDateInputValue } from '@/lib/date';
 import { downloadCsv } from '@/lib/export';
 import { printServiceOrder } from '@/lib/printOrder';
 import { printCertificate, printLaudo, certificateValidityText, address } from '@/lib/printDocuments';
@@ -22,7 +22,7 @@ import { useInvoicesStore } from '@/store/invoicesStore';
 import { useServiceOrdersStore, type ServiceOrderInput } from '@/store/serviceOrdersStore';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useCustomersStore } from '@/store/customersStore';
-import { usePestsStore, useAreasStore, useEquipmentStore, useServiceTypesStore, useUsersStore, useLicensesStore } from '@/store/entityStores';
+import { usePestsStore, useAreasStore, useEquipmentStore, useFinanceStore, useServiceTypesStore, useUsersStore, useLicensesStore } from '@/store/entityStores';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
 import { SignaturePad } from '../components/SignaturePad';
@@ -37,6 +37,9 @@ import { uid } from '@/store/createEntityStore';
 
 const OS_STATUS_LABEL: Record<ServiceOrderStatus, string> = {
   rascunho: 'Rascunho', em_andamento: 'Em andamento', concluida: 'Concluída', cancelada: 'Cancelada',
+};
+const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
+  pendente: 'Pendente', pago: 'Pago', vencido: 'Vencido', cancelado: 'Cancelado',
 };
 
 /** Chip de seleção rápida (toggle) — otimizado para OS rápida em campo. */
@@ -115,6 +118,8 @@ export function OrdensPage() {
                   <Info label="Áreas tratadas" value={selected.areaTreated ?? '—'} />
                   <Info label="Garantia" value={selected.warranty?.has ? `${selected.warranty.value ?? ''} ${selected.warranty.unit ?? ''}${selected.warranty.type ? ` · ${WARRANTY_TYPE_LABEL[selected.warranty.type]}` : ''}`.trim() : 'Sem garantia'} />
                   <Info label="Recorrência" value={selected.recurrence?.enabled ? (selected.recurrence.frequency ? RECURRENCE_FREQ_LABEL[selected.recurrence.frequency] : 'Sim') : 'Não'} />
+                  <Info label="Valor do Serviço" value={selected.serviceValue != null ? formatCurrency(selected.serviceValue) : '—'} />
+                  <Info label="Pagamento" value={selected.paymentStatus ? PAYMENT_STATUS_LABEL[selected.paymentStatus] : 'Pendente'} />
                   <Info label="Forma de pagamento" value={selected.paymentMethod ?? '—'} />
                   <Info label="Duração" value={selected.totalMinutes ? `${selected.totalMinutes} min` : 'em aberto'} />
                   <Info label="Técnico(s)" value={(selected.technicianIds?.length ? selected.technicianIds : [selected.technicianId]).map((id) => getUser(id)?.name?.split(' ')[0]).filter(Boolean).join(', ') || '—'} />
@@ -138,7 +143,7 @@ export function OrdensPage() {
               <Section title="Pragas combatidas">
                 <div className="flex flex-wrap gap-1.5">
                   {selected.pestIds.map((id) => {
-                    const p = seed.pests.find((x) => x.id === id);
+                    const p = getPest(id);
                     const override = selected.pestValidity?.find((pv) => pv.pestId === id)?.validityDate;
                     return <Badge key={id} tone="warning">{p?.name}{override ? ` · val. ${fmtDate(override)}` : ''}</Badge>;
                   })}
@@ -155,7 +160,7 @@ export function OrdensPage() {
                       <div key={p.productId} className="flex items-center justify-between rounded-lg border border-border p-2.5">
                         <div>
                           <span className="text-sm text-foreground">{prod?.name}</span>
-                          {batch && <p className="text-xs text-muted-foreground">Lote {batch.code}{batch.expiresAt ? ` · val. ${new Date(batch.expiresAt).toLocaleDateString('pt-BR')}` : ''}</p>}
+                          {batch && <p className="text-xs text-muted-foreground">Lote {batch.code}{batch.expiresAt ? ` · val. ${fmtDate(batch.expiresAt)}` : ''}</p>}
                         </div>
                         <Badge tone="brand">{p.usedQty} {prod?.unit}</Badge>
                       </div>
@@ -187,6 +192,7 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const updateOs = useServiceOrdersStore((s) => s.update);
   const addAppointment = useAppointmentsStore((s) => s.add);
   const updateAppointment = useAppointmentsStore((s) => s.update);
+  const addFinanceEntry = useFinanceStore((s) => s.add);
   const customers = useCustomersStore((s) => s.customers);
   const serviceTypes = useServiceTypesStore((s) => s.items);
   const addServiceType = useServiceTypesStore((s) => s.add);
@@ -213,6 +219,10 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const [procedures, setProcedures] = useState('');
   const [technicianMessage, setTechnicianMessage] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<string>('');
+  const [serviceValue, setServiceValue] = useState('');
+  const [serviceValueTouched, setServiceValueTouched] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('pendente');
+  const [paymentDate, setPaymentDate] = useState('');
   const [warrantyHas, setWarrantyHas] = useState(true);
   const [warrantyValue, setWarrantyValue] = useState('3');
   const [warrantyUnit, setWarrantyUnit] = useState<WarrantyUnit>('meses');
@@ -254,7 +264,8 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
       setTechnicianIds(technicianUsers[0] ? [technicianUsers[0].id] : []);
       setSellerId(''); setStatus('em_andamento'); setAreaQty({}); setPestIds([]); setPestValidity({}); setDuration(''); setProcedures(''); setTechnicianMessage('');
-      setPaymentMethod(''); setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
+      setPaymentMethod(''); setServiceValue(''); setServiceValueTouched(false); setPaymentStatus('pendente'); setPaymentDate('');
+      setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
       setRecEnabled(false); setRecFreq('mensal'); setExecDate(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
       setCertValidityDate(''); setCertValidityTouched(false); setNextVisitDate(''); setNextVisitTouched(false);
       setEquipmentIds([]); setReturnAt(''); setTouched(false); setFilledFrom(null);
@@ -330,7 +341,7 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     if (validityTouched || suggestedValidityDays == null) return;
     const d = new Date();
     d.setDate(d.getDate() + suggestedValidityDays);
-    setValidityDate(d.toISOString().slice(0, 10));
+    setValidityDate(toDateInputValue(d));
   }, [suggestedValidityDays, validityTouched]);
 
   // Validade do certificado — segue a validade do serviço enquanto não for editada
@@ -344,9 +355,9 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   useEffect(() => {
     if (!recEnabled) { if (!nextVisitTouched) setNextVisitDate(''); return; }
     if (nextVisitTouched) return;
-    const base = execDate ? new Date(execDate) : new Date();
+    const base = execDate ? parseDateInput(execDate) : new Date();
     base.setDate(base.getDate() + RECURRENCE_FREQ_DAYS[recFreq]);
-    setNextVisitDate(base.toISOString().slice(0, 10));
+    setNextVisitDate(toDateInputValue(base));
   }, [recEnabled, recFreq, execDate, nextVisitTouched]);
 
   // Validade individual por praga — sugerida pelo cadastro da praga (ou pela
@@ -359,9 +370,9 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
         const p = pests.find((x) => x.id === id);
         const days = p?.defaultValidityDays ?? suggestedValidityDays;
         if (days != null) {
-          const base = execDate ? new Date(execDate) : new Date();
+          const base = execDate ? parseDateInput(execDate) : new Date();
           base.setDate(base.getDate() + days);
-          next[id] = base.toISOString().slice(0, 10);
+          next[id] = toDateInputValue(base);
         }
       });
       Object.keys(next).forEach((id) => { if (!pestIds.includes(id)) delete next[id]; });
@@ -382,6 +393,17 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     });
     return [...map.entries()].map(([productId, qty]) => ({ productId, qty }));
   }, [serviceTypeIds, serviceTypes]);
+
+  // Preço padrão somado dos serviços selecionados — origem explícita da sugestão
+  // de valor; o usuário sempre pode sobrescrever no campo "Valor do Serviço".
+  const suggestedServiceValue = useMemo(
+    () => serviceTypeIds.reduce((sum, id) => sum + (serviceTypes.find((s) => s.id === id)?.defaultPrice ?? 0), 0),
+    [serviceTypeIds, serviceTypes],
+  );
+  useEffect(() => {
+    if (serviceValueTouched) return;
+    setServiceValue(suggestedServiceValue ? String(suggestedServiceValue) : '');
+  }, [suggestedServiceValue, serviceValueTouched]);
 
   const submit = () => {
     setTouched(true);
@@ -409,16 +431,19 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       startedAt: status !== 'rascunho' ? now : undefined,
       finishedAt: status === 'concluida' ? now : undefined,
       pestIds,
-      pestValidity: pestIds.length ? pestIds.map((id) => ({ pestId: id, validityDate: pestValidity[id] ? new Date(pestValidity[id]).toISOString() : undefined })) : undefined,
+      pestValidity: pestIds.length ? pestIds.map((id) => ({ pestId: id, validityDate: pestValidity[id] ? dateInputToIso(pestValidity[id]) : undefined })) : undefined,
       products: suggestedProducts.map((p) => ({ productId: p.productId, usedQty: p.qty })),
       paymentMethod: paymentMethod || undefined,
+      serviceValue: serviceValue ? Number(serviceValue) : undefined,
+      paymentStatus,
+      paymentDate: paymentStatus === 'pago' && paymentDate ? dateInputToIso(paymentDate) : undefined,
       warranty: { has: warrantyHas, value: warrantyHas ? Number(warrantyValue) || undefined : undefined, unit: warrantyHas ? warrantyUnit : undefined, type: warrantyHas ? warrantyType : undefined },
       recurrence: { enabled: recEnabled, frequency: recEnabled ? recFreq : undefined },
-      executionDate: execDate ? new Date(execDate).toISOString() : undefined,
-      dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
-      validityDate: validityDate ? new Date(validityDate).toISOString() : undefined,
-      certificateValidityDate: certValidityDate ? new Date(certValidityDate).toISOString() : undefined,
-      nextVisitDate: nextVisitDate ? new Date(nextVisitDate).toISOString() : undefined,
+      executionDate: execDate ? dateInputToIso(execDate) : undefined,
+      dueDate: dueDate ? dateInputToIso(dueDate) : undefined,
+      validityDate: validityDate ? dateInputToIso(validityDate) : undefined,
+      certificateValidityDate: certValidityDate ? dateInputToIso(certValidityDate) : undefined,
+      nextVisitDate: nextVisitDate ? dateInputToIso(nextVisitDate) : undefined,
       equipmentIds,
       hasCustomerSignature: false,
     };
@@ -438,7 +463,7 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     } else {
       const svc = serviceTypes.find((s) => s.id === serviceTypeIds[0]);
       const durationMin = duration ? Number(duration) : (svc?.defaultDurationMin ?? 60);
-      const startIso = execDate ? new Date(execDate).toISOString() : now;
+      const startIso = execDate ? dateInputToIso(execDate) : now;
       const endIso = new Date(new Date(startIso).getTime() + durationMin * 60000).toISOString();
       const newAppt = addAppointment({
         customerId,
@@ -453,6 +478,22 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
         products: suggestedProducts.map((p) => ({ productId: p.productId, plannedQty: p.qty })),
       });
       updateOs(so.id, { appointmentId: newAppt.id });
+    }
+
+    // Alimenta o Financeiro automaticamente: toda OS com valor vira um lançamento
+    // de receita — pendente (Serviços a Receber) ou já pago, conforme informado.
+    if (so.serviceValue) {
+      const custName = getCustomer(customerId)?.name ?? '';
+      addFinanceEntry({
+        id: uid('fe'), orgId: 'org-namira', type: 'receita',
+        status: paymentStatus === 'pago' ? 'pago' : 'pendente',
+        description: `OS #${so.number} · ${custName}${paymentMethod ? ` · ${paymentMethod}` : ''}`,
+        amount: so.serviceValue,
+        customerId, serviceOrderId: so.id,
+        dueDate: dueDate || undefined,
+        paidAt: paymentStatus === 'pago' ? (so.paymentDate ?? now) : undefined,
+        createdAt: now,
+      });
     }
 
     logChange('criação', 'ordem de serviço', `OS #${so.number} · ${getCustomer(customerId)?.name ?? ''}`, so.id);
@@ -585,8 +626,27 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
           )}
         </div>
 
+        {/* Valor e pagamento */}
+        <div className="rounded-xl border border-border bg-muted/30 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Valor e pagamento</p>
+            <Segmented size="sm" value={paymentStatus === 'pago' ? 'pago' : 'pendente'} onChange={(v) => setPaymentStatus(v as PaymentStatus)} options={[{ value: 'pendente', label: 'Não pago' }, { value: 'pago', label: 'Pago' }]} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field
+              label="Valor do Serviço"
+              hint={!serviceValueTouched && suggestedServiceValue > 0 ? `Preço padrão do serviço: ${formatCurrency(suggestedServiceValue)}` : 'Sem origem automática — informe manualmente'}
+            >
+              <Input type="number" min={0} step="0.01" value={serviceValue} onChange={(e) => { setServiceValue(e.target.value); setServiceValueTouched(true); }} placeholder="0,00" />
+            </Field>
+            <Field label="Forma de pagamento"><Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}><option value="">—</option>{PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}</Select></Field>
+            {paymentStatus === 'pago' && (
+              <Field label="Data do pagamento" className="col-span-2"><Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+            )}
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Forma de pagamento"><Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}><option value="">—</option>{PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}</Select></Field>
           <Field label="Status"><Select value={status} onChange={(e) => setStatus(e.target.value as ServiceOrderStatus)}>{(Object.keys(OS_STATUS_LABEL) as ServiceOrderStatus[]).map((s) => <option key={s} value={s}>{OS_STATUS_LABEL[s]}</option>)}</Select></Field>
           <Field label="Data do Serviço"><Input type="date" value={execDate} onChange={(e) => setExecDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
           <Field label="Data de Vencimento do Pagamento"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>

@@ -13,7 +13,7 @@ import { toast } from '@/store/toastStore';
 import { useUsersStore } from '@/store/entityStores';
 import type { TrapDevice } from '@/domain/types';
 import { TRAP_STATUS_META } from '@/domain/trapMeta';
-import { fmtDate } from '@/lib/date';
+import { dateInputToIso, fmtDate } from '@/lib/date';
 
 /** Painel de armadilhas/monitoramento de um cliente — usado tanto embutido no
  *  cadastro do cliente quanto na página standalone de Monitoramento. */
@@ -71,7 +71,7 @@ export function TrapsPanel({ customerId, compact = false }: { customerId: string
       <InspectionForm trap={inspectTrap} onClose={() => setInspectTrap(null)} onSave={(data, nextInspectionAt) => {
         const t = inspectTrap;
         addInspection(data);
-        if (t && nextInspectionAt) useTrapsStore.getState().updateTrap(t.id, { nextInspectionAt: new Date(nextInspectionAt).toISOString() });
+        if (t && nextInspectionAt) useTrapsStore.getState().updateTrap(t.id, { nextInspectionAt: dateInputToIso(nextInspectionAt) });
         logChange('inspeção', 'armadilha', `${t?.code ?? ''} · ${data.consumed ? 'consumo' : 'sem consumo'}${data.action && data.action !== 'nenhuma' ? ` · ${data.action}` : ''}`, t?.id);
         setInspectTrap(null);
       }} />
@@ -95,7 +95,7 @@ function TrapForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
     if (!code.trim()) return;
     onSave({
       code: code.trim(), type, location: location.trim() || undefined,
-      installedAt: installedAt ? new Date(installedAt).toISOString() : undefined,
+      installedAt: installedAt ? dateInputToIso(installedAt) : undefined,
       responsibleId: responsibleId || undefined,
     });
   };

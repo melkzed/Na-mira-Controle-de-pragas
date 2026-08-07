@@ -452,6 +452,15 @@ export interface ServiceOrder {
   equipmentIds?: string[];
   /** Forma de pagamento acordada. */
   paymentMethod?: string;
+  /** Valor final acordado do serviço nesta OS — sempre com origem explícita:
+   *  sugerido pelo preço padrão do(s) serviço(s) selecionado(s), mas editável
+   *  por OS. Usado em OS/Recibo/Financeiro/Serviços a Receber/NF. */
+  serviceValue?: number;
+  /** Situação do pagamento — "Serviço pago" (sim/não) e seus desdobramentos
+   *  no Financeiro. Alimenta automaticamente Serviços a Receber quando pendente. */
+  paymentStatus?: PaymentStatus;
+  /** Data em que o pagamento foi efetivamente recebido. */
+  paymentDate?: string;
   /** Garantia do serviço (com/sem, prazo e tipo). */
   warranty?: WarrantyInfo;
   /** Recorrência do serviço. */
@@ -517,6 +526,9 @@ export interface WarrantyInfo {
   unit?: WarrantyUnit;
   type?: WarrantyType;
 }
+
+/** Situação do pagamento do serviço — reflete no Financeiro (Serviços a Receber). */
+export type PaymentStatus = 'pendente' | 'pago' | 'vencido' | 'cancelado';
 
 export interface OsRecurrence {
   enabled: boolean;

@@ -22,7 +22,7 @@ import { useProductsStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { toast } from '@/store/toastStore';
 import { X } from 'lucide-react';
-import type { Appointment, ServiceOrderPhoto } from '@/domain/types';
+import type { Appointment, ServiceOrder, ServiceOrderPhoto } from '@/domain/types';
 import { fmtTime } from '@/lib/date';
 import { cn } from '@/lib/utils';
 import { appleMapsLink, googleMapsRoute, wazeLink } from '@/lib/geo';
@@ -171,6 +171,7 @@ function VisitDetailDrawer({ appt, onClose, onNavigate }: { appt: Appointment | 
           <AppointmentStatusBadge status={appt.status} />
           <PriorityBadge priority={appt.priority} />
           {appt.fixedTime && <Badge tone="brand">Hora marcada</Badge>}
+          <PaymentBadge so={linkedOs} />
         </div>
 
         <div className="flex items-start gap-2 rounded-xl bg-muted/50 p-3 text-sm">
@@ -277,6 +278,17 @@ function NavigateDrawer({ appt, onClose }: { appt: Appointment | null; onClose: 
         </div>
       </div>
     </Drawer>
+  );
+}
+
+/** Situação do pagamento — só leitura para o técnico (definida pelo escritório na OS). */
+function PaymentBadge({ so }: { so?: ServiceOrder }) {
+  if (!so?.serviceValue) return null;
+  const paid = so.paymentStatus === 'pago';
+  return (
+    <Badge tone={paid ? 'success' : 'warning'} dot>
+      Pagamento: {paid ? 'Pago ✓' : 'Pendente ⚠️'}
+    </Badge>
   );
 }
 
@@ -397,9 +409,12 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onPh
             </div>
           </div>
         )}
-        {cust?.monitoringContracted && (
-          <Badge tone="info" dot>Cliente com monitoramento contratado</Badge>
-        )}
+        <div className="flex flex-wrap gap-1.5">
+          {cust?.monitoringContracted && (
+            <Badge tone="info" dot>Cliente com monitoramento contratado</Badge>
+          )}
+          <PaymentBadge so={linkedOs} />
+        </div>
         {linkedOs?.technicianMessage && (
           <div className="flex items-start gap-2 rounded-xl border border-brand/30 bg-brand-soft/40 p-3 text-sm">
             <Info size={16} className="mt-0.5 shrink-0 text-brand" />

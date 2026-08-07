@@ -9,7 +9,6 @@ import { logChange } from '@/store/auditStore';
 import { useCustomersStore } from '@/store/customersStore';
 import { useServiceTypesStore, useUsersStore } from '@/store/entityStores';
 import { getProduct } from '@/application/repository';
-import * as seed from '@/infrastructure/seed/data';
 import type { AppointmentPriority } from '@/domain/enums';
 
 function toLocalInput(d: Date): string {
@@ -34,8 +33,8 @@ export function AppointmentForm({
   const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico' && u.isActive));
 
   const [customerId, setCustomerId] = useState('');
-  const [serviceTypeId, setServiceTypeId] = useState(seed.serviceTypes[0]?.id ?? '');
-  const [technicianId, setTechnicianId] = useState(seed.technicians[0]?.id ?? '');
+  const [serviceTypeId, setServiceTypeId] = useState('');
+  const [technicianId, setTechnicianId] = useState('');
   const [priority, setPriority] = useState<AppointmentPriority>('normal');
   const [start, setStart] = useState('');
   const [duration, setDuration] = useState(90);
@@ -55,10 +54,10 @@ export function AppointmentForm({
     else base.setHours(9, 0, 0, 0);
     setStart(toLocalInput(base));
     setCustomerId(customers[0]?.id ?? '');
-    setServiceTypeId(seed.serviceTypes[0]?.id ?? '');
+    setServiceTypeId(serviceTypes[0]?.id ?? '');
     setTechnicianId(technicians[0]?.id ?? '');
     setPriority('normal');
-    setDuration(seed.serviceTypes[0]?.defaultDurationMin ?? 90);
+    setDuration(serviceTypes[0]?.defaultDurationMin ?? 90);
     setFixedTime(false);
     setNotes('');
     setRecurrence('none');
@@ -68,9 +67,9 @@ export function AppointmentForm({
 
   // Ajusta a duração padrão ao trocar o tipo de serviço.
   useEffect(() => {
-    const st = seed.serviceTypes.find((s) => s.id === serviceTypeId);
+    const st = serviceTypes.find((s) => s.id === serviceTypeId);
     if (st) setDuration(st.defaultDurationMin);
-  }, [serviceTypeId]);
+  }, [serviceTypeId, serviceTypes]);
 
   const error = useMemo(() => {
     if (!customerId) return 'Selecione um cliente.';

@@ -7,7 +7,7 @@
  * — o usuário escolhe "Salvar como PDF". Funciona offline.
  */
 import type { ServiceOrder } from '@/domain/types';
-import { getCustomer, getProduct, getServiceType, getUser } from '@/application/repository';
+import { getCustomer, getEquipment, getProduct, getServiceType, getUser } from '@/application/repository';
 import * as seed from '@/infrastructure/seed/data';
 import { RECURRENCE_FREQ_LABEL } from '@/domain/enums';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -19,8 +19,11 @@ import {
   openPrint, serviceNames, osPests,
 } from './printDocuments';
 
-/** Valor do serviço — soma o preço padrão dos tipos de serviço selecionados. */
+/** Valor do serviço — usa o valor explicitamente informado na OS; só recorre
+ *  à soma do preço padrão dos serviços selecionados para OS antigas, criadas
+ *  antes de o campo "Valor do Serviço" existir. */
 function serviceValue(so: ServiceOrder): number {
+  if (so.serviceValue != null) return so.serviceValue;
   return (so.serviceTypeIds?.length ? so.serviceTypeIds : [so.serviceTypeId])
     .map((id) => getServiceType(id)?.defaultPrice ?? 0)
     .reduce((s, v) => s + v, 0);
@@ -37,7 +40,7 @@ export function printServiceOrder(so: ServiceOrder): void {
   const validade = so.validityDate ? fmtDate(so.validityDate) : '—';
   const recorrencia = so.recurrence?.enabled ? (so.recurrence.frequency ? RECURRENCE_FREQ_LABEL[so.recurrence.frequency] : 'Sim') : 'Não';
   const proximaVisita = so.recurrence?.enabled && so.nextVisitDate ? fmtDate(so.nextVisitDate) : undefined;
-  const equipNames = (so.equipmentIds ?? []).map((id) => seed.equipment.find((e) => e.id === id)?.name).filter(Boolean).join(', ');
+  const equipNames = (so.equipmentIds ?? []).map((id) => getEquipment(id)?.name).filter(Boolean).join(', ');
   const pests = osPests(so);
   const valor = serviceValue(so);
 
@@ -95,6 +98,7 @@ export function printServiceOrder(so: ServiceOrder): void {
     <div class="cesrow">
       <span><strong>Valor do Serviço:</strong> ${esc(formatCurrency(valor))}</span>
       <span><strong>Forma de pagamento:</strong> ${esc(so.paymentMethod || '—')}</span>
+      <span><strong>Pagamento:</strong> ${esc(so.paymentStatus === 'pago' ? `Pago${so.paymentDate ? ` em ${fmtDate(so.paymentDate)}` : ''}` : 'Pendente')}</span>
       <span><strong>Recorrência:</strong> ${esc(recorrencia)}</span>
       ${proximaVisita ? `<span><strong>Próxima visita:</strong> ${esc(proximaVisita)}</span>` : ''}
     </div>

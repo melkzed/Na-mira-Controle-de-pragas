@@ -23,7 +23,7 @@ import { Field, Input, Select } from '../components/ui/Field';
 import type { BankAccount, Check as CheckEntity, FinanceEntry, LoanInvestment, PaymentMethodKind, RecurringPayable, TaxKind } from '@/domain/types';
 import { FinanceEntryStatus, RECURRENCE_FREQ_LABEL, type FinanceEntryType, type RecurrenceFreq } from '@/domain/enums';
 import { daysUntil, formatCompactCurrency, formatCurrency } from '@/lib/utils';
-import { fmtDate } from '@/lib/date';
+import { fmtDate, parseDateInput, toDateInputValue } from '@/lib/date';
 
 const statusMeta: Record<FinanceEntryStatus, { label: string; tone: any }> = {
   pago: { label: 'Pago', tone: 'success' },
@@ -131,7 +131,7 @@ function VisaoGeralTab() {
   }, [entries]);
 
   const tributos = useMemo(() => {
-    const monthKey = new Date().toISOString().slice(0, 7);
+    const monthKey = toDateInputValue(new Date()).slice(0, 7);
     const doMes = entries.filter((e) => e.taxKind && (e.dueDate ?? '').slice(0, 7) === monthKey);
     return { pendentes: doMes.filter((e) => e.status !== 'pago').reduce((s, e) => s + netAmount(e), 0), count: doMes.length };
   }, [entries]);
@@ -150,7 +150,7 @@ function VisaoGeralTab() {
   };
 
   const postpone = (e: FinanceEntry) => {
-    const base = e.dueDate ? new Date(e.dueDate) : new Date();
+    const base = e.dueDate ? parseDateInput(e.dueDate) : new Date();
     base.setDate(base.getDate() + 30);
     update(e.id, { dueDate: toDateStr(base), status: 'pendente', postponedFrom: e.postponedFrom ?? e.dueDate });
     toast(`Vencimento prorrogado para ${fmtDate(toDateStr(base))}.`, { tone: 'success' });
@@ -471,7 +471,7 @@ function FinanceForm({ open, defaultType, onClose, onSave }: { open: boolean; de
       description: description.trim(), amount: Number(amount),
       discount: discount ? Number(discount) : undefined,
       dueDate: dueDate || undefined,
-      paidAt: status === 'pago' ? (dueDate || new Date().toISOString().slice(0, 10)) : undefined,
+      paidAt: status === 'pago' ? (dueDate || toDateInputValue(new Date())) : undefined,
       approvalStatus: type === 'despesa' ? 'pendente' : undefined,
       taxKind: type === 'despesa' && taxKind ? taxKind : undefined,
       createdAt: new Date().toISOString(),
@@ -618,7 +618,7 @@ function DepositDialog({ account, onClose }: { account: BankAccount | null; onCl
   const submit = () => {
     const v = Number(amount);
     if (!(v > 0)) return;
-    addTransaction({ accountId: account.id, type: 'deposito', amount: v, date: new Date().toISOString().slice(0, 10), description: description.trim() || 'Depósito' });
+    addTransaction({ accountId: account.id, type: 'deposito', amount: v, date: toDateInputValue(new Date()), description: description.trim() || 'Depósito' });
     toast(`Depósito de ${formatCurrency(v)} registrado em ${account.alias ?? account.bank}.`, { tone: 'success' });
     onClose();
   };
@@ -647,7 +647,7 @@ function TransferDialog({ account, accounts, onClose }: { account: BankAccount |
     const dest = accounts.find((a) => a.id === toId);
     if (!(v > 0) || !dest) return;
     const pairId = uid('xfer');
-    const date = new Date().toISOString().slice(0, 10);
+    const date = toDateInputValue(new Date());
     addTransaction({ accountId: account.id, type: 'transferencia_saida', amount: v, date, description: `Transferência para ${dest.alias ?? dest.bank}`, transferPairId: pairId });
     addTransaction({ accountId: dest.id, type: 'transferencia_entrada', amount: v, date, description: `Transferência de ${account.alias ?? account.bank}`, transferPairId: pairId });
     toast(`Transferência de ${formatCurrency(v)} realizada.`, { tone: 'success' });
@@ -747,10 +747,10 @@ function CheckForm({ open, onClose, onSave }: { open: boolean; onClose: () => vo
   const [bank, setBank] = useState('');
   const [payee, setPayee] = useState('');
   const [amount, setAmount] = useState('');
-  const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
+  const [issueDate, setIssueDate] = useState(toDateInputValue(new Date()));
   const [touched, setTouched] = useState(false);
 
-  useEffect(() => { if (open) { setNumber(''); setBank(''); setPayee(''); setAmount(''); setIssueDate(new Date().toISOString().slice(0, 10)); setTouched(false); } }, [open]);
+  useEffect(() => { if (open) { setNumber(''); setBank(''); setPayee(''); setAmount(''); setIssueDate(toDateInputValue(new Date())); setTouched(false); } }, [open]);
 
   const valid = number.trim() && bank.trim() && Number(amount) > 0;
   const submit = () => {
@@ -821,11 +821,11 @@ function LoanForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
   const [description, setDescription] = useState('');
   const [principal, setPrincipal] = useState('');
   const [rate, setRate] = useState('');
-  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(toDateInputValue(new Date()));
   const [dueDate, setDueDate] = useState('');
   const [touched, setTouched] = useState(false);
 
-  useEffect(() => { if (open) { setKind('emprestimo'); setDescription(''); setPrincipal(''); setRate(''); setStartDate(new Date().toISOString().slice(0, 10)); setDueDate(''); setTouched(false); } }, [open]);
+  useEffect(() => { if (open) { setKind('emprestimo'); setDescription(''); setPrincipal(''); setRate(''); setStartDate(toDateInputValue(new Date())); setDueDate(''); setTouched(false); } }, [open]);
 
   const valid = description.trim() && Number(principal) > 0;
   const submit = () => {
@@ -857,7 +857,7 @@ function LoanForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
 function FechamentoTab() {
   const entries = useFinanceStore((s) => s.items);
   const { closings, close } = useCashClosingStore();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toDateInputValue(new Date());
   const alreadyClosed = closings.some((c) => c.date === today);
 
   const totalIn = entries.filter((e) => e.type === 'receita' && e.status === 'pago' && e.paidAt === today).reduce((s, e) => s + netAmount(e), 0);

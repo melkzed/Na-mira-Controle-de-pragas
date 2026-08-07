@@ -23,7 +23,7 @@ import { isEquipmentOverdue } from './EquipamentosPage';
 import { EQUIPMENT_STATUS_META as statusMeta } from '@/domain/equipmentMeta';
 import type { User, Equipment } from '@/domain/types';
 import type { EquipmentStatus } from '@/domain/enums';
-import { fmtDate } from '@/lib/date';
+import { dateInputToIso, fmtDate } from '@/lib/date';
 
 const fmtDateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 
@@ -343,7 +343,7 @@ function TechEquipmentTab({ tech }: { tech: User }) {
     const now = new Date().toISOString();
     update(assignId, {
       status: 'em_uso', checkedOutAt: now, checkedOutTo: tech.id, checkedOutBy: currentUser?.name,
-      expectedReturnAt: returnAt ? new Date(returnAt).toISOString() : undefined,
+      expectedReturnAt: returnAt ? dateInputToIso(returnAt) : undefined,
       history: [...(eq?.history ?? []), { at: now, type: 'entrega', technicianId: tech.id, by: currentUser?.name, note: 'Entrega registrada manualmente' }],
     });
     toast(`${eq?.name} entregue a ${tech.name}.`, { tone: 'success' });
