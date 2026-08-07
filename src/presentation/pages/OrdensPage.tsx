@@ -110,17 +110,20 @@ export function OrdensPage() {
       />
       <Table columns={columns} rows={orders} keyField={(so) => so.id} onRowClick={(so) => { setSelected(so); setEditMode(false); }} />
 
-      {/* Criação de nova OS — painel lateral independente. */}
+      {/* Criação de nova OS — mesmo tamanho/centralização do painel de
+       *  detalhe da OS, para manter a exibição consistente entre criar e ver/editar. */}
       <Drawer
         open={formOpen}
         onClose={() => setFormOpen(false)}
         title="Nova Ordem de Serviço"
         subtitle="Preenchimento rápido — serviços, pragas e áreas em toques"
-        width="max-w-xl"
+        centered
         footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setFormOpen(false)}>Cancelar</Button><Button onClick={() => createFormRef.current?.submit()} leftIcon={<Check size={15} />}>Criar OS</Button></div>}
       >
         {formOpen && (
-          <OsFormBody ref={createFormRef} initial={null} onSaved={(so) => { setFormOpen(false); setSelected(so); setEditMode(false); }} />
+          <div className="mx-auto max-w-2xl">
+            <OsFormBody ref={createFormRef} initial={null} onSaved={(so) => { setFormOpen(false); setSelected(so); setEditMode(false); }} />
+          </div>
         )}
       </Drawer>
 
