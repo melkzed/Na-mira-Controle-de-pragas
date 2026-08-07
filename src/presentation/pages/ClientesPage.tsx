@@ -15,8 +15,7 @@ import { TrapsPanel } from '../components/client/TrapsPanel';
 import { useCustomersStore } from '@/store/customersStore';
 import { useUsersStore } from '@/store/entityStores';
 import { logChange } from '@/store/auditStore';
-import { getServiceType, getUser, serviceOrdersForCustomer } from '@/application/repository';
-import * as seed from '@/infrastructure/seed/data';
+import { getPest, getProduct, getServiceType, getUser, serviceOrdersForCustomer } from '@/application/repository';
 import type { Customer, ContractStatus } from '@/domain/types';
 import { formatDocument } from '@/lib/utils';
 import { downloadCsv } from '@/lib/export';
@@ -275,8 +274,8 @@ function ClienteDetail({
           <div className="space-y-2">
             {history.length === 0 && <p className="text-sm text-muted-foreground">Nenhum atendimento registrado.</p>}
             {history.map((so) => {
-              const pestNames = so.pestIds.map((id) => seed.pests.find((p) => p.id === id)?.name).filter(Boolean).join(', ');
-              const productNames = so.products.map((p) => seed.products.find((x) => x.id === p.productId)?.name).filter(Boolean).join(', ');
+              const pestNames = so.pestIds.map((id) => getPest(id)?.name).filter(Boolean).join(', ');
+              const productNames = so.products.map((p) => getProduct(p.productId)?.name).filter(Boolean).join(', ');
               const techNames = (so.technicianIds?.length ? so.technicianIds : [so.technicianId]).map((id) => getUser(id)?.name).filter(Boolean).join(', ');
               return (
                 <div key={so.id} className="rounded-lg border border-border p-3">

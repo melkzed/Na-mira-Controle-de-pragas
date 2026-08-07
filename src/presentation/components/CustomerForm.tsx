@@ -12,7 +12,7 @@ import type { ContractStatus, Customer, Reservoir, ServiceContract } from '@/dom
 import type { CustomerType } from '@/domain/enums';
 import { isEmail, isValidDocument, maskCep, maskDocument, maskPhone } from '@/lib/validation';
 import { lookupCnpj } from '@/lib/cnpj';
-import { fmtDate } from '@/lib/date';
+import { dateInputToIso, fmtDate } from '@/lib/date';
 
 const DRAFT_KEY = 'namira-cliente-draft';
 
@@ -242,7 +242,7 @@ export function CustomerForm({
       localStructure: tier === 'completo' && localStructure.length ? localStructure : undefined,
       reservoirs: tier === 'completo' && reservoirs.length ? reservoirs : undefined,
       contactSchedule: tier === 'completo' && (contactNextAt || contactResponsibleId || contactNotes.trim())
-        ? { nextContactAt: contactNextAt ? new Date(contactNextAt).toISOString() : undefined, responsibleId: contactResponsibleId || undefined, notes: contactNotes.trim() || undefined }
+        ? { nextContactAt: contactNextAt ? dateInputToIso(contactNextAt) : undefined, responsibleId: contactResponsibleId || undefined, notes: contactNotes.trim() || undefined }
         : undefined,
       contracts: tier === 'completo' && contracts.length ? contracts : undefined,
       complementaryServices: tier === 'completo' && complementary.length ? complementary : undefined,
@@ -459,8 +459,8 @@ function ContractsPanel({ value, onChange }: { value: ServiceContract[]; onChang
   const add = () => {
     onChange([...value, {
       id: uid('contract'),
-      startDate: startDate ? new Date(startDate).toISOString() : undefined,
-      endDate: endDate ? new Date(endDate).toISOString() : undefined,
+      startDate: startDate ? dateInputToIso(startDate) : undefined,
+      endDate: endDate ? dateInputToIso(endDate) : undefined,
       renewal,
       status,
     }]);

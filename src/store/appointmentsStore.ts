@@ -27,7 +27,11 @@ interface AppointmentsState {
 }
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  // Data local (não UTC) — .toISOString().slice(0,10) mostraria o dia
+  // seguinte entre ~21h e meia-noite no fuso do Brasil (UTC-3).
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 function load(): Appointment[] {

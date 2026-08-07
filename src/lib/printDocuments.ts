@@ -8,8 +8,9 @@
  * ativas, a emergência (CIT) e as assinaturas digitais configuradas.
  * Client-side, sem dependências.
  */
+import { parseISO } from 'date-fns';
 import type { License, Pest, ServiceOrder } from '@/domain/types';
-import { getCustomer, getProduct, getServiceType, getUser } from '@/application/repository';
+import { getCustomer, getPest, getProduct, getServiceType, getUser } from '@/application/repository';
 import * as seed from '@/infrastructure/seed/data';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useLicensesStore } from '@/store/entityStores';
@@ -21,10 +22,14 @@ import { toast } from '@/store/toastStore';
 export function esc(s: unknown): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-export const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—');
+// Usa parseISO (date-fns) em vez de `new Date(iso)`: strings de data pura
+// (YYYY-MM-DD, sem hora) são interpretadas como UTC pelo construtor nativo,
+// o que desloca a data em um dia em fusos negativos como o do Brasil.
+// parseISO trata esse mesmo formato corretamente como horário local.
+export const fmtDate = (iso?: string) => (iso ? parseISO(iso).toLocaleDateString('pt-BR') : '—');
 export const fmtDateTime = (iso?: string) => {
   if (!iso) return '—';
-  const d = new Date(iso);
+  const d = parseISO(iso);
   const meiaNoite = d.getHours() === 0 && d.getMinutes() === 0;
   return meiaNoite ? d.toLocaleDateString('pt-BR') : d.toLocaleString('pt-BR');
 };
@@ -183,7 +188,7 @@ export function serviceNames(so: ServiceOrder): string {
   return (so.serviceTypeIds?.length ? so.serviceTypeIds : [so.serviceTypeId]).map((id) => getServiceType(id)?.name).filter(Boolean).join(' + ') || '—';
 }
 export function osPests(so: ServiceOrder): (Pest | undefined)[] {
-  return so.pestIds.map((id) => seed.pests.find((p) => p.id === id));
+  return so.pestIds.map((id) => getPest(id));
 }
 export function address(c: ReturnType<typeof getCustomer>): string {
   return c ? [c.street && `${c.street}, ${c.number ?? 's/n'}`, c.district, c.city && `${c.city}/${c.state ?? ''}`].filter(Boolean).join(' — ') : '';

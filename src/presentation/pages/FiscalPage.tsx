@@ -18,7 +18,7 @@ import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { Download, FileCode } from 'lucide-react';
 import type { Invoice, License } from '@/domain/types';
 import { daysUntil, formatCurrency } from '@/lib/utils';
-import { fmtDate } from '@/lib/date';
+import { dateInputToIso, fmtDate } from '@/lib/date';
 
 export function FiscalPage() {
   const { items: licenses, add, remove } = useLicensesStore();
@@ -117,11 +117,11 @@ function LicenseForm({ open, onClose, onSave }: { open: boolean; onClose: () => 
   const submit = () => {
     setTouched(true);
     if (!name.trim()) return;
-    const status = expiresAt && new Date(expiresAt).getTime() < Date.now() ? 'vencida' : 'ativa';
+    const status = expiresAt && dateInputToIso(expiresAt) < new Date().toISOString() ? 'vencida' : 'ativa';
     onSave({
       id: uid('lic'), orgId: 'org-namira', name: name.trim(), issuer: issuer.trim() || undefined, number: number.trim() || undefined,
-      responsibleId: responsibleId || undefined, issuedAt: issuedAt ? new Date(issuedAt).toISOString() : undefined,
-      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined, status,
+      responsibleId: responsibleId || undefined, issuedAt: issuedAt ? dateInputToIso(issuedAt) : undefined,
+      expiresAt: expiresAt ? dateInputToIso(expiresAt) : undefined, status,
     });
   };
 

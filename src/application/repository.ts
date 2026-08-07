@@ -8,13 +8,15 @@
  */
 import * as seed from '@/infrastructure/seed/data';
 import { useCustomersStore } from '@/store/customersStore';
-import { useProductsStore, useServiceTypesStore, useUsersStore } from '@/store/entityStores';
+import { useEquipmentStore, useProductsStore, usePestsStore, useServiceTypesStore, useUsersStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useStockStore } from '@/store/stockStore';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import type {
   Appointment,
   Customer,
+  Equipment,
+  Pest,
   Product,
   ServiceOrder,
   User,
@@ -51,6 +53,18 @@ export function getProduct(id: string): Product | undefined {
 
 export function getServiceType(id?: string) {
   return useServiceTypesStore.getState().items.find((s) => s.id === id);
+}
+
+/** Lê da store reativa de pragas — nunca do seed estático, para que pragas
+ *  cadastradas depois do carregamento inicial apareçam na documentação. */
+export function getPest(id?: string): Pest | undefined {
+  if (!id) return undefined;
+  return usePestsStore.getState().items.find((p) => p.id === id);
+}
+
+export function getEquipment(id?: string): Equipment | undefined {
+  if (!id) return undefined;
+  return useEquipmentStore.getState().items.find((e) => e.id === id);
 }
 
 export function centralBalance(productId: string): number {

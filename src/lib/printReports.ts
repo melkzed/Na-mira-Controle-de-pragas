@@ -4,6 +4,7 @@
  *  - Relatório MIP (Monitoramento Integrado de Pragas)
  * Montam HTML formatado e abrem a impressão do navegador ("Salvar como PDF").
  */
+import { parseISO } from 'date-fns';
 import type { Customer, NonConformity, TrapDevice, TrapInspection } from '@/domain/types';
 import { getUser } from '@/application/repository';
 import * as seed from '@/infrastructure/seed/data';
@@ -24,7 +25,7 @@ function esc(s: unknown): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 function fmt(iso?: string): string {
-  return iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
+  return iso ? parseISO(iso).toLocaleDateString('pt-BR') : '—';
 }
 const STATUS_LABEL: Record<string, string> = {
   ativa: 'Ativa', extraviada: 'Extraviada', substituida: 'Substituída', retirada: 'Retirada',
