@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Check, Download, Pencil, Plus, Zap } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
@@ -42,6 +42,10 @@ const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
   pendente: 'Pendente', pago: 'Pago', vencido: 'Vencido', cancelado: 'Cancelado',
 };
 
+/** Handle imperativo do formulário de OS — permite que um footer externo
+ *  (fora do componente do formulário) dispare o envio. */
+interface OsFormHandle { submit: () => void }
+
 /** Chip de seleção rápida (toggle) — otimizado para OS rápida em campo. */
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -53,8 +57,12 @@ export function OrdensPage() {
   const orders = useServiceOrdersStore((s) => s.orders);
   const auditEntries = useAuditStore((s) => s.entries);
   const [selected, setSelected] = useState<ServiceOrder | null>(null);
+  // Edição acontece dentro do próprio painel de detalhe (mesma janela, sem
+  // abrir outro Drawer por cima) — "editMode" só alterna o conteúdo exibido.
+  const [editMode, setEditMode] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
-  const [editingOs, setEditingOs] = useState<ServiceOrder | null>(null);
+  const editFormRef = useRef<OsFormHandle>(null);
+  const createFormRef = useRef<OsFormHandle>(null);
 
   // Ao editar uma OS já selecionada, mantém o painel de detalhe sincronizado
   // com a versão mais recente após salvar.
@@ -96,35 +104,56 @@ export function OrdensPage() {
         actions={
           <>
             <Button variant="outline" leftIcon={<Download size={16} />} onClick={exportCsv}>Exportar CSV</Button>
-            <Button leftIcon={<Plus size={16} />} onClick={() => { setEditingOs(null); setFormOpen(true); }}>Nova OS</Button>
+            <Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Nova OS</Button>
           </>
         }
       />
-      <Table columns={columns} rows={orders} keyField={(so) => so.id} onRowClick={setSelected} />
+      <Table columns={columns} rows={orders} keyField={(so) => so.id} onRowClick={(so) => { setSelected(so); setEditMode(false); }} />
 
-      <NovaOsForm
+      {/* Criação de nova OS — painel lateral independente. */}
+      <Drawer
         open={formOpen}
-        initial={editingOs}
-        onClose={() => { setFormOpen(false); setEditingOs(null); }}
-        onCreated={(so) => { setFormOpen(false); setEditingOs(null); setSelected(so); }}
-      />
+        onClose={() => setFormOpen(false)}
+        title="Nova Ordem de Serviço"
+        subtitle="Preenchimento rápido — serviços, pragas e áreas em toques"
+        width="max-w-xl"
+        footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setFormOpen(false)}>Cancelar</Button><Button onClick={() => createFormRef.current?.submit()} leftIcon={<Check size={15} />}>Criar OS</Button></div>}
+      >
+        {formOpen && (
+          <OsFormBody ref={createFormRef} initial={null} onSaved={(so) => { setFormOpen(false); setSelected(so); setEditMode(false); }} />
+        )}
+      </Drawer>
 
+      {/* Detalhe da OS — o mesmo painel se transforma em formulário de edição
+       *  ao clicar em "Editar", sem abrir outra janela por cima. */}
       <Drawer
         open={!!selected}
-        onClose={() => setSelected(null)}
-        title={`Ordem de Serviço #${selected?.number}`}
-        subtitle={selected ? getCustomer(selected.customerId)?.name : ''}
+        onClose={() => { setSelected(null); setEditMode(false); }}
+        title={editMode ? `Editar Ordem de Serviço #${selected?.number}` : `Ordem de Serviço #${selected?.number}`}
+        subtitle={editMode ? 'Altere os dados necessários — as mudanças ficam registradas no histórico da OS' : (selected ? getCustomer(selected.customerId)?.name : '')}
         centered
-        footer={<div className="flex flex-wrap justify-between gap-2">
-          <Button variant="outline" size="sm" leftIcon={<Pencil size={14} />} onClick={() => { if (selected) { setEditingOs(selected); setFormOpen(true); } }}>Editar</Button>
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="outline" size="sm" leftIcon={<Download size={14} />} onClick={() => selected && printServiceOrder(selected)}>OS (PDF)</Button>
-            <Button variant="outline" size="sm" leftIcon={<Award size={14} />} onClick={() => selected && printCertificate(selected)}>Certificado</Button>
-            <Button variant="outline" size="sm" leftIcon={<FileText size={14} />} onClick={() => selected && printLaudo(selected)}>Laudo</Button>
+        footer={editMode ? (
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setEditMode(false)}>Cancelar</Button>
+            <Button onClick={() => editFormRef.current?.submit()} leftIcon={<Check size={15} />}>Salvar alterações</Button>
           </div>
-        </div>}
+        ) : (
+          <div className="flex flex-wrap justify-between gap-2">
+            <Button variant="outline" size="sm" leftIcon={<Pencil size={14} />} onClick={() => setEditMode(true)}>Editar</Button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="outline" size="sm" leftIcon={<Download size={14} />} onClick={() => selected && printServiceOrder(selected)}>OS (PDF)</Button>
+              <Button variant="outline" size="sm" leftIcon={<Award size={14} />} onClick={() => selected && printCertificate(selected)}>Certificado</Button>
+              <Button variant="outline" size="sm" leftIcon={<FileText size={14} />} onClick={() => selected && printLaudo(selected)}>Laudo</Button>
+            </div>
+          </div>
+        )}
       >
-        {selected && (
+        {selected && editMode && (
+          <div className="mx-auto max-w-2xl">
+            <OsFormBody ref={editFormRef} initial={selected} onSaved={(so) => { setSelected(so); setEditMode(false); }} />
+          </div>
+        )}
+        {selected && !editMode && (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div className="space-y-5 lg:col-span-2">
               <div className="flex items-center gap-2"><ServiceOrderStatusBadge status={selected.status} /><Badge tone="neutral">{getServiceType(selected.serviceTypeId)?.name}</Badge></div>
@@ -204,9 +233,13 @@ export function OrdensPage() {
   );
 }
 
-/** Formulário de nova Ordem de Serviço — múltiplos serviços/pragas/áreas,
- *  garantia, recorrência, equipe, datas e sugestão automática de produtos. */
-function NovaOsForm({ open, initial, onClose, onCreated }: { open: boolean; initial?: ServiceOrder | null; onClose: () => void; onCreated: (so: ServiceOrder) => void }) {
+/** Campos do formulário de Ordem de Serviço (criação ou edição) — múltiplos
+ *  serviços/pragas/áreas, garantia, recorrência, equipe, datas e sugestão
+ *  automática de produtos. Sem Drawer/rodapé próprios: quem o usa decide
+ *  onde exibi-lo (painel novo ao criar, ou o próprio painel de detalhe já
+ *  aberto, transformado in-place, ao editar) e aciona o envio via `ref`. */
+const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSaved: (so: ServiceOrder) => void }>(
+  function OsFormBody({ initial, onSaved }, ref) {
   const add = useServiceOrdersStore((s) => s.add);
   const updateOs = useServiceOrdersStore((s) => s.update);
   const addAppointment = useAppointmentsStore((s) => s.add);
@@ -286,8 +319,10 @@ function NovaOsForm({ open, initial, onClose, onCreated }: { open: boolean; init
    *  usando getters locais — evita o desvio de fuso do bug de datas. */
   const toInput = (iso?: string) => (iso ? toDateInputValue(new Date(iso)) : '');
 
+  // Roda uma vez ao montar — o componente é criado do zero sempre que passa
+  // a ser exibido (formulário de criação recém-aberto, ou o painel de
+  // detalhe recém-transformado em edição), então não depende de um "open".
   useEffect(() => {
-    if (!open) return;
     if (initial) {
       // Modo edição: repopula todos os campos a partir da OS selecionada.
       setCustomerId(initial.customerId);
@@ -342,7 +377,8 @@ function NovaOsForm({ open, initial, onClose, onCreated }: { open: boolean; init
     setRecEnabled(false); setRecFreq('mensal'); setExecDate(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
     setCertValidityDate(''); setCertValidityTouched(false); setNextVisitDate(''); setNextVisitTouched(false);
     setEquipmentIds([]); setReturnAt(''); setTouched(false); setFilledFrom(null);
-  }, [open, initial, customers, serviceTypes]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Preenchimento inteligente: repete o último atendimento do cliente. */
   const applyHistory = (cid: string) => {
@@ -369,7 +405,7 @@ function NovaOsForm({ open, initial, onClose, onCreated }: { open: boolean; init
 
   // Ao selecionar o cliente, tenta preencher a partir do histórico — mas não
   // em modo edição, para não sobrescrever os dados já preenchidos da OS.
-  useEffect(() => { if (open && customerId && !initial) { applyHistory(customerId); setAppointmentId(''); } }, [customerId, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (customerId && !initial) { applyHistory(customerId); setAppointmentId(''); } }, [customerId]); // eslint-disable-line react-hooks/exhaustive-deps
   const customerAppointments = customerId ? appointmentsForCustomer(customerId) : [];
 
   const clearFill = () => {
@@ -575,7 +611,7 @@ function NovaOsForm({ open, initial, onClose, onCreated }: { open: boolean; init
 
       logChange('edição', 'ordem de serviço', changes.length ? `OS #${initial.number} · ${changes.join('; ')}` : `OS #${initial.number} · dados atualizados`, initial.id);
       toast(`OS #${initial.number} atualizada.`, { tone: 'success' });
-      onCreated(so);
+      onSaved(so);
       return;
     }
 
@@ -627,15 +663,12 @@ function NovaOsForm({ open, initial, onClose, onCreated }: { open: boolean; init
 
     logChange('criação', 'ordem de serviço', `OS #${so.number} · ${custName}`, so.id);
     toast(`OS #${so.number} criada e adicionada à Agenda.`, { tone: 'success' });
-    onCreated(so);
+    onSaved(so);
   };
 
+  useImperativeHandle(ref, () => ({ submit }));
+
   return (
-    <Drawer open={open} onClose={onClose}
-      title={initial ? `Editar Ordem de Serviço #${initial.number}` : 'Nova Ordem de Serviço'}
-      subtitle={initial ? 'Altere os dados necessários — as mudanças ficam registradas no histórico da OS' : 'Preenchimento rápido — serviços, pragas e áreas em toques'}
-      width="max-w-xl"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!customerId}>{initial ? 'Salvar alterações' : 'Criar OS'}</Button></div>}>
       <div className="space-y-5">
         <Field label="Cliente" required>
           <Combobox
@@ -819,9 +852,9 @@ function NovaOsForm({ open, initial, onClose, onCreated }: { open: boolean; init
           <Textarea value={technicianMessage} onChange={(e) => setTechnicianMessage(e.target.value)} placeholder="Ex.: cliente pediu para não usar produto com cheiro forte…" />
         </Field>
       </div>
-    </Drawer>
   );
-}
+  },
+);
 
 /** Texto de emergência (CIT) configurado nas Configurações. */
 function settingsEmergency(): string {
