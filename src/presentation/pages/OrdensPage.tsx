@@ -97,7 +97,7 @@ export function OrdensPage() {
         onClose={() => setSelected(null)}
         title={`Ordem de Serviço #${selected?.number}`}
         subtitle={selected ? getCustomer(selected.customerId)?.name : ''}
-        width="max-w-xl"
+        centered
         footer={<div className="flex flex-wrap justify-end gap-2">
           <Button variant="outline" size="sm" leftIcon={<Download size={14} />} onClick={() => selected && printServiceOrder(selected)}>OS (PDF)</Button>
           <Button variant="outline" size="sm" leftIcon={<Award size={14} />} onClick={() => selected && printCertificate(selected)}>Certificado</Button>
@@ -105,70 +105,73 @@ export function OrdensPage() {
         </div>}
       >
         {selected && (
-          <div className="space-y-5">
-            <div className="flex items-center gap-2"><ServiceOrderStatusBadge status={selected.status} /><Badge tone="neutral">{getServiceType(selected.serviceTypeId)?.name}</Badge></div>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="space-y-5 lg:col-span-2">
+              <div className="flex items-center gap-2"><ServiceOrderStatusBadge status={selected.status} /><Badge tone="neutral">{getServiceType(selected.serviceTypeId)?.name}</Badge></div>
 
-            <Section title="Detalhes">
-              <div className="grid grid-cols-2 gap-3">
-                <Info label="Serviços" value={(selected.serviceTypeIds?.length ? selected.serviceTypeIds : [selected.serviceTypeId]).map((id) => getServiceType(id)?.name).filter(Boolean).join(', ') || '—'} />
-                <Info label="Áreas tratadas" value={selected.areaTreated ?? '—'} />
-                <Info label="Garantia" value={selected.warranty?.has ? `${selected.warranty.value ?? ''} ${selected.warranty.unit ?? ''}${selected.warranty.type ? ` · ${WARRANTY_TYPE_LABEL[selected.warranty.type]}` : ''}`.trim() : 'Sem garantia'} />
-                <Info label="Recorrência" value={selected.recurrence?.enabled ? (selected.recurrence.frequency ? RECURRENCE_FREQ_LABEL[selected.recurrence.frequency] : 'Sim') : 'Não'} />
-                <Info label="Forma de pagamento" value={selected.paymentMethod ?? '—'} />
-                <Info label="Duração" value={selected.totalMinutes ? `${selected.totalMinutes} min` : 'em aberto'} />
-                <Info label="Técnico(s)" value={(selected.technicianIds?.length ? selected.technicianIds : [selected.technicianId]).map((id) => getUser(id)?.name?.split(' ')[0]).filter(Boolean).join(', ') || '—'} />
-                <Info label="Vendedor" value={selected.sellerId ? getUser(selected.sellerId)?.name ?? '—' : '—'} />
-                <Info label="Data do Serviço" value={selected.executionDate ? fmtDate(selected.executionDate) : (selected.startedAt ? fmtDate(selected.startedAt) : '—')} />
-                <Info label="Vencimento do Pagamento" value={selected.dueDate ? fmtDate(selected.dueDate) : '—'} />
-                <Info label="Validade do Serviço" value={selected.validityDate ? fmtDate(selected.validityDate) : '—'} />
-                <Info label="Validade do Certificado" value={certificateValidityText(selected)} />
-                {selected.recurrence?.enabled && <Info label="Próxima Visita" value={selected.nextVisitDate ? fmtDate(selected.nextVisitDate) : '—'} />}
-              </div>
-            </Section>
+              <Section title="Detalhes">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <Info label="Serviços" value={(selected.serviceTypeIds?.length ? selected.serviceTypeIds : [selected.serviceTypeId]).map((id) => getServiceType(id)?.name).filter(Boolean).join(', ') || '—'} />
+                  <Info label="Áreas tratadas" value={selected.areaTreated ?? '—'} />
+                  <Info label="Garantia" value={selected.warranty?.has ? `${selected.warranty.value ?? ''} ${selected.warranty.unit ?? ''}${selected.warranty.type ? ` · ${WARRANTY_TYPE_LABEL[selected.warranty.type]}` : ''}`.trim() : 'Sem garantia'} />
+                  <Info label="Recorrência" value={selected.recurrence?.enabled ? (selected.recurrence.frequency ? RECURRENCE_FREQ_LABEL[selected.recurrence.frequency] : 'Sim') : 'Não'} />
+                  <Info label="Forma de pagamento" value={selected.paymentMethod ?? '—'} />
+                  <Info label="Duração" value={selected.totalMinutes ? `${selected.totalMinutes} min` : 'em aberto'} />
+                  <Info label="Técnico(s)" value={(selected.technicianIds?.length ? selected.technicianIds : [selected.technicianId]).map((id) => getUser(id)?.name?.split(' ')[0]).filter(Boolean).join(', ') || '—'} />
+                  <Info label="Vendedor" value={selected.sellerId ? getUser(selected.sellerId)?.name ?? '—' : '—'} />
+                  <Info label="Data do Serviço" value={selected.executionDate ? fmtDate(selected.executionDate) : (selected.startedAt ? fmtDate(selected.startedAt) : '—')} />
+                  <Info label="Vencimento do Pagamento" value={selected.dueDate ? fmtDate(selected.dueDate) : '—'} />
+                  <Info label="Validade do Serviço" value={selected.validityDate ? fmtDate(selected.validityDate) : '—'} />
+                  <Info label="Validade do Certificado" value={certificateValidityText(selected)} />
+                  {selected.recurrence?.enabled && <Info label="Próxima Visita" value={selected.nextVisitDate ? fmtDate(selected.nextVisitDate) : '—'} />}
+                </div>
+              </Section>
 
-            {selected.procedures && <Section title="Procedimentos realizados"><p className="text-sm text-foreground">{selected.procedures}</p></Section>}
+              {selected.procedures && <Section title="Procedimentos realizados"><p className="text-sm text-foreground">{selected.procedures}</p></Section>}
 
-            {selected.technicianMessage && (
-              <div className="rounded-lg border border-brand/30 bg-brand-soft/30 p-2.5 text-xs text-brand">
-                <span className="font-semibold">Mensagem interna para o técnico (não aparece em documentos):</span> {selected.technicianMessage}
-              </div>
-            )}
+              {selected.technicianMessage && (
+                <div className="rounded-lg border border-brand/30 bg-brand-soft/30 p-2.5 text-xs text-brand">
+                  <span className="font-semibold">Mensagem interna para o técnico (não aparece em documentos):</span> {selected.technicianMessage}
+                </div>
+              )}
 
-            <Section title="Pragas combatidas">
-              <div className="flex flex-wrap gap-1.5">
-                {selected.pestIds.map((id) => {
-                  const p = seed.pests.find((x) => x.id === id);
-                  const override = selected.pestValidity?.find((pv) => pv.pestId === id)?.validityDate;
-                  return <Badge key={id} tone="warning">{p?.name}{override ? ` · val. ${fmtDate(override)}` : ''}</Badge>;
-                })}
-                {selected.pestIds.length === 0 && <span className="text-sm text-muted-foreground">—</span>}
-              </div>
-            </Section>
+              <Section title="Pragas combatidas">
+                <div className="flex flex-wrap gap-1.5">
+                  {selected.pestIds.map((id) => {
+                    const p = seed.pests.find((x) => x.id === id);
+                    const override = selected.pestValidity?.find((pv) => pv.pestId === id)?.validityDate;
+                    return <Badge key={id} tone="warning">{p?.name}{override ? ` · val. ${fmtDate(override)}` : ''}</Badge>;
+                  })}
+                  {selected.pestIds.length === 0 && <span className="text-sm text-muted-foreground">—</span>}
+                </div>
+              </Section>
 
-            <Section title="Produtos utilizados">
-              <div className="space-y-2">
-                {selected.products.map((p) => {
-                  const prod = getProduct(p.productId);
-                  const batch = currentBatch(prod);
-                  return (
-                    <div key={p.productId} className="flex items-center justify-between rounded-lg border border-border p-2.5">
-                      <div>
-                        <span className="text-sm text-foreground">{prod?.name}</span>
-                        {batch && <p className="text-xs text-muted-foreground">Lote {batch.code}{batch.expiresAt ? ` · val. ${new Date(batch.expiresAt).toLocaleDateString('pt-BR')}` : ''}</p>}
+              <Section title="Produtos utilizados">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {selected.products.map((p) => {
+                    const prod = getProduct(p.productId);
+                    const batch = currentBatch(prod);
+                    return (
+                      <div key={p.productId} className="flex items-center justify-between rounded-lg border border-border p-2.5">
+                        <div>
+                          <span className="text-sm text-foreground">{prod?.name}</span>
+                          {batch && <p className="text-xs text-muted-foreground">Lote {batch.code}{batch.expiresAt ? ` · val. ${new Date(batch.expiresAt).toLocaleDateString('pt-BR')}` : ''}</p>}
+                        </div>
+                        <Badge tone="brand">{p.usedQty} {prod?.unit}</Badge>
                       </div>
-                      <Badge tone="brand">{p.usedQty} {prod?.unit}</Badge>
-                    </div>
-                  );
-                })}
-                {selected.products.length === 0 && <span className="text-sm text-muted-foreground">Nenhum produto lançado.</span>}
+                    );
+                  })}
+                  {selected.products.length === 0 && <span className="text-sm text-muted-foreground">Nenhum produto lançado.</span>}
+                </div>
+              </Section>
+            </div>
+
+            <div className="space-y-5">
+              <FiscalSection so={selected} />
+              <OsSignatures so={selected} />
+              <div className="rounded-lg border border-danger/20 bg-danger-soft/20 p-2.5 text-xs text-danger">
+                <span className="font-semibold">Emergência (CIT):</span> {settingsEmergency()}
               </div>
-            </Section>
-
-            <FiscalSection so={selected} />
-
-            <OsSignatures so={selected} />
-            <div className="rounded-lg border border-danger/20 bg-danger-soft/20 p-2.5 text-xs text-danger">
-              <span className="font-semibold">Emergência (CIT):</span> {settingsEmergency()}
             </div>
           </div>
         )}
