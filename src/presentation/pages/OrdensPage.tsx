@@ -307,6 +307,12 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   const cust = customers.find((c) => c.id === customerId);
   const areaIds = Object.keys(areaQty);
 
+  /** Catálogo inativo some da seleção em novas OS, mas o que já estava
+   *  escolhido nesta OS continua visível — nunca some silenciosamente. */
+  const selectableServiceTypes = serviceTypes.filter((s) => s.isActive !== false || serviceTypeIds.includes(s.id));
+  const selectablePests = pests.filter((p) => p.isActive !== false || pestIds.includes(p.id));
+  const selectableAreas = areas.filter((a) => a.isActive !== false || areaIds.includes(a.id));
+
   /** Só equipamentos disponíveis (sem dono fixo) podem ser retirados temporariamente
    *  para a OS — o kit fixo/permanente do técnico não deve aparecer aqui. Em modo
    *  edição, mantém visível o que já está retirado nesta própria OS. */
@@ -714,14 +720,14 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
 
         <Field label="Serviços executados" hint="Toque para adicionar vários serviços à mesma OS">
           <div className="flex flex-wrap items-center gap-1.5">
-            {serviceTypes.map((s) => <Chip key={s.id} active={serviceTypeIds.includes(s.id)} onClick={() => toggle(setServiceTypeIds, s.id)}>{s.name}</Chip>)}
+            {selectableServiceTypes.map((s) => <Chip key={s.id} active={serviceTypeIds.includes(s.id)} onClick={() => toggle(setServiceTypeIds, s.id)}>{s.name}</Chip>)}
             <QuickAddChip label="serviço" onAdd={quickAddServiceType} />
           </div>
         </Field>
 
         <Field label="Pragas combatidas" hint="Cada praga pode ter validade própria, independente da validade geral do serviço">
           <div className="flex flex-wrap items-center gap-1.5">
-            {pests.map((p) => <Chip key={p.id} active={pestIds.includes(p.id)} onClick={() => toggle(setPestIds, p.id)}>{p.name}</Chip>)}
+            {selectablePests.map((p) => <Chip key={p.id} active={pestIds.includes(p.id)} onClick={() => toggle(setPestIds, p.id)}>{p.name}</Chip>)}
             <QuickAddChip label="praga" onAdd={quickAddPest} />
           </div>
           {pestIds.length > 0 && (
@@ -744,7 +750,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
 
         <Field label="Áreas tratadas" hint="Toque para selecionar; ajuste a quantidade com + / −">
           <div className="flex flex-wrap items-center gap-1.5">
-            {areas.map((a) => (
+            {selectableAreas.map((a) => (
               <div key={a.id} className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition ${areaQty[a.id] != null ? 'border-brand bg-brand-soft text-brand' : 'border-border text-muted-foreground hover:bg-muted'}`}>
                 <button type="button" onClick={() => toggleArea(a.id)}>{a.name}</button>
                 {areaQty[a.id] != null && (

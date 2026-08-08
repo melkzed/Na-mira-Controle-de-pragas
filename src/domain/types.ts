@@ -372,6 +372,9 @@ export interface ServiceType {
   defaultProducts?: { productId: string; qty: number }[];
   /** Validade padrão do serviço (dias) — sugere a validade da OS. */
   defaultValidityDays?: number;
+  /** Inativo não aparece para seleção em novas OS, mas permanece íntegro em
+   *  OS/documentos já existentes. Ausente = ativo (compatibilidade). */
+  isActive?: boolean;
 }
 
 export interface AppointmentProduct {
@@ -503,6 +506,9 @@ export interface Pest {
   /** Validade da proteção contra essa praga (dias) — sugere a validade da OS. */
   defaultValidityDays?: number;
   notes?: string;
+  /** Inativa não aparece para seleção em novas OS, mas permanece íntegra em
+   *  OS/documentos já existentes. Ausente = ativa (compatibilidade). */
+  isActive?: boolean;
 }
 
 /** Área/ambiente tratado (cadastro reutilizável na OS). */
@@ -511,6 +517,9 @@ export interface TreatedArea {
   orgId: string;
   name: string;
   notes?: string;
+  /** Inativa não aparece para seleção em novas OS, mas permanece íntegra em
+   *  OS/documentos já existentes. Ausente = ativa (compatibilidade). */
+  isActive?: boolean;
 }
 
 /** Foto vinculada à OS, por fase do serviço. */

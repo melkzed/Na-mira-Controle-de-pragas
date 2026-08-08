@@ -8,7 +8,7 @@
  */
 import * as seed from '@/infrastructure/seed/data';
 import { useCustomersStore } from '@/store/customersStore';
-import { useEquipmentStore, useProductsStore, usePestsStore, useServiceTypesStore, useUsersStore } from '@/store/entityStores';
+import { useAreasStore, useEquipmentStore, useProductsStore, usePestsStore, useServiceTypesStore, useUsersStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useStockStore } from '@/store/stockStore';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
@@ -19,6 +19,7 @@ import type {
   Pest,
   Product,
   ServiceOrder,
+  TreatedArea,
   User,
 } from '@/domain/types';
 
@@ -60,6 +61,12 @@ export function getServiceType(id?: string) {
 export function getPest(id?: string): Pest | undefined {
   if (!id) return undefined;
   return usePestsStore.getState().items.find((p) => p.id === id);
+}
+
+/** Lê da store reativa de áreas tratadas — mesmo padrão de getPest/getEquipment. */
+export function getArea(id?: string): TreatedArea | undefined {
+  if (!id) return undefined;
+  return useAreasStore.getState().items.find((a) => a.id === id);
 }
 
 export function getEquipment(id?: string): Equipment | undefined {
