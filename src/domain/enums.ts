@@ -14,6 +14,7 @@ export type UserRole =
 export type CustomerType = 'pf' | 'pj';
 
 export type AppointmentStatus =
+  | 'programada'
   | 'agendado'
   | 'confirmado'
   | 'em_deslocamento'
@@ -61,6 +62,7 @@ export const APPOINTMENT_STATUS_META: Record<
   AppointmentStatus,
   { label: string; tone: 'neutral' | 'info' | 'warning' | 'brand' | 'success' | 'danger' }
 > = {
+  programada: { label: 'Programada', tone: 'neutral' },
   agendado: { label: 'Aguardando confirmação', tone: 'warning' },
   confirmado: { label: 'Confirmada', tone: 'info' },
   em_deslocamento: { label: 'Em deslocamento', tone: 'warning' },
@@ -72,6 +74,7 @@ export const APPOINTMENT_STATUS_META: Record<
 
 /** Status expostos como filtro/estados de confirmação da visita. */
 export const CONFIRMATION_STATUSES: AppointmentStatus[] = [
+  'programada',
   'agendado',
   'confirmado',
   'reagendado',

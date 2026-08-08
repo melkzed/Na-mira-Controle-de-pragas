@@ -5,7 +5,7 @@ import { Card, CardBody } from '../components/ui/Card';
 import { AppointmentStatusBadge } from '../components/StatusBadge';
 import { Drawer } from '../components/ui/Drawer';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
-import { appointmentsForTechnicianRange, getCustomer, getServiceType } from '@/application/repository';
+import { releasedAppointmentsForTechnicianRange, getCustomer, getServiceType } from '@/application/repository';
 import type { Appointment } from '@/domain/types';
 import { fmtDateLong, fmtTime, weekDays, weekRangeLabel, isSameDay, isToday, parseISO } from '@/lib/date';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,7 @@ export function CampoSemanaPage() {
   const today = new Date();
   const days = weekDays(today);
   const appts = useMemo(
-    () => appointmentsForTechnicianRange(techId, days[0].toISOString(), days[6].toISOString()),
+    () => releasedAppointmentsForTechnicianRange(techId, days[0].toISOString(), days[6].toISOString()),
     [techId, days],
   );
   const [detail, setDetail] = useState<Appointment | null>(null);

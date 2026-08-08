@@ -12,6 +12,7 @@ import { useAreasStore, useEquipmentStore, useProductsStore, usePestsStore, useS
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useStockStore } from '@/store/stockStore';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
+import { RELEASED_TO_TECH_STATUSES } from '@/lib/confirmation';
 import type {
   Appointment,
   Customer,
@@ -157,6 +158,18 @@ export function appointmentsForTechnicianRange(
       return a.technicianId === technicianId && day >= start && day <= end;
     })
     .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
+}
+
+/** Agendamentos do dia já liberados ao técnico — exclui visitas "programada"/
+ *  "agendado" (ainda não confirmadas pelo cliente), que ficam visíveis apenas
+ *  administrativamente até a confirmação (RBAC: App do Técnico). */
+export function releasedAppointmentsForTechnician(technicianId: string, dayIso: string): Appointment[] {
+  return appointmentsForTechnician(technicianId, dayIso).filter((a) => RELEASED_TO_TECH_STATUSES.includes(a.status));
+}
+
+/** Mesma regra de liberação, para um intervalo de datas (ex.: semana atual). */
+export function releasedAppointmentsForTechnicianRange(technicianId: string, startIso: string, endIso: string): Appointment[] {
+  return appointmentsForTechnicianRange(technicianId, startIso, endIso).filter((a) => RELEASED_TO_TECH_STATUSES.includes(a.status));
 }
 
 /** Histórico de visitas do técnico (todas as datas) — mais recentes primeiro. */

@@ -28,6 +28,7 @@ import { APPOINTMENT_STATUS_META } from '@/domain/enums';
 import { formatCompactCurrency, formatNumber } from '@/lib/utils';
 import { fmtTime } from '@/lib/date';
 import { useAppStore } from '@/store/appStore';
+import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useEquipmentStore } from '@/store/entityStores';
 import { isEquipmentOverdue } from './EquipamentosPage';
 import { Link } from 'react-router-dom';
@@ -38,6 +39,7 @@ export function DashboardPage() {
   const notifications = useAppStore((s) => s.notifications);
   const todayIso = new Date().toISOString();
   const todayAppts = appointmentsByDay(todayIso);
+  const pendingConfirmations = useAppointmentsStore((s) => s.appointments.filter((a) => a.status === 'agendado').length);
 
   const statusData = Object.entries(APPOINTMENT_STATUS_META).map(([key, meta]) => ({
     name: meta.label,
@@ -56,6 +58,17 @@ export function DashboardPage() {
         title="Dashboard"
         description={`Visão geral da operação · ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}`}
       />
+
+      {pendingConfirmations > 0 && (
+        <Link
+          to="/agenda?confirmar=1"
+          className="mb-4 flex items-center gap-2 rounded-xl border border-warning/40 bg-warning-soft/60 px-4 py-2.5 text-sm text-foreground transition hover:brightness-105"
+        >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-warning text-white text-xs font-bold">{pendingConfirmations}</span>
+          <span className="flex-1"><b>{pendingConfirmations} visita(s)</b> aguardando confirmação do cliente.</span>
+          <span className="text-xs font-medium text-warning">Ver →</span>
+        </Link>
+      )}
 
       {/* KPIs principais */}
       <Stagger className="grid grid-cols-2 gap-4 lg:grid-cols-4">

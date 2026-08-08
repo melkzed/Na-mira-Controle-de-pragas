@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Check, ChevronLeft, ChevronRight, Lock, MapPin, Plus } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
@@ -40,6 +41,18 @@ export function AgendaPage() {
   const [techFilter, setTechFilter] = useState<string>('todos');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [formOpen, setFormOpen] = useState(false);
+  const [params, setParams] = useSearchParams();
+
+  // Vindo de um alerta de confirmação (Dashboard, OS, notificações): filtra
+  // direto para as visitas aguardando confirmação.
+  useEffect(() => {
+    if (params.get('confirmar') === '1') {
+      setStatusFilter('agendado');
+      setView('agenda');
+      setParams((p) => { p.delete('confirmar'); return p; }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const allAppointments = useAppointmentsStore((s) => s.appointments);
   const appts = useMemo(
@@ -82,6 +95,7 @@ export function AgendaPage() {
             className="h-9 w-auto"
           >
             <option value="todos">Todos os status</option>
+            <option value="programada">Programadas</option>
             <option value="agendado">Aguardando confirmação</option>
             <option value="confirmado">Confirmadas</option>
             <option value="reagendado">Reagendadas</option>
@@ -425,6 +439,12 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
         </label>
 
         {/* Confirmação da visita */}
+        {appt.status === 'programada' && (
+          <div className="rounded-xl border border-border bg-muted/40 p-3">
+            <p className="text-sm text-foreground">Visita <b>programada</b> — ainda fora do período de confirmação (liberado ao técnico só após confirmar).</p>
+            <Button size="sm" variant="outline" className="mt-2" leftIcon={<Check size={14} />} onClick={confirmVisit}>Confirmar já</Button>
+          </div>
+        )}
         {appt.status === 'agendado' && (
           <div className="rounded-xl border border-warning/40 bg-warning-soft/50 p-3">
             <p className="text-sm text-foreground">Esta visita <b>aguarda confirmação</b> do cliente.</p>
@@ -504,6 +524,13 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
               <Button variant="secondary" onClick={() => setRescheduling(true)}>Reagendar / técnico</Button>
               <Button variant="outline" onClick={() => { setStatus(appt.id, 'cancelado'); logChange('cancelamento', 'agendamento', `Visita cancelada · ${cust?.name ?? ''}`, appt.id); }}>Cancelar visita</Button>
             </div>
+            <Button
+              variant="outline"
+              className="text-danger"
+              onClick={() => { update(appt.id, { status: 'cancelado', notes: 'Desistência do cliente' }); logChange('cancelamento', 'agendamento', `Desistência do cliente · ${cust?.name ?? ''}`, appt.id); }}
+            >
+              Registrar desistência do cliente
+            </Button>
             <Button variant="danger" onClick={() => { removeAppt(appt.id); logChange('exclusão', 'agendamento', `Visita excluída · ${cust?.name ?? ''}`, appt.id); onClose(); }}>Excluir</Button>
           </div>
         )}

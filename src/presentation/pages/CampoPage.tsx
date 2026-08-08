@@ -18,7 +18,7 @@ import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { PhotoCapture } from '../components/PhotoCapture';
 import { SignaturePad } from '../components/SignaturePad';
 import { useSettingsStore } from '@/store/settingsStore';
-import { appointmentsForTechnician, getCustomer, getProduct, getServiceType, serviceOrderForAppointment } from '@/application/repository';
+import { releasedAppointmentsForTechnician, getCustomer, getProduct, getServiceType, serviceOrderForAppointment } from '@/application/repository';
 import { useProductsStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
@@ -85,7 +85,7 @@ export function CampoPage() {
   const updateOs = useServiceOrdersStore((s) => s.update);
 
   const todayIso = new Date().toISOString();
-  const appts = useMemo(() => appointmentsForTechnician(techId, todayIso), [techId, todayIso, storeAppts]);
+  const appts = useMemo(() => releasedAppointmentsForTechnician(techId, todayIso), [techId, todayIso, storeAppts]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const active = appts.find((a) => a.id === activeId) ?? appts[0];
 

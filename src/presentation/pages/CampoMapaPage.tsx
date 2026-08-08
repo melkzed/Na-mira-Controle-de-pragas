@@ -5,7 +5,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
-import { appointmentsForTechnician, getCustomer, getServiceType } from '@/application/repository';
+import { releasedAppointmentsForTechnician, getCustomer, getServiceType } from '@/application/repository';
 import { googleMapsRoute, wazeLink } from '@/lib/geo';
 import { fmtMinutes, minutesOfDay, planRoute, simulateRoute, type TimedStop } from '@/lib/route';
 import { fmtTime } from '@/lib/date';
@@ -29,7 +29,7 @@ export function CampoMapaPage() {
   const { techId } = useFieldTech();
   const [optimized, setOptimized] = useState(true);
   const todayIso = new Date().toISOString();
-  const appts = useMemo(() => appointmentsForTechnician(techId, todayIso), [techId, todayIso]);
+  const appts = useMemo(() => releasedAppointmentsForTechnician(techId, todayIso), [techId, todayIso]);
 
   const { orderedGeo, sim, totalKm, lateCount } = useMemo(() => {
     const withGeo = appts.filter(hasGeo);

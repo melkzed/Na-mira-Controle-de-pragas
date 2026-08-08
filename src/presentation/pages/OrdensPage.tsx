@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Check, Download, Pencil, Plus, Trash2, Zap } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
@@ -15,6 +15,7 @@ import type { Pest, PaymentStatus, RecurrencePhase, ServiceOrder, ServiceType, T
 import type { AppointmentStatus, RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
 import { PAYMENT_METHODS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
 import { computeRecurrenceOccurrences, recurrenceSummaryLabel, totalOccurrences } from '@/lib/recurrence';
+import { isDueForConfirmation } from '@/lib/confirmation';
 import { dateInputToIso, fmtDate, parseDateInput, toDateInputValue } from '@/lib/date';
 import { downloadCsv } from '@/lib/export';
 import { printServiceOrder } from '@/lib/printOrder';
@@ -66,6 +67,7 @@ export function OrdensPage() {
   const editFormRef = useRef<OsFormHandle>(null);
   const createFormRef = useRef<OsFormHandle>(null);
   const [params, setParams] = useSearchParams();
+  const pendingConfirmations = useAppointmentsStore((s) => s.appointments.filter((a) => a.status === 'agendado').length);
 
   // Ao editar uma OS já selecionada, mantém o painel de detalhe sincronizado
   // com a versão mais recente após salvar.
@@ -122,6 +124,18 @@ export function OrdensPage() {
           </>
         }
       />
+
+      {pendingConfirmations > 0 && (
+        <Link
+          to="/agenda?confirmar=1"
+          className="mb-4 flex items-center gap-2 rounded-xl border border-warning/40 bg-warning-soft/60 px-4 py-2.5 text-sm text-foreground transition hover:brightness-105"
+        >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-warning text-white text-xs font-bold">{pendingConfirmations}</span>
+          <span className="flex-1"><b>{pendingConfirmations} visita(s)</b> aguardando confirmação do cliente.</span>
+          <span className="text-xs font-medium text-warning">Ver →</span>
+        </Link>
+      )}
+
       <Table columns={columns} rows={orders} keyField={(so) => so.id} onRowClick={(so) => { setSelected(so); setEditMode(false); }} />
 
       {/* Criação de nova OS — mesmo tamanho/centralização do painel de
@@ -559,7 +573,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
    *  regenera quando o plano (habilitado/fases) realmente mudou — reabrir e
    *  salvar a OS sem tocar na recorrência nunca duplica visitas já criadas.
    *  Ao mudar o plano, remove apenas as visitas futuras ainda não confirmadas
-   *  (status "agendado") do plano anterior antes de gerar o novo. */
+   *  (status "programada"/"agendado") do plano anterior antes de gerar o novo. */
   const syncRecurrencePlan = (): { recurrenceGroupId?: string; nextVisitDate?: string } => {
     const prevPlan = initial?.recurrence;
     const prevSignature = prevPlan?.enabled ? JSON.stringify(prevPlan.phases ?? []) : null;
@@ -569,7 +583,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     }
     if (prevPlan?.recurrenceGroupId) {
       allAppointments
-        .filter((a) => a.recurrenceId === prevPlan.recurrenceGroupId && a.status === 'agendado' && new Date(a.scheduledStart) > new Date())
+        .filter((a) => a.recurrenceId === prevPlan.recurrenceGroupId && (a.status === 'agendado' || a.status === 'programada') && new Date(a.scheduledStart) > new Date())
         .forEach((a) => removeAppointment(a.id));
     }
     if (!recEnabled || !recPhases.length) return {};
@@ -581,11 +595,15 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     const custObj = getCustomer(customerId);
     occurrences.forEach((occ) => {
       const endIso = new Date(new Date(occ.date).getTime() + durationMin * 60000).toISOString();
+      const recurrenceRule = RECURRENCE_FREQ_LABEL[occ.frequency];
       addAppointment({
         customerId,
         serviceTypeId: serviceTypeIds[0],
         technicianId: technicianIds[0],
-        status: 'agendado',
+        // Visitas futuras da recorrência entram como "programada" e só
+        // avançam para "agendado" (aguardando confirmação) quando entram no
+        // período de confirmação — ver useAppointmentsStore.sweepConfirmations.
+        status: isDueForConfirmation(occ.date, recurrenceRule) ? 'agendado' : 'programada',
         priority: 'normal',
         scheduledStart: occ.date,
         scheduledEnd: endIso,
@@ -593,7 +611,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
         address: address(custObj),
         products: suggestedProducts.map((p) => ({ productId: p.productId, plannedQty: p.qty })),
         recurrenceId: groupId,
-        recurrenceRule: RECURRENCE_FREQ_LABEL[occ.frequency],
+        recurrenceRule,
       });
     });
     return { recurrenceGroupId: groupId, nextVisitDate: occurrences[0].date };
