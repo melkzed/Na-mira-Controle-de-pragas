@@ -44,10 +44,14 @@ export function PhotoCapture({
   photos,
   onChange,
   compact = false,
+  disabled = false,
 }: {
   photos: ServiceOrderPhoto[];
   onChange: (next: ServiceOrderPhoto[]) => void;
   compact?: boolean;
+  /** Bloqueia adicionar/remover fotos — usado antes de "Iniciar atendimento",
+   *  já que a foto serve como registro de que o atendimento está em curso. */
+  disabled?: boolean;
 }) {
   const inputs = useRef<Record<Phase, HTMLInputElement | null>>({ antes: null, durante: null, apos: null });
 
@@ -72,8 +76,12 @@ export function PhotoCapture({
               <span className="text-xs font-semibold text-foreground">{label}</span>
               <button
                 type="button"
+                disabled={disabled}
                 onClick={() => inputs.current[key]?.click()}
-                className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-brand transition hover:bg-brand-soft"
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs transition',
+                  disabled ? 'cursor-not-allowed text-muted-foreground/50' : 'text-brand hover:bg-brand-soft',
+                )}
               >
                 <Camera size={13} /> Adicionar
               </button>
@@ -81,6 +89,7 @@ export function PhotoCapture({
                 ref={(el) => (inputs.current[key] = el)}
                 type="file" accept="image/*" capture="environment" multiple
                 onChange={(e) => addFiles(key, e)} className="hidden"
+                disabled={disabled}
               />
             </div>
             {list.length === 0 ? (
@@ -90,7 +99,9 @@ export function PhotoCapture({
                 {list.map(({ p, i }) => (
                   <div key={i} className="relative">
                     <img src={p.dataUrl} alt={p.name ?? label} className="h-16 w-20 rounded-lg border border-border object-cover" />
-                    <button type="button" onClick={() => removeAt(i)} aria-label="Remover foto" className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-danger text-white"><X size={11} /></button>
+                    {!disabled && (
+                      <button type="button" onClick={() => removeAt(i)} aria-label="Remover foto" className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-danger text-white"><X size={11} /></button>
+                    )}
                   </div>
                 ))}
               </div>

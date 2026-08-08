@@ -23,6 +23,9 @@ interface StockState {
   balanceOf: (locationId: string, productId: string) => number;
   /** Entrada de estoque (compra/ajuste) em um local. */
   entry: (locationId: string, productId: string, qty: number) => void;
+  /** Baixa de estoque em um local (ex.: produto aplicado em campo). Nunca
+   *  deixa o saldo negativo. */
+  consume: (locationId: string, productId: string, qty: number) => void;
   /** Transfere quantidade de um local para outro. Retorna false se saldo insuficiente. */
   transfer: (fromLoc: string, toLoc: string, productId: string, qty: number) => boolean;
 }
@@ -38,6 +41,15 @@ export const useStockStore = create<StockState>((set, get) => ({
     const next = idx >= 0
       ? bals.map((b, i) => (i === idx ? { ...b, quantity: b.quantity + qty } : b))
       : [...bals, { id: uid(), locationId: loc, productId: prod, quantity: qty }];
+    save(next);
+    set({ balances: next });
+  },
+  consume: (loc, prod, qty) => {
+    if (qty <= 0) return;
+    const bals = get().balances;
+    const idx = bals.findIndex((b) => b.locationId === loc && b.productId === prod);
+    if (idx < 0) return;
+    const next = bals.map((b, i) => (i === idx ? { ...b, quantity: Math.max(0, b.quantity - qty) } : b));
     save(next);
     set({ balances: next });
   },
