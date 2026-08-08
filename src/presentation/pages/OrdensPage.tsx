@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Check, Download, Pencil, Plus, Zap } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
@@ -63,6 +64,7 @@ export function OrdensPage() {
   const [formOpen, setFormOpen] = useState(false);
   const editFormRef = useRef<OsFormHandle>(null);
   const createFormRef = useRef<OsFormHandle>(null);
+  const [params, setParams] = useSearchParams();
 
   // Ao editar uma OS já selecionada, mantém o painel de detalhe sincronizado
   // com a versão mais recente após salvar.
@@ -70,6 +72,17 @@ export function OrdensPage() {
     if (selected) setSelected(orders.find((o) => o.id === selected.id) ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders]);
+
+  // Abre a OS diretamente quando chega por link externo (?id=...), ex.: duplo
+  // clique no histórico de atendimentos do cliente — sem exigir baixar o PDF.
+  useEffect(() => {
+    const id = params.get('id');
+    if (!id) return;
+    const so = orders.find((o) => o.id === id);
+    if (so) { setSelected(so); setEditMode(false); }
+    setParams((p) => { p.delete('id'); return p; }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
 
   const exportCsv = () => {
     downloadCsv('ordens-de-servico', orders, [
@@ -177,6 +190,9 @@ export function OrdensPage() {
                   <Info label="Vencimento do Pagamento" value={selected.dueDate ? fmtDate(selected.dueDate) : '—'} />
                   <Info label="Validade do Serviço" value={selected.validityDate ? fmtDate(selected.validityDate) : '—'} />
                   <Info label="Validade do Certificado" value={certificateValidityText(selected)} />
+                  {selected.associatedOrderId && (
+                    <Info label="OS Associada" value={(() => { const a = orders.find((o) => o.id === selected.associatedOrderId); return a ? `#${a.number} · ${getCustomer(a.customerId)?.name ?? ''}` : '—'; })()} />
+                  )}
                   {selected.recurrence?.enabled && <Info label="Próxima Visita" value={selected.nextVisitDate ? fmtDate(selected.nextVisitDate) : '—'} />}
                 </div>
               </Section>
@@ -245,6 +261,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   function OsFormBody({ initial, onSaved }, ref) {
   const add = useServiceOrdersStore((s) => s.add);
   const updateOs = useServiceOrdersStore((s) => s.update);
+  const allOrders = useServiceOrdersStore((s) => s.orders);
   const addAppointment = useAppointmentsStore((s) => s.add);
   const updateAppointment = useAppointmentsStore((s) => s.update);
   const financeEntries = useFinanceStore((s) => s.items);
@@ -278,6 +295,11 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   const [paymentMethod, setPaymentMethod] = useState<string>('');
   const [serviceValue, setServiceValue] = useState('');
   const [serviceValueTouched, setServiceValueTouched] = useState(false);
+  /** O valor só conta como confirmado após o clique explícito em "Confirmar
+   *  valor" — nunca é presumido a partir da sugestão automática. Qualquer
+   *  edição posterior no valor exige nova confirmação. */
+  const [valueConfirmed, setValueConfirmed] = useState(false);
+  const [associatedOrderId, setAssociatedOrderId] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('pendente');
   const [paymentDate, setPaymentDate] = useState('');
   const [warrantyHas, setWarrantyHas] = useState(true);
@@ -353,6 +375,8 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       setPaymentMethod(initial.paymentMethod ?? '');
       setServiceValue(initial.serviceValue != null ? String(initial.serviceValue) : '');
       setServiceValueTouched(true);
+      setValueConfirmed(initial.serviceValueConfirmed ?? false);
+      setAssociatedOrderId(initial.associatedOrderId ?? '');
       setPaymentStatus(initial.paymentStatus ?? 'pendente');
       setPaymentDate(toInput(initial.paymentDate));
       setWarrantyHas(initial.warranty?.has ?? false);
@@ -381,7 +405,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
     setTechnicianIds(technicianUsers[0] ? [technicianUsers[0].id] : []);
     setSellerId(''); setStatus('em_andamento'); setAreaQty({}); setLegacyAreaText(''); setPestIds([]); setPestValidity({}); setDuration(''); setProcedures(''); setTechnicianMessage('');
-    setPaymentMethod(''); setServiceValue(''); setServiceValueTouched(false); setPaymentStatus('pendente'); setPaymentDate('');
+    setPaymentMethod(''); setServiceValue(''); setServiceValueTouched(false); setValueConfirmed(false); setAssociatedOrderId(''); setPaymentStatus('pendente'); setPaymentDate('');
     setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
     setRecEnabled(false); setRecFreq('mensal'); setExecDate(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
     setCertValidityDate(''); setCertValidityTouched(false); setNextVisitDate(''); setNextVisitTouched(false);
@@ -536,6 +560,10 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       toast('Informe a previsão de devolução dos equipamentos retirados.', { tone: 'warning' });
       return;
     }
+    if (serviceValue && Number(serviceValue) > 0 && !valueConfirmed) {
+      toast('Confirme o valor do serviço (✓ Confirmar valor) antes de continuar.', { tone: 'warning' });
+      return;
+    }
     const now = new Date().toISOString();
     const input: ServiceOrderInput = {
       customerId,
@@ -559,6 +587,8 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       products: suggestedProducts.map((p) => ({ productId: p.productId, usedQty: p.qty })),
       paymentMethod: paymentMethod || undefined,
       serviceValue: serviceValue ? Number(serviceValue) : undefined,
+      serviceValueConfirmed: serviceValue ? valueConfirmed : undefined,
+      associatedOrderId: associatedOrderId || undefined,
       paymentStatus,
       paymentDate: paymentStatus === 'pago' && paymentDate ? dateInputToIso(paymentDate) : undefined,
       warranty: { has: warrantyHas, value: warrantyHas ? Number(warrantyValue) || undefined : undefined, unit: warrantyHas ? warrantyUnit : undefined, type: warrantyHas ? warrantyType : undefined },
@@ -812,9 +842,29 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
           <div className="grid grid-cols-2 gap-3">
             <Field
               label="Valor do Serviço"
-              hint={!serviceValueTouched && suggestedServiceValue > 0 ? `Preço padrão do serviço: ${formatCurrency(suggestedServiceValue)}` : 'Sem origem automática — informe manualmente'}
+              hint={valueConfirmed ? 'Valor confirmado.' : !serviceValueTouched && suggestedServiceValue > 0 ? `Preço padrão do serviço: ${formatCurrency(suggestedServiceValue)}` : 'Sem origem automática — informe manualmente'}
             >
-              <Input type="number" min={0} step="0.01" value={serviceValue} onChange={(e) => { setServiceValue(e.target.value); setServiceValueTouched(true); }} placeholder="0,00" />
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number" min={0} step="0.01" value={serviceValue}
+                  onChange={(e) => { setServiceValue(e.target.value); setServiceValueTouched(true); setValueConfirmed(false); }}
+                  placeholder="0,00" className="flex-1"
+                />
+                {valueConfirmed ? (
+                  <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-success-soft px-2.5 py-2 text-xs font-medium text-success">
+                    <Check size={13} /> Confirmado
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!serviceValue}
+                    onClick={() => setValueConfirmed(true)}
+                    className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-success px-2.5 py-2 text-xs font-semibold text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Check size={13} /> Confirmar valor
+                  </button>
+                )}
+              </div>
             </Field>
             <Field label="Forma de pagamento"><Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}><option value="">—</option>{PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}</Select></Field>
             {paymentStatus === 'pago' && (
@@ -822,6 +872,16 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
             )}
           </div>
         </div>
+
+        <Field label="OS associada" hint="Opcional — vincula esta OS a um atendimento anterior (ex.: retorno/garantia); busque pelo número">
+          <Combobox
+            value={associatedOrderId}
+            onChange={setAssociatedOrderId}
+            placeholder="Nenhuma"
+            searchPlaceholder="Buscar por número da OS…"
+            options={allOrders.filter((o) => o.id !== initial?.id).map((o) => ({ value: o.id, label: `#${o.number} · ${getCustomer(o.customerId)?.name ?? ''}`, sub: fmtDate(o.createdAt) }))}
+          />
+        </Field>
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Status"><Select value={status} onChange={(e) => setStatus(e.target.value as ServiceOrderStatus)}>{(Object.keys(OS_STATUS_LABEL) as ServiceOrderStatus[]).map((s) => <option key={s} value={s}>{OS_STATUS_LABEL[s]}</option>)}</Select></Field>

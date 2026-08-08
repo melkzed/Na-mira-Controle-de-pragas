@@ -464,6 +464,11 @@ export interface ServiceOrder {
   paymentStatus?: PaymentStatus;
   /** Data em que o pagamento foi efetivamente recebido. */
   paymentDate?: string;
+  /** true somente após clique explícito em "Confirmar valor" — nunca
+   *  presumido a partir da sugestão automática do serviço. */
+  serviceValueConfirmed?: boolean;
+  /** OS associada (ex.: retorno/garantia de um atendimento anterior). */
+  associatedOrderId?: string;
   /** Garantia do serviço (com/sem, prazo e tipo). */
   warranty?: WarrantyInfo;
   /** Recorrência do serviço. */
