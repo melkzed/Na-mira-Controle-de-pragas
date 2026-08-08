@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import type { Appointment } from '@/domain/types';
 import type { AppointmentStatus } from '@/domain/enums';
 import { appointments as seedAppointments } from '@/infrastructure/seed/data';
+import { isDueForConfirmation } from '@/lib/confirmation';
+import { useAppStore } from './appStore';
+import { useCustomersStore } from './customersStore';
 
 /**
  * Store reativa de Agendamentos (inicializada a partir do seed, persistida em
@@ -24,6 +27,11 @@ interface AppointmentsState {
   update: (id: string, patch: Partial<Appointment>) => void;
   setStatus: (id: string, status: AppointmentStatus) => void;
   remove: (id: string) => void;
+  /** Programada → Aguardando confirmação: promove ocorrências recorrentes
+   *  que entraram no período de confirmação (3 dias antes p/ semanais, 7
+   *  dias antes para as demais) e notifica. Chamado ao carregar o app;
+   *  idempotente — não faz nada se nenhuma visita estiver vencendo. */
+  sweepConfirmations: () => void;
 }
 
 function today(): string {
@@ -88,4 +96,25 @@ export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
     persist(next);
     set({ appointments: next });
   },
+  sweepConfirmations: () => {
+    const due = get().appointments.filter((a) => a.status === 'programada' && isDueForConfirmation(a.scheduledStart, a.recurrenceRule));
+    if (!due.length) return;
+    const dueIds = new Set(due.map((a) => a.id));
+    const next = get().appointments.map((a) => (dueIds.has(a.id) ? { ...a, status: 'agendado' as AppointmentStatus } : a));
+    persist(next);
+    set({ appointments: next });
+    due.forEach((a) => {
+      const custName = useCustomersStore.getState().customers.find((c) => c.id === a.customerId)?.name ?? 'cliente';
+      useAppStore.getState().addNotification({
+        title: 'Confirmação de visita necessária',
+        body: `${custName} — visita em ${new Date(a.scheduledStart).toLocaleDateString('pt-BR')} aguarda confirmação.`,
+        tone: 'warning',
+        entityType: 'appointment',
+      });
+    });
+  },
 }));
+
+// Roda uma vez ao carregar o módulo — mantém as ocorrências recorrentes em
+// dia sem depender de um job em segundo plano (app 100% client-side).
+useAppointmentsStore.getState().sweepConfirmations();

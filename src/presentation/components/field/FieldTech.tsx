@@ -2,6 +2,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react';
 import { Eye } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import { useUsersStore } from '@/store/entityStores';
+import { Select } from '../ui/Field';
 
 interface FieldTechValue {
   /** Usuário autenticado é técnico (não é staff em pré-visualização). */
@@ -54,14 +55,14 @@ export function PreviewBanner() {
     <div className="mb-4 flex items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 p-3">
       <Eye size={15} className="shrink-0 text-muted-foreground" />
       <span className="text-xs font-medium text-muted-foreground">Pré-visualizar como:</span>
-      <select
+      <Select
         value={previewId}
         onChange={(e) => setPreviewId(e.target.value)}
         aria-label="Selecionar técnico para pré-visualização"
-        className="h-8 flex-1 rounded-lg border border-input bg-surface px-2 text-sm"
+        className="h-8 flex-1"
       >
         {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-      </select>
+      </Select>
     </div>
   );
 }

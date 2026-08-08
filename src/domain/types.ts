@@ -57,7 +57,12 @@ export interface Customer {
   document?: string;
   email?: string;
   phone?: string;
+  /** @deprecated Mantido para compatibilidade com cadastros antigos — use
+   *  `contacts` (telefone de contato + contatos adicionais). */
   whatsapp?: string;
+  /** Telefone(s) de contato — quem de fato atende/agenda pelo cliente, pode
+   *  ser diferente do telefone principal da empresa. Um é o contato principal. */
+  contacts?: CustomerContact[];
   cep?: string;
   street?: string;
   number?: string;
@@ -93,6 +98,16 @@ export interface Customer {
   contracts?: ServiceContract[];
   /** Serviços complementares contratados (ex.: Limpeza de Coifa, Sanitização). */
   complementaryServices?: string[];
+}
+
+/** Telefone de contato do cliente — pessoa responsável pelo atendimento ou
+ *  agendamento, não necessariamente o telefone principal da empresa. */
+export interface CustomerContact {
+  id: string;
+  name: string;
+  phone: string;
+  role?: string;
+  isPrincipal?: boolean;
 }
 
 /** Reservatório de água do cliente (caixa d'água, cisterna, reservatório elevado…). */
@@ -372,6 +387,9 @@ export interface ServiceType {
   defaultProducts?: { productId: string; qty: number }[];
   /** Validade padrão do serviço (dias) — sugere a validade da OS. */
   defaultValidityDays?: number;
+  /** Inativo não aparece para seleção em novas OS, mas permanece íntegro em
+   *  OS/documentos já existentes. Ausente = ativo (compatibilidade). */
+  isActive?: boolean;
 }
 
 export interface AppointmentProduct {
@@ -461,6 +479,11 @@ export interface ServiceOrder {
   paymentStatus?: PaymentStatus;
   /** Data em que o pagamento foi efetivamente recebido. */
   paymentDate?: string;
+  /** true somente após clique explícito em "Confirmar valor" — nunca
+   *  presumido a partir da sugestão automática do serviço. */
+  serviceValueConfirmed?: boolean;
+  /** OS associada (ex.: retorno/garantia de um atendimento anterior). */
+  associatedOrderId?: string;
   /** Garantia do serviço (com/sem, prazo e tipo). */
   warranty?: WarrantyInfo;
   /** Recorrência do serviço. */
@@ -503,6 +526,9 @@ export interface Pest {
   /** Validade da proteção contra essa praga (dias) — sugere a validade da OS. */
   defaultValidityDays?: number;
   notes?: string;
+  /** Inativa não aparece para seleção em novas OS, mas permanece íntegra em
+   *  OS/documentos já existentes. Ausente = ativa (compatibilidade). */
+  isActive?: boolean;
 }
 
 /** Área/ambiente tratado (cadastro reutilizável na OS). */
@@ -511,6 +537,9 @@ export interface TreatedArea {
   orgId: string;
   name: string;
   notes?: string;
+  /** Inativa não aparece para seleção em novas OS, mas permanece íntegra em
+   *  OS/documentos já existentes. Ausente = ativa (compatibilidade). */
+  isActive?: boolean;
 }
 
 /** Foto vinculada à OS, por fase do serviço. */
@@ -532,7 +561,26 @@ export type PaymentStatus = 'pendente' | 'pago' | 'vencido' | 'cancelado';
 
 export interface OsRecurrence {
   enabled: boolean;
+  /** Frequência simples (legado/exibição) — quando há `phases`, reflete a
+   *  frequência da primeira fase. */
   frequency?: RecurrenceFreq;
+  /** Programação em fases: ex. "Fase 1: 45 dias → 1 ocorrência", "Fase 2:
+   *  Semestral → 2 ocorrências". A data de cada ocorrência é calculada
+   *  automaticamente a partir da anterior + periodicidade da fase — não é
+   *  repetição infinita, é um plano com fim definido. */
+  phases?: RecurrencePhase[];
+  /** Agrupa esta OS aos agendamentos futuros gerados pelo plano de
+   *  recorrência (Appointment.recurrenceId) — usado para regenerar o plano
+   *  sem duplicar visitas já criadas ao editar a OS. */
+  recurrenceGroupId?: string;
+}
+
+/** Uma fase de um plano de recorrência: repete `occurrences` vezes na
+ *  periodicidade `frequency`, encadeada às fases anteriores. */
+export interface RecurrencePhase {
+  id: string;
+  frequency: RecurrenceFreq;
+  occurrences: number;
 }
 
 /** Forma de emissão do pagamento. */

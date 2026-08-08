@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Award, Building2, Download, FileText, Mail, MapPin, Pencil, Phone, Plus, Search, Trash2, User } from 'lucide-react';
+import { Award, Building2, Download, ExternalLink, FileText, Mail, MapPin, Pencil, Phone, Plus, Search, Trash2, User } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -141,9 +141,11 @@ function ClienteDetail({
 }) {
   const [confirmDel, setConfirmDel] = useState(false);
   const staff = useUsersStore((s) => s.items);
+  const navigate = useNavigate();
   if (!customer) return null;
   const history = serviceOrdersForCustomer(customer.id);
   const isBasico = customer.registrationTier === 'basico';
+  const openOs = (osId: string) => navigate(`/ordens?id=${osId}`);
 
   return (
     <Drawer
@@ -151,6 +153,7 @@ function ClienteDetail({
       onClose={() => { setConfirmDel(false); onClose(); }}
       title={customer.name}
       subtitle={formatDocument(customer.document)}
+      centered
       footer={
         <div className="flex items-center justify-between gap-2">
           {confirmDel ? (
@@ -173,6 +176,7 @@ function ClienteDetail({
         </div>
       }
     >
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[380px_1fr]">
       <div className="space-y-5">
         <div className="flex items-center gap-3">
           <Avatar name={customer.name} size="lg" />
@@ -194,7 +198,13 @@ function ClienteDetail({
 
         <div className="grid grid-cols-1 gap-2">
           {customer.phone && <ContactRow icon={<Phone size={14} />} value={customer.phone} />}
-          {customer.whatsapp && <ContactRow icon={<Phone size={14} className="text-success" />} value={`WhatsApp: ${customer.whatsapp}`} />}
+          {(customer.contacts?.length ? customer.contacts : customer.whatsapp ? [{ id: 'legacy', name: 'Contato', phone: customer.whatsapp, isPrincipal: true }] : []).map((ct) => (
+            <ContactRow
+              key={ct.id}
+              icon={<Phone size={14} className="text-success" />}
+              value={`Telefone de contato${ct.name && ct.name !== 'Contato' ? ` (${ct.name}${ct.role ? ` · ${ct.role}` : ''})` : ''}${ct.isPrincipal ? ' · principal' : ''}: ${ct.phone}`}
+            />
+          ))}
           {customer.email && <ContactRow icon={<Mail size={14} />} value={customer.email} />}
           {(customer.street || customer.city) && (
             <ContactRow icon={<MapPin size={14} />} value={[customer.street && `${customer.street}, ${customer.number ?? 's/n'}`, customer.district, customer.city && `${customer.city}/${customer.state ?? ''}`].filter(Boolean).join(' — ')} />
@@ -262,6 +272,9 @@ function ClienteDetail({
           </div>
         )}
 
+      </div>
+
+      <div className="space-y-5">
         {customer.monitoringContracted && (
           <div>
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Monitoramento (armadilhas / MIP)</p>
@@ -278,7 +291,16 @@ function ClienteDetail({
               const productNames = so.products.map((p) => getProduct(p.productId)?.name).filter(Boolean).join(', ');
               const techNames = (so.technicianIds?.length ? so.technicianIds : [so.technicianId]).map((id) => getUser(id)?.name).filter(Boolean).join(', ');
               return (
-                <div key={so.id} className="rounded-lg border border-border p-3">
+                <div
+                  key={so.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Abrir OS #${so.number}`}
+                  onDoubleClick={() => openOs(so.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') openOs(so.id); }}
+                  className="cursor-pointer rounded-lg border border-border p-3 transition hover:border-brand/40 hover:bg-muted/30"
+                  title="Duplo clique para abrir a OS"
+                >
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <p className="text-sm font-medium text-foreground">OS #{so.number} · {getServiceType(so.serviceTypeId)?.name}</p>
@@ -292,15 +314,17 @@ function ClienteDetail({
                     {productNames && <p>Produtos: {productNames}</p>}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    <Button size="sm" variant="outline" leftIcon={<Download size={13} />} onClick={() => printServiceOrder(so)}>OS</Button>
-                    <Button size="sm" variant="outline" leftIcon={<Award size={13} />} onClick={() => printCertificate(so)}>Certificado</Button>
-                    <Button size="sm" variant="outline" leftIcon={<FileText size={13} />} onClick={() => printLaudo(so)}>Laudo</Button>
+                    <Button size="sm" variant="outline" leftIcon={<ExternalLink size={13} />} onClick={(e) => { e.stopPropagation(); openOs(so.id); }}>Abrir OS</Button>
+                    <Button size="sm" variant="outline" leftIcon={<Download size={13} />} onClick={(e) => { e.stopPropagation(); printServiceOrder(so); }}>PDF</Button>
+                    <Button size="sm" variant="outline" leftIcon={<Award size={13} />} onClick={(e) => { e.stopPropagation(); printCertificate(so); }}>Certificado</Button>
+                    <Button size="sm" variant="outline" leftIcon={<FileText size={13} />} onClick={(e) => { e.stopPropagation(); printLaudo(so); }}>Laudo</Button>
                   </div>
                 </div>
               );
             })}
           </div>
         </div>
+      </div>
       </div>
     </Drawer>
   );

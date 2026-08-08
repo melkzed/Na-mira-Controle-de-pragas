@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Check, Download, Plus, Zap } from 'lucide-react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Check, Download, Pencil, Plus, Trash2, Zap } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -10,9 +11,11 @@ import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
 import { ServiceOrderStatusBadge } from '../components/StatusBadge';
 import { appointmentsForCustomer, getCustomer, getPest, getProduct, getServiceType, getUser, lastOrderForCustomer } from '@/application/repository';
-import type { Pest, PaymentStatus, ServiceOrder, ServiceType, TreatedArea } from '@/domain/types';
+import type { Pest, PaymentStatus, RecurrencePhase, ServiceOrder, ServiceType, TreatedArea } from '@/domain/types';
 import type { AppointmentStatus, RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
-import { PAYMENT_METHODS, RECURRENCE_FREQ_DAYS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
+import { PAYMENT_METHODS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
+import { computeRecurrenceOccurrences, recurrenceSummaryLabel, totalOccurrences } from '@/lib/recurrence';
+import { isDueForConfirmation } from '@/lib/confirmation';
 import { dateInputToIso, fmtDate, parseDateInput, toDateInputValue } from '@/lib/date';
 import { downloadCsv } from '@/lib/export';
 import { printServiceOrder } from '@/lib/printOrder';
@@ -23,7 +26,7 @@ import { useServiceOrdersStore, type ServiceOrderInput } from '@/store/serviceOr
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useCustomersStore } from '@/store/customersStore';
 import { usePestsStore, useAreasStore, useEquipmentStore, useFinanceStore, useServiceTypesStore, useUsersStore, useLicensesStore } from '@/store/entityStores';
-import { logChange } from '@/store/auditStore';
+import { logChange, useAuditStore, type AuditEntry } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
 import { SignaturePad } from '../components/SignaturePad';
 import { QuickAddChip } from '../components/QuickAddChip';
@@ -42,6 +45,10 @@ const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
   pendente: 'Pendente', pago: 'Pago', vencido: 'Vencido', cancelado: 'Cancelado',
 };
 
+/** Handle imperativo do formulário de OS — permite que um footer externo
+ *  (fora do componente do formulário) dispare o envio. */
+interface OsFormHandle { submit: () => void }
+
 /** Chip de seleção rápida (toggle) — otimizado para OS rápida em campo. */
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -51,8 +58,34 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 
 export function OrdensPage() {
   const orders = useServiceOrdersStore((s) => s.orders);
+  const auditEntries = useAuditStore((s) => s.entries);
   const [selected, setSelected] = useState<ServiceOrder | null>(null);
+  // Edição acontece dentro do próprio painel de detalhe (mesma janela, sem
+  // abrir outro Drawer por cima) — "editMode" só alterna o conteúdo exibido.
+  const [editMode, setEditMode] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const editFormRef = useRef<OsFormHandle>(null);
+  const createFormRef = useRef<OsFormHandle>(null);
+  const [params, setParams] = useSearchParams();
+  const pendingConfirmations = useAppointmentsStore((s) => s.appointments.filter((a) => a.status === 'agendado').length);
+
+  // Ao editar uma OS já selecionada, mantém o painel de detalhe sincronizado
+  // com a versão mais recente após salvar.
+  useEffect(() => {
+    if (selected) setSelected(orders.find((o) => o.id === selected.id) ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders]);
+
+  // Abre a OS diretamente quando chega por link externo (?id=...), ex.: duplo
+  // clique no histórico de atendimentos do cliente — sem exigir baixar o PDF.
+  useEffect(() => {
+    const id = params.get('id');
+    if (!id) return;
+    const so = orders.find((o) => o.id === id);
+    if (so) { setSelected(so); setEditMode(false); }
+    setParams((p) => { p.delete('id'); return p; }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
 
   const exportCsv = () => {
     downloadCsv('ordens-de-servico', orders, [
@@ -91,23 +124,67 @@ export function OrdensPage() {
           </>
         }
       />
-      <Table columns={columns} rows={orders} keyField={(so) => so.id} onRowClick={setSelected} />
 
-      <NovaOsForm open={formOpen} onClose={() => setFormOpen(false)} onCreated={(so) => { setFormOpen(false); setSelected(so); }} />
+      {pendingConfirmations > 0 && (
+        <Link
+          to="/agenda?confirmar=1"
+          className="mb-4 flex items-center gap-2 rounded-xl border border-warning/40 bg-warning-soft/60 px-4 py-2.5 text-sm text-foreground transition hover:brightness-105"
+        >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-warning text-white text-xs font-bold">{pendingConfirmations}</span>
+          <span className="flex-1"><b>{pendingConfirmations} visita(s)</b> aguardando confirmação do cliente.</span>
+          <span className="text-xs font-medium text-warning">Ver →</span>
+        </Link>
+      )}
 
+      <Table columns={columns} rows={orders} keyField={(so) => so.id} onRowClick={(so) => { setSelected(so); setEditMode(false); }} />
+
+      {/* Criação de nova OS — mesmo tamanho/centralização do painel de
+       *  detalhe da OS, para manter a exibição consistente entre criar e ver/editar. */}
+      <Drawer
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title="Nova Ordem de Serviço"
+        subtitle="Preenchimento rápido — serviços, pragas e áreas em toques"
+        centered
+        footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setFormOpen(false)}>Cancelar</Button><Button onClick={() => createFormRef.current?.submit()} leftIcon={<Check size={15} />}>Criar OS</Button></div>}
+      >
+        {formOpen && (
+          <div className="mx-auto max-w-4xl">
+            <OsFormBody ref={createFormRef} initial={null} onSaved={(so) => { setFormOpen(false); setSelected(so); setEditMode(false); }} />
+          </div>
+        )}
+      </Drawer>
+
+      {/* Detalhe da OS — o mesmo painel se transforma em formulário de edição
+       *  ao clicar em "Editar", sem abrir outra janela por cima. */}
       <Drawer
         open={!!selected}
-        onClose={() => setSelected(null)}
-        title={`Ordem de Serviço #${selected?.number}`}
-        subtitle={selected ? getCustomer(selected.customerId)?.name : ''}
+        onClose={() => { setSelected(null); setEditMode(false); }}
+        title={editMode ? `Editar Ordem de Serviço #${selected?.number}` : `Ordem de Serviço #${selected?.number}`}
+        subtitle={editMode ? 'Altere os dados necessários — as mudanças ficam registradas no histórico da OS' : (selected ? getCustomer(selected.customerId)?.name : '')}
         centered
-        footer={<div className="flex flex-wrap justify-end gap-2">
-          <Button variant="outline" size="sm" leftIcon={<Download size={14} />} onClick={() => selected && printServiceOrder(selected)}>OS (PDF)</Button>
-          <Button variant="outline" size="sm" leftIcon={<Award size={14} />} onClick={() => selected && printCertificate(selected)}>Certificado</Button>
-          <Button variant="outline" size="sm" leftIcon={<FileText size={14} />} onClick={() => selected && printLaudo(selected)}>Laudo</Button>
-        </div>}
+        footer={editMode ? (
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setEditMode(false)}>Cancelar</Button>
+            <Button onClick={() => editFormRef.current?.submit()} leftIcon={<Check size={15} />}>Salvar alterações</Button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap justify-between gap-2">
+            <Button variant="outline" size="sm" leftIcon={<Pencil size={14} />} onClick={() => setEditMode(true)}>Editar</Button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="outline" size="sm" leftIcon={<Download size={14} />} onClick={() => selected && printServiceOrder(selected)}>OS (PDF)</Button>
+              <Button variant="outline" size="sm" leftIcon={<Award size={14} />} onClick={() => selected && printCertificate(selected)}>Certificado</Button>
+              <Button variant="outline" size="sm" leftIcon={<FileText size={14} />} onClick={() => selected && printLaudo(selected)}>Laudo</Button>
+            </div>
+          </div>
+        )}
       >
-        {selected && (
+        {selected && editMode && (
+          <div className="mx-auto max-w-4xl">
+            <OsFormBody ref={editFormRef} initial={selected} onSaved={(so) => { setSelected(so); setEditMode(false); }} />
+          </div>
+        )}
+        {selected && !editMode && (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div className="space-y-5 lg:col-span-2">
               <div className="flex items-center gap-2"><ServiceOrderStatusBadge status={selected.status} /><Badge tone="neutral">{getServiceType(selected.serviceTypeId)?.name}</Badge></div>
@@ -117,7 +194,7 @@ export function OrdensPage() {
                   <Info label="Serviços" value={(selected.serviceTypeIds?.length ? selected.serviceTypeIds : [selected.serviceTypeId]).map((id) => getServiceType(id)?.name).filter(Boolean).join(', ') || '—'} />
                   <Info label="Áreas tratadas" value={selected.areaTreated ?? '—'} />
                   <Info label="Garantia" value={selected.warranty?.has ? `${selected.warranty.value ?? ''} ${selected.warranty.unit ?? ''}${selected.warranty.type ? ` · ${WARRANTY_TYPE_LABEL[selected.warranty.type]}` : ''}`.trim() : 'Sem garantia'} />
-                  <Info label="Recorrência" value={selected.recurrence?.enabled ? (selected.recurrence.frequency ? RECURRENCE_FREQ_LABEL[selected.recurrence.frequency] : 'Sim') : 'Não'} />
+                  <Info label="Recorrência" value={recurrenceSummaryLabel(selected.recurrence)} />
                   <Info label="Valor do Serviço" value={selected.serviceValue != null ? formatCurrency(selected.serviceValue) : '—'} />
                   <Info label="Pagamento" value={selected.paymentStatus ? PAYMENT_STATUS_LABEL[selected.paymentStatus] : 'Pendente'} />
                   <Info label="Forma de pagamento" value={selected.paymentMethod ?? '—'} />
@@ -128,6 +205,9 @@ export function OrdensPage() {
                   <Info label="Vencimento do Pagamento" value={selected.dueDate ? fmtDate(selected.dueDate) : '—'} />
                   <Info label="Validade do Serviço" value={selected.validityDate ? fmtDate(selected.validityDate) : '—'} />
                   <Info label="Validade do Certificado" value={certificateValidityText(selected)} />
+                  {selected.associatedOrderId && (
+                    <Info label="OS Associada" value={(() => { const a = orders.find((o) => o.id === selected.associatedOrderId); return a ? `#${a.number} · ${getCustomer(a.customerId)?.name ?? ''}` : '—'; })()} />
+                  )}
                   {selected.recurrence?.enabled && <Info label="Próxima Visita" value={selected.nextVisitDate ? fmtDate(selected.nextVisitDate) : '—'} />}
                 </div>
               </Section>
@@ -169,6 +249,8 @@ export function OrdensPage() {
                   {selected.products.length === 0 && <span className="text-sm text-muted-foreground">Nenhum produto lançado.</span>}
                 </div>
               </Section>
+
+              <OsHistorySection entries={auditEntries.filter((e) => e.entityType === 'ordem de serviço' && e.entityId === selected.id)} />
             </div>
 
             <div className="space-y-5">
@@ -185,14 +267,23 @@ export function OrdensPage() {
   );
 }
 
-/** Formulário de nova Ordem de Serviço — múltiplos serviços/pragas/áreas,
- *  garantia, recorrência, equipe, datas e sugestão automática de produtos. */
-function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (so: ServiceOrder) => void }) {
+/** Campos do formulário de Ordem de Serviço (criação ou edição) — múltiplos
+ *  serviços/pragas/áreas, garantia, recorrência, equipe, datas e sugestão
+ *  automática de produtos. Sem Drawer/rodapé próprios: quem o usa decide
+ *  onde exibi-lo (painel novo ao criar, ou o próprio painel de detalhe já
+ *  aberto, transformado in-place, ao editar) e aciona o envio via `ref`. */
+const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSaved: (so: ServiceOrder) => void }>(
+  function OsFormBody({ initial, onSaved }, ref) {
   const add = useServiceOrdersStore((s) => s.add);
   const updateOs = useServiceOrdersStore((s) => s.update);
+  const allOrders = useServiceOrdersStore((s) => s.orders);
   const addAppointment = useAppointmentsStore((s) => s.add);
   const updateAppointment = useAppointmentsStore((s) => s.update);
+  const removeAppointment = useAppointmentsStore((s) => s.remove);
+  const allAppointments = useAppointmentsStore((s) => s.appointments);
+  const financeEntries = useFinanceStore((s) => s.items);
   const addFinanceEntry = useFinanceStore((s) => s.add);
+  const updateFinanceEntry = useFinanceStore((s) => s.update);
   const customers = useCustomersStore((s) => s.customers);
   const serviceTypes = useServiceTypesStore((s) => s.items);
   const addServiceType = useServiceTypesStore((s) => s.add);
@@ -221,6 +312,11 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const [paymentMethod, setPaymentMethod] = useState<string>('');
   const [serviceValue, setServiceValue] = useState('');
   const [serviceValueTouched, setServiceValueTouched] = useState(false);
+  /** O valor só conta como confirmado após o clique explícito em "Confirmar
+   *  valor" — nunca é presumido a partir da sugestão automática. Qualquer
+   *  edição posterior no valor exige nova confirmação. */
+  const [valueConfirmed, setValueConfirmed] = useState(false);
+  const [associatedOrderId, setAssociatedOrderId] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('pendente');
   const [paymentDate, setPaymentDate] = useState('');
   const [warrantyHas, setWarrantyHas] = useState(true);
@@ -228,27 +324,36 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   const [warrantyUnit, setWarrantyUnit] = useState<WarrantyUnit>('meses');
   const [warrantyType, setWarrantyType] = useState<WarrantyType>('corretivo');
   const [recEnabled, setRecEnabled] = useState(false);
-  const [recFreq, setRecFreq] = useState<RecurrenceFreq>('mensal');
+  const [recPhases, setRecPhases] = useState<RecurrencePhase[]>([]);
   const [execDate, setExecDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [validityDate, setValidityDate] = useState('');
   const [certValidityDate, setCertValidityDate] = useState('');
   const [certValidityTouched, setCertValidityTouched] = useState(false);
-  const [nextVisitDate, setNextVisitDate] = useState('');
-  const [nextVisitTouched, setNextVisitTouched] = useState(false);
   const [equipmentIds, setEquipmentIds] = useState<string[]>([]);
   const [returnAt, setReturnAt] = useState('');
   const [touched, setTouched] = useState(false);
   const [filledFrom, setFilledFrom] = useState<number | null>(null);
   const [validityTouched, setValidityTouched] = useState(false);
+  /** Texto livre de "áreas tratadas" de OS antigas (anteriores ao seletor por
+   *  chips) — preservado ao editar quando nenhuma área com id correspondente
+   *  está selecionada, para não perder a informação original. */
+  const [legacyAreaText, setLegacyAreaText] = useState('');
   const licenses = useLicensesStore((s) => s.items);
 
   const cust = customers.find((c) => c.id === customerId);
   const areaIds = Object.keys(areaQty);
 
+  /** Catálogo inativo some da seleção em novas OS, mas o que já estava
+   *  escolhido nesta OS continua visível — nunca some silenciosamente. */
+  const selectableServiceTypes = serviceTypes.filter((s) => s.isActive !== false || serviceTypeIds.includes(s.id));
+  const selectablePests = pests.filter((p) => p.isActive !== false || pestIds.includes(p.id));
+  const selectableAreas = areas.filter((a) => a.isActive !== false || areaIds.includes(a.id));
+
   /** Só equipamentos disponíveis (sem dono fixo) podem ser retirados temporariamente
-   *  para a OS — o kit fixo/permanente do técnico não deve aparecer aqui. */
-  const availableEquipment = equipment.filter((e) => !e.assignedTo && e.status === 'disponivel');
+   *  para a OS — o kit fixo/permanente do técnico não deve aparecer aqui. Em modo
+   *  edição, mantém visível o que já está retirado nesta própria OS. */
+  const availableEquipment = equipment.filter((e) => (!e.assignedTo && e.status === 'disponivel') || (initial && e.checkedOutOsId === initial.id));
 
   const toggleArea = (id: string) => setAreaQty((m) => {
     if (m[id] != null) { const n = { ...m }; delete n[id]; return n; }
@@ -256,21 +361,70 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   });
   const setAreaQtyVal = (id: string, qty: number) => setAreaQty((m) => ({ ...m, [id]: Math.max(1, qty) }));
 
+  /** Converte um ISO (armazenado) de volta para o formato de <input type=date>,
+   *  usando getters locais — evita o desvio de fuso do bug de datas. */
+  const toInput = (iso?: string) => (iso ? toDateInputValue(new Date(iso)) : '');
+
+  // Roda uma vez ao montar — o componente é criado do zero sempre que passa
+  // a ser exibido (formulário de criação recém-aberto, ou o painel de
+  // detalhe recém-transformado em edição), então não depende de um "open".
   useEffect(() => {
-    if (open) {
-      const c0 = customers[0]?.id ?? '';
-      setCustomerId(c0);
-      setAppointmentId('');
-      setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
-      setTechnicianIds(technicianUsers[0] ? [technicianUsers[0].id] : []);
-      setSellerId(''); setStatus('em_andamento'); setAreaQty({}); setPestIds([]); setPestValidity({}); setDuration(''); setProcedures(''); setTechnicianMessage('');
-      setPaymentMethod(''); setServiceValue(''); setServiceValueTouched(false); setPaymentStatus('pendente'); setPaymentDate('');
-      setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
-      setRecEnabled(false); setRecFreq('mensal'); setExecDate(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
-      setCertValidityDate(''); setCertValidityTouched(false); setNextVisitDate(''); setNextVisitTouched(false);
-      setEquipmentIds([]); setReturnAt(''); setTouched(false); setFilledFrom(null);
+    if (initial) {
+      // Modo edição: repopula todos os campos a partir da OS selecionada.
+      setCustomerId(initial.customerId);
+      setAppointmentId(initial.appointmentId ?? '');
+      setServiceTypeIds(initial.serviceTypeIds?.length ? initial.serviceTypeIds : (initial.serviceTypeId ? [initial.serviceTypeId] : []));
+      setTechnicianIds(initial.technicianIds?.length ? initial.technicianIds : (initial.technicianId ? [initial.technicianId] : []));
+      setSellerId(initial.sellerId ?? '');
+      setStatus(initial.status);
+      const initialAreaQty = initial.areaQty && Object.keys(initial.areaQty).length ? initial.areaQty : Object.fromEntries((initial.areaIds ?? []).map((id) => [id, 1]));
+      setAreaQty(initialAreaQty);
+      // OS antigas guardavam "áreas tratadas" como texto livre, sem ids — preserva
+      // esse texto para não perdê-lo caso nenhuma área com id seja reselecionada.
+      setLegacyAreaText(Object.keys(initialAreaQty).length === 0 ? (initial.areaTreated ?? '') : '');
+      setPestIds(initial.pestIds ?? []);
+      setPestValidity(Object.fromEntries((initial.pestValidity ?? []).filter((pv) => pv.validityDate).map((pv) => [pv.pestId, toInput(pv.validityDate)])));
+      setDuration(initial.totalMinutes ? String(initial.totalMinutes) : '');
+      setProcedures(initial.procedures ?? '');
+      setTechnicianMessage(initial.technicianMessage ?? '');
+      setPaymentMethod(initial.paymentMethod ?? '');
+      setServiceValue(initial.serviceValue != null ? String(initial.serviceValue) : '');
+      setServiceValueTouched(true);
+      setValueConfirmed(initial.serviceValueConfirmed ?? false);
+      setAssociatedOrderId(initial.associatedOrderId ?? '');
+      setPaymentStatus(initial.paymentStatus ?? 'pendente');
+      setPaymentDate(toInput(initial.paymentDate));
+      setWarrantyHas(initial.warranty?.has ?? false);
+      setWarrantyValue(initial.warranty?.value != null ? String(initial.warranty.value) : '3');
+      setWarrantyUnit(initial.warranty?.unit ?? 'meses');
+      setWarrantyType(initial.warranty?.type ?? 'corretivo');
+      setRecEnabled(initial.recurrence?.enabled ?? false);
+      setRecPhases(initial.recurrence?.phases?.length ? initial.recurrence.phases : (initial.recurrence?.frequency ? [{ id: uid('ph'), frequency: initial.recurrence.frequency, occurrences: 1 }] : []));
+      setExecDate(toInput(initial.executionDate));
+      setDueDate(toInput(initial.dueDate));
+      setValidityDate(toInput(initial.validityDate));
+      setValidityTouched(true);
+      setCertValidityDate(toInput(initial.certificateValidityDate));
+      setCertValidityTouched(true);
+      setEquipmentIds(initial.equipmentIds ?? []);
+      setReturnAt('');
+      setTouched(false);
+      setFilledFrom(null);
+      return;
     }
-  }, [open, customers, serviceTypes]); // eslint-disable-line react-hooks/exhaustive-deps
+    const c0 = customers[0]?.id ?? '';
+    setCustomerId(c0);
+    setAppointmentId('');
+    setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
+    setTechnicianIds(technicianUsers[0] ? [technicianUsers[0].id] : []);
+    setSellerId(''); setStatus('em_andamento'); setAreaQty({}); setLegacyAreaText(''); setPestIds([]); setPestValidity({}); setDuration(''); setProcedures(''); setTechnicianMessage('');
+    setPaymentMethod(''); setServiceValue(''); setServiceValueTouched(false); setValueConfirmed(false); setAssociatedOrderId(''); setPaymentStatus('pendente'); setPaymentDate('');
+    setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
+    setRecEnabled(false); setRecPhases([]); setExecDate(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
+    setCertValidityDate(''); setCertValidityTouched(false);
+    setEquipmentIds([]); setReturnAt(''); setTouched(false); setFilledFrom(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Preenchimento inteligente: repete o último atendimento do cliente. */
   const applyHistory = (cid: string) => {
@@ -291,17 +445,21 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       if (last.warranty.unit) setWarrantyUnit(last.warranty.unit);
       if (last.warranty.type) setWarrantyType(last.warranty.type);
     }
-    if (last.recurrence) { setRecEnabled(last.recurrence.enabled); if (last.recurrence.frequency) setRecFreq(last.recurrence.frequency); }
+    if (last.recurrence) {
+      setRecEnabled(last.recurrence.enabled);
+      setRecPhases(last.recurrence.phases?.length ? last.recurrence.phases.map((p) => ({ ...p, id: uid('ph') })) : (last.recurrence.frequency ? [{ id: uid('ph'), frequency: last.recurrence.frequency, occurrences: 1 }] : []));
+    }
     setFilledFrom(last.number);
   };
 
-  // Ao selecionar o cliente, tenta preencher a partir do histórico.
-  useEffect(() => { if (open && customerId) { applyHistory(customerId); setAppointmentId(''); } }, [customerId, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Ao selecionar o cliente, tenta preencher a partir do histórico — mas não
+  // em modo edição, para não sobrescrever os dados já preenchidos da OS.
+  useEffect(() => { if (customerId && !initial) { applyHistory(customerId); setAppointmentId(''); } }, [customerId]); // eslint-disable-line react-hooks/exhaustive-deps
   const customerAppointments = customerId ? appointmentsForCustomer(customerId) : [];
 
   const clearFill = () => {
     setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
-    setPestIds([]); setPestValidity({}); setAreaQty({}); setPaymentMethod(''); setRecEnabled(false); setFilledFrom(null);
+    setPestIds([]); setPestValidity({}); setAreaQty({}); setLegacyAreaText(''); setPaymentMethod(''); setRecEnabled(false); setRecPhases([]); setFilledFrom(null);
     setValidityDate(''); setValidityTouched(false);
   };
 
@@ -337,12 +495,15 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     return days.length ? Math.max(...days) : undefined;
   }, [serviceTypeIds, pestIds, serviceTypes, pests]);
 
+  // Base do cálculo: a Data do Serviço quando informada; sem data marcada,
+  // conta sempre a partir de hoje (nunca de uma data anterior) — mesma regra
+  // já usada na validade por praga e na próxima visita, agora unificada aqui.
   useEffect(() => {
     if (validityTouched || suggestedValidityDays == null) return;
-    const d = new Date();
-    d.setDate(d.getDate() + suggestedValidityDays);
-    setValidityDate(toDateInputValue(d));
-  }, [suggestedValidityDays, validityTouched]);
+    const base = execDate ? parseDateInput(execDate) : new Date();
+    base.setDate(base.getDate() + suggestedValidityDays);
+    setValidityDate(toDateInputValue(base));
+  }, [suggestedValidityDays, validityTouched, execDate]);
 
   // Validade do certificado — segue a validade do serviço enquanto não for editada
   // manualmente; sem garantia, o certificado não se aplica (fica em branco).
@@ -351,14 +512,17 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     setCertValidityDate(warrantyHas ? validityDate : '');
   }, [validityDate, warrantyHas, certValidityTouched]);
 
-  // Próxima visita sugerida — data de execução + intervalo da recorrência escolhida.
-  useEffect(() => {
-    if (!recEnabled) { if (!nextVisitTouched) setNextVisitDate(''); return; }
-    if (nextVisitTouched) return;
-    const base = execDate ? parseDateInput(execDate) : new Date();
-    base.setDate(base.getDate() + RECURRENCE_FREQ_DAYS[recFreq]);
-    setNextVisitDate(toDateInputValue(base));
-  }, [recEnabled, recFreq, execDate, nextVisitTouched]);
+  // Prévia do plano de recorrência: cada ocorrência é calculada a partir da
+  // anterior (nunca de hoje) — plano com fim definido, não repetição infinita.
+  const recurrenceOccurrences = useMemo(() => {
+    if (!recEnabled || !recPhases.length) return [];
+    const baseIso = execDate ? dateInputToIso(execDate) : new Date().toISOString();
+    return computeRecurrenceOccurrences(baseIso, recPhases);
+  }, [recEnabled, recPhases, execDate]);
+
+  const addRecPhase = () => setRecPhases((arr) => [...arr, { id: uid('ph'), frequency: 'mensal', occurrences: 1 }]);
+  const updateRecPhase = (id: string, patch: Partial<RecurrencePhase>) => setRecPhases((arr) => arr.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  const removeRecPhase = (id: string) => setRecPhases((arr) => arr.filter((p) => p.id !== id));
 
   // Validade individual por praga — sugerida pelo cadastro da praga (ou pela
   // sugestão geral da OS), editável por praga; some quando a praga é removida.
@@ -405,14 +569,70 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     setServiceValue(suggestedServiceValue ? String(suggestedServiceValue) : '');
   }, [suggestedServiceValue, serviceValueTouched]);
 
+  /** Gera/atualiza os agendamentos futuros do plano de recorrência. Só
+   *  regenera quando o plano (habilitado/fases) realmente mudou — reabrir e
+   *  salvar a OS sem tocar na recorrência nunca duplica visitas já criadas.
+   *  Ao mudar o plano, remove apenas as visitas futuras ainda não confirmadas
+   *  (status "programada"/"agendado") do plano anterior antes de gerar o novo. */
+  const syncRecurrencePlan = (): { recurrenceGroupId?: string; nextVisitDate?: string } => {
+    const prevPlan = initial?.recurrence;
+    const prevSignature = prevPlan?.enabled ? JSON.stringify(prevPlan.phases ?? []) : null;
+    const nextSignature = recEnabled ? JSON.stringify(recPhases) : null;
+    if (initial && prevSignature === nextSignature) {
+      return { recurrenceGroupId: prevPlan?.recurrenceGroupId, nextVisitDate: initial.nextVisitDate };
+    }
+    if (prevPlan?.recurrenceGroupId) {
+      allAppointments
+        .filter((a) => a.recurrenceId === prevPlan.recurrenceGroupId && (a.status === 'agendado' || a.status === 'programada') && new Date(a.scheduledStart) > new Date())
+        .forEach((a) => removeAppointment(a.id));
+    }
+    if (!recEnabled || !recPhases.length) return {};
+    const occurrences = computeRecurrenceOccurrences(execDate ? dateInputToIso(execDate) : new Date().toISOString(), recPhases);
+    if (!occurrences.length) return {};
+    const groupId = uid('rec');
+    const svc = serviceTypes.find((s) => s.id === serviceTypeIds[0]);
+    const durationMin = duration ? Number(duration) : (svc?.defaultDurationMin ?? 60);
+    const custObj = getCustomer(customerId);
+    occurrences.forEach((occ) => {
+      const endIso = new Date(new Date(occ.date).getTime() + durationMin * 60000).toISOString();
+      const recurrenceRule = RECURRENCE_FREQ_LABEL[occ.frequency];
+      addAppointment({
+        customerId,
+        serviceTypeId: serviceTypeIds[0],
+        technicianId: technicianIds[0],
+        // Visitas futuras da recorrência entram como "programada" e só
+        // avançam para "agendado" (aguardando confirmação) quando entram no
+        // período de confirmação — ver useAppointmentsStore.sweepConfirmations.
+        status: isDueForConfirmation(occ.date, recurrenceRule) ? 'agendado' : 'programada',
+        priority: 'normal',
+        scheduledStart: occ.date,
+        scheduledEnd: endIso,
+        estimatedMinutes: durationMin,
+        address: address(custObj),
+        products: suggestedProducts.map((p) => ({ productId: p.productId, plannedQty: p.qty })),
+        recurrenceId: groupId,
+        recurrenceRule,
+      });
+    });
+    return { recurrenceGroupId: groupId, nextVisitDate: occurrences[0].date };
+  };
+
   const submit = () => {
     setTouched(true);
     if (!customerId) return;
-    if (equipmentIds.length > 0 && !returnAt) {
+    const prevEquipmentIds = initial?.equipmentIds ?? [];
+    const addedEquipmentIds = equipmentIds.filter((id) => !prevEquipmentIds.includes(id));
+    const removedEquipmentIds = prevEquipmentIds.filter((id) => !equipmentIds.includes(id));
+    if (addedEquipmentIds.length > 0 && !returnAt) {
       toast('Informe a previsão de devolução dos equipamentos retirados.', { tone: 'warning' });
       return;
     }
+    if (serviceValue && Number(serviceValue) > 0 && !valueConfirmed) {
+      toast('Confirme o valor do serviço (✓ Confirmar valor) antes de continuar.', { tone: 'warning' });
+      return;
+    }
     const now = new Date().toISOString();
+    const recPlan = syncRecurrencePlan();
     const input: ServiceOrderInput = {
       customerId,
       appointmentId: appointmentId || undefined,
@@ -424,32 +644,94 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       status,
       areaIds,
       areaQty: Object.keys(areaQty).length ? areaQty : undefined,
-      areaTreated: areaIds.map((id) => { const a = areas.find((x) => x.id === id); return a ? `${areaQty[id] ?? 1} ${a.name}` : null; }).filter(Boolean).join(', ') || undefined,
+      areaTreated: areaIds.map((id) => { const a = areas.find((x) => x.id === id); return a ? `${areaQty[id] ?? 1} ${a.name}` : null; }).filter(Boolean).join(', ') || legacyAreaText || undefined,
       procedures: procedures.trim() || undefined,
       technicianMessage: technicianMessage.trim() || undefined,
       totalMinutes: duration ? Number(duration) : undefined,
-      startedAt: status !== 'rascunho' ? now : undefined,
-      finishedAt: status === 'concluida' ? now : undefined,
+      startedAt: initial?.startedAt ?? (status !== 'rascunho' ? now : undefined),
+      finishedAt: status === 'concluida' ? (initial?.finishedAt ?? now) : undefined,
       pestIds,
       pestValidity: pestIds.length ? pestIds.map((id) => ({ pestId: id, validityDate: pestValidity[id] ? dateInputToIso(pestValidity[id]) : undefined })) : undefined,
       products: suggestedProducts.map((p) => ({ productId: p.productId, usedQty: p.qty })),
       paymentMethod: paymentMethod || undefined,
       serviceValue: serviceValue ? Number(serviceValue) : undefined,
+      serviceValueConfirmed: serviceValue ? valueConfirmed : undefined,
+      associatedOrderId: associatedOrderId || undefined,
       paymentStatus,
       paymentDate: paymentStatus === 'pago' && paymentDate ? dateInputToIso(paymentDate) : undefined,
       warranty: { has: warrantyHas, value: warrantyHas ? Number(warrantyValue) || undefined : undefined, unit: warrantyHas ? warrantyUnit : undefined, type: warrantyHas ? warrantyType : undefined },
-      recurrence: { enabled: recEnabled, frequency: recEnabled ? recFreq : undefined },
+      recurrence: {
+        enabled: recEnabled,
+        frequency: recEnabled ? recPhases[0]?.frequency : undefined,
+        phases: recEnabled && recPhases.length ? recPhases : undefined,
+        recurrenceGroupId: recPlan.recurrenceGroupId,
+      },
       executionDate: execDate ? dateInputToIso(execDate) : undefined,
       dueDate: dueDate ? dateInputToIso(dueDate) : undefined,
       validityDate: validityDate ? dateInputToIso(validityDate) : undefined,
       certificateValidityDate: certValidityDate ? dateInputToIso(certValidityDate) : undefined,
-      nextVisitDate: nextVisitDate ? dateInputToIso(nextVisitDate) : undefined,
+      nextVisitDate: recPlan.nextVisitDate,
       equipmentIds,
-      hasCustomerSignature: false,
+      hasCustomerSignature: initial?.hasCustomerSignature ?? false,
     };
-    const so = add(input);
-    // Retirada dos equipamentos utilizados (em uso, com previsão de devolução).
+
     const returnIso = returnAt ? new Date(returnAt).toISOString() : undefined;
+    const apptStatus: AppointmentStatus = status === 'concluida' ? 'finalizado' : status === 'em_andamento' ? 'em_atendimento' : status === 'cancelada' ? 'cancelado' : 'confirmado';
+    const custName = getCustomer(customerId)?.name ?? '';
+
+    if (initial) {
+      // ---- Edição: atualiza a OS existente e registra o que mudou no histórico ----
+      const changes: string[] = [];
+      if (initial.status !== status) changes.push(`status: ${OS_STATUS_LABEL[initial.status]} → ${OS_STATUS_LABEL[status]}`);
+      if ((initial.serviceValue ?? 0) !== (input.serviceValue ?? 0)) changes.push(`valor: ${formatCurrency(initial.serviceValue ?? 0)} → ${formatCurrency(input.serviceValue ?? 0)}`);
+      if ((initial.paymentStatus ?? 'pendente') !== paymentStatus) changes.push(`pagamento: ${PAYMENT_STATUS_LABEL[initial.paymentStatus ?? 'pendente']} → ${PAYMENT_STATUS_LABEL[paymentStatus]}`);
+      if ((initial.executionDate ?? '') !== (input.executionDate ?? '')) changes.push('data do serviço alterada');
+      if ((initial.dueDate ?? '') !== (input.dueDate ?? '')) changes.push('vencimento do pagamento alterado');
+      if ((initial.procedures ?? '') !== (input.procedures ?? '')) changes.push('procedimentos atualizados');
+      if (JSON.stringify([...(initial.pestIds ?? [])].sort()) !== JSON.stringify([...pestIds].sort())) changes.push('pragas atualizadas');
+      const initialSvcIds = initial.serviceTypeIds?.length ? initial.serviceTypeIds : [initial.serviceTypeId];
+      if (JSON.stringify([...initialSvcIds].sort()) !== JSON.stringify([...serviceTypeIds].sort())) changes.push('serviços atualizados');
+      const initialTechIds = initial.technicianIds?.length ? initial.technicianIds : [initial.technicianId];
+      if (JSON.stringify([...initialTechIds].sort()) !== JSON.stringify([...technicianIds].sort())) changes.push('equipe técnica atualizada');
+      if (addedEquipmentIds.length || removedEquipmentIds.length) changes.push('equipamentos atualizados');
+
+      updateOs(initial.id, input);
+      const so: ServiceOrder = { ...initial, ...input };
+
+      removedEquipmentIds.forEach((id) => checkoutEquipment(id, {
+        status: 'disponivel', checkedOutAt: undefined, checkedOutTo: undefined, checkedOutOsId: undefined, expectedReturnAt: undefined,
+      }));
+      addedEquipmentIds.forEach((id) => checkoutEquipment(id, {
+        status: 'em_uso', checkedOutAt: now, checkedOutTo: technicianIds[0], checkedOutOsId: initial.id, expectedReturnAt: returnIso,
+      }));
+
+      // Agenda: só atualiza o agendamento já vinculado — edição de OS nunca
+      // cria um novo agendamento, para não duplicar a Agenda.
+      if (appointmentId) updateAppointment(appointmentId, { status: apptStatus, technicianId: technicianIds[0] });
+
+      // Financeiro: atualiza o lançamento vinculado a esta OS, se existir;
+      // cria um novo apenas se a OS passou a ter valor e ainda não tinha lançamento.
+      const existingFe = financeEntries.find((f) => f.serviceOrderId === initial.id);
+      if (input.serviceValue) {
+        const feData = {
+          amount: input.serviceValue,
+          status: (paymentStatus === 'pago' ? 'pago' : 'pendente') as 'pago' | 'pendente',
+          description: `OS #${initial.number} · ${custName}${paymentMethod ? ` · ${paymentMethod}` : ''}`,
+          dueDate: dueDate || undefined,
+          paidAt: paymentStatus === 'pago' ? (input.paymentDate ?? now) : undefined,
+        };
+        if (existingFe) updateFinanceEntry(existingFe.id, feData);
+        else addFinanceEntry({ id: uid('fe'), orgId: 'org-namira', type: 'receita', customerId, serviceOrderId: initial.id, createdAt: now, ...feData });
+      }
+
+      logChange('edição', 'ordem de serviço', changes.length ? `OS #${initial.number} · ${changes.join('; ')}` : `OS #${initial.number} · dados atualizados`, initial.id);
+      toast(`OS #${initial.number} atualizada.`, { tone: 'success' });
+      onSaved(so);
+      return;
+    }
+
+    // ---- Criação: nova OS ----
+    const so = add(input);
     equipmentIds.forEach((id) => checkoutEquipment(id, {
       status: 'em_uso', checkedOutAt: now, checkedOutTo: technicianIds[0], checkedOutOsId: so.id, expectedReturnAt: returnIso,
     }));
@@ -457,7 +739,6 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     // Sincroniza com a Agenda: se a OS já estava vinculada a um agendamento,
     // atualiza o status dele; senão, cria um novo agendamento para que a OS
     // apareça diretamente na Agenda (em vez de ficar só na lista de OS).
-    const apptStatus: AppointmentStatus = status === 'concluida' ? 'finalizado' : status === 'em_andamento' ? 'em_atendimento' : status === 'cancelada' ? 'cancelado' : 'confirmado';
     if (appointmentId) {
       updateAppointment(appointmentId, { status: apptStatus, technicianId: technicianIds[0] });
     } else {
@@ -483,7 +764,6 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     // Alimenta o Financeiro automaticamente: toda OS com valor vira um lançamento
     // de receita — pendente (Serviços a Receber) ou já pago, conforme informado.
     if (so.serviceValue) {
-      const custName = getCustomer(customerId)?.name ?? '';
       addFinanceEntry({
         id: uid('fe'), orgId: 'org-namira', type: 'receita',
         status: paymentStatus === 'pago' ? 'pago' : 'pendente',
@@ -496,14 +776,14 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
       });
     }
 
-    logChange('criação', 'ordem de serviço', `OS #${so.number} · ${getCustomer(customerId)?.name ?? ''}`, so.id);
+    logChange('criação', 'ordem de serviço', `OS #${so.number} · ${custName}`, so.id);
     toast(`OS #${so.number} criada e adicionada à Agenda.`, { tone: 'success' });
-    onCreated(so);
+    onSaved(so);
   };
 
+  useImperativeHandle(ref, () => ({ submit }));
+
   return (
-    <Drawer open={open} onClose={onClose} title="Nova Ordem de Serviço" subtitle="Preenchimento rápido — serviços, pragas e áreas em toques" width="max-w-xl"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!customerId}>Criar OS</Button></div>}>
       <div className="space-y-5">
         <Field label="Cliente" required>
           <Combobox
@@ -543,14 +823,14 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
 
         <Field label="Serviços executados" hint="Toque para adicionar vários serviços à mesma OS">
           <div className="flex flex-wrap items-center gap-1.5">
-            {serviceTypes.map((s) => <Chip key={s.id} active={serviceTypeIds.includes(s.id)} onClick={() => toggle(setServiceTypeIds, s.id)}>{s.name}</Chip>)}
+            {selectableServiceTypes.map((s) => <Chip key={s.id} active={serviceTypeIds.includes(s.id)} onClick={() => toggle(setServiceTypeIds, s.id)}>{s.name}</Chip>)}
             <QuickAddChip label="serviço" onAdd={quickAddServiceType} />
           </div>
         </Field>
 
         <Field label="Pragas combatidas" hint="Cada praga pode ter validade própria, independente da validade geral do serviço">
           <div className="flex flex-wrap items-center gap-1.5">
-            {pests.map((p) => <Chip key={p.id} active={pestIds.includes(p.id)} onClick={() => toggle(setPestIds, p.id)}>{p.name}</Chip>)}
+            {selectablePests.map((p) => <Chip key={p.id} active={pestIds.includes(p.id)} onClick={() => toggle(setPestIds, p.id)}>{p.name}</Chip>)}
             <QuickAddChip label="praga" onAdd={quickAddPest} />
           </div>
           {pestIds.length > 0 && (
@@ -573,7 +853,7 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
 
         <Field label="Áreas tratadas" hint="Toque para selecionar; ajuste a quantidade com + / −">
           <div className="flex flex-wrap items-center gap-1.5">
-            {areas.map((a) => (
+            {selectableAreas.map((a) => (
               <div key={a.id} className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition ${areaQty[a.id] != null ? 'border-brand bg-brand-soft text-brand' : 'border-border text-muted-foreground hover:bg-muted'}`}>
                 <button type="button" onClick={() => toggleArea(a.id)}>{a.name}</button>
                 {areaQty[a.id] != null && (
@@ -615,13 +895,27 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
 
         {/* Recorrência */}
         <div className="rounded-xl border border-border bg-muted/30 p-3">
-          <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={recEnabled} onChange={(e) => setRecEnabled(e.target.checked)} className="h-4 w-4 rounded border-border" /> Serviço recorrente</label>
+          <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={recEnabled} onChange={(e) => { setRecEnabled(e.target.checked); if (e.target.checked && !recPhases.length) setRecPhases([{ id: uid('ph'), frequency: 'mensal', occurrences: 1 }]); }} className="h-4 w-4 rounded border-border" /> Serviço recorrente</label>
           {recEnabled && (
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <Select value={recFreq} onChange={(e) => setRecFreq(e.target.value as RecurrenceFreq)}>{(Object.keys(RECURRENCE_FREQ_LABEL) as RecurrenceFreq[]).map((r) => <option key={r} value={r}>{RECURRENCE_FREQ_LABEL[r]}</option>)}</Select>
-              <Field label="Próxima visita">
-                <Input type="date" value={nextVisitDate} onChange={(e) => { setNextVisitDate(e.target.value); setNextVisitTouched(true); }} onClick={(e) => e.currentTarget.showPicker?.()} />
-              </Field>
+            <div className="mt-3 space-y-2">
+              <p className="text-[11px] text-muted-foreground">Programe fases distintas — ex.: "Fase 1: 45 dias · 1 visita" seguida de "Fase 2: Semestral · 2 visitas". Cada data é calculada a partir da anterior; o plano tem fim definido, não é repetição infinita.</p>
+              {recPhases.map((phase, idx) => (
+                <div key={phase.id} className="flex items-center gap-2">
+                  <span className="w-14 shrink-0 text-xs text-muted-foreground">Fase {idx + 1}</span>
+                  <Select value={phase.frequency} onChange={(e) => updateRecPhase(phase.id, { frequency: e.target.value as RecurrenceFreq })} className="flex-1">
+                    {(Object.keys(RECURRENCE_FREQ_LABEL) as RecurrenceFreq[]).map((r) => <option key={r} value={r}>{RECURRENCE_FREQ_LABEL[r]}</option>)}
+                  </Select>
+                  <Input type="number" min={1} max={52} value={phase.occurrences} onChange={(e) => updateRecPhase(phase.id, { occurrences: Math.max(1, Number(e.target.value) || 1) })} className="w-20" />
+                  <span className="shrink-0 text-xs text-muted-foreground">ocorrência(s)</span>
+                  <button type="button" onClick={() => removeRecPhase(phase.id)} disabled={recPhases.length <= 1} aria-label={`Remover fase ${idx + 1}`} className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-danger disabled:pointer-events-none disabled:opacity-40"><Trash2 size={14} /></button>
+                </div>
+              ))}
+              <Button type="button" size="sm" variant="outline" leftIcon={<Plus size={14} />} onClick={addRecPhase}>Adicionar fase</Button>
+              {recurrenceOccurrences.length > 0 && (
+                <p className="rounded-lg border border-brand/30 bg-brand-soft/30 p-2 text-xs text-brand">
+                  {totalOccurrences(recPhases)} visita(s) programada(s) — próxima em {fmtDate(recurrenceOccurrences[0].date)}, até {fmtDate(recurrenceOccurrences[recurrenceOccurrences.length - 1].date)}.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -635,9 +929,29 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
           <div className="grid grid-cols-2 gap-3">
             <Field
               label="Valor do Serviço"
-              hint={!serviceValueTouched && suggestedServiceValue > 0 ? `Preço padrão do serviço: ${formatCurrency(suggestedServiceValue)}` : 'Sem origem automática — informe manualmente'}
+              hint={valueConfirmed ? 'Valor confirmado.' : !serviceValueTouched && suggestedServiceValue > 0 ? `Preço padrão do serviço: ${formatCurrency(suggestedServiceValue)}` : 'Sem origem automática — informe manualmente'}
             >
-              <Input type="number" min={0} step="0.01" value={serviceValue} onChange={(e) => { setServiceValue(e.target.value); setServiceValueTouched(true); }} placeholder="0,00" />
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number" min={0} step="0.01" value={serviceValue}
+                  onChange={(e) => { setServiceValue(e.target.value); setServiceValueTouched(true); setValueConfirmed(false); }}
+                  placeholder="0,00" className="flex-1"
+                />
+                {valueConfirmed ? (
+                  <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-success-soft px-2.5 py-2 text-xs font-medium text-success">
+                    <Check size={13} /> Confirmado
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!serviceValue}
+                    onClick={() => setValueConfirmed(true)}
+                    className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-success px-2.5 py-2 text-xs font-semibold text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Check size={13} /> Confirmar valor
+                  </button>
+                )}
+              </div>
             </Field>
             <Field label="Forma de pagamento"><Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}><option value="">—</option>{PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}</Select></Field>
             {paymentStatus === 'pago' && (
@@ -646,7 +960,17 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <Field label="OS associada" hint="Opcional — vincula esta OS a um atendimento anterior (ex.: retorno/garantia); busque pelo número">
+          <Combobox
+            value={associatedOrderId}
+            onChange={setAssociatedOrderId}
+            placeholder="Nenhuma"
+            searchPlaceholder="Buscar por número da OS…"
+            options={allOrders.filter((o) => o.id !== initial?.id).map((o) => ({ value: o.id, label: `#${o.number} · ${getCustomer(o.customerId)?.name ?? ''}`, sub: fmtDate(o.createdAt) }))}
+          />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           <Field label="Status"><Select value={status} onChange={(e) => setStatus(e.target.value as ServiceOrderStatus)}>{(Object.keys(OS_STATUS_LABEL) as ServiceOrderStatus[]).map((s) => <option key={s} value={s}>{OS_STATUS_LABEL[s]}</option>)}</Select></Field>
           <Field label="Data do Serviço"><Input type="date" value={execDate} onChange={(e) => setExecDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
           <Field label="Data de Vencimento do Pagamento"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
@@ -687,9 +1011,9 @@ function NovaOsForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
           <Textarea value={technicianMessage} onChange={(e) => setTechnicianMessage(e.target.value)} placeholder="Ex.: cliente pediu para não usar produto com cheiro forte…" />
         </Field>
       </div>
-    </Drawer>
   );
-}
+  },
+);
 
 /** Texto de emergência (CIT) configurado nas Configurações. */
 function settingsEmergency(): string {
@@ -824,6 +1148,31 @@ function TaxBreakdown({ amount, t }: { amount: number; t: import('@/domain/types
       {row('CSLL', t.csll, true)}
       <div className="flex justify-between border-t border-border/60 pt-0.5 font-semibold"><span className="text-foreground">Líquido a receber</span><span className="text-brand">{formatCurrency(t.net)}</span></div>
     </div>
+  );
+}
+
+/** Histórico de alterações e processos da OS — criação, edições (com o que
+ *  mudou), emissões fiscais e demais eventos registrados na auditoria. */
+function OsHistorySection({ entries }: { entries: AuditEntry[] }) {
+  const sorted = [...entries].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return (
+    <Section title={`Histórico (${sorted.length})`}>
+      {sorted.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nenhum evento registrado.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {sorted.map((e) => (
+            <div key={e.id} className="rounded-lg border border-border/60 px-3 py-2 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-foreground">{e.description}</span>
+                <Badge tone="neutral" className="shrink-0 text-[10px] capitalize">{e.action}</Badge>
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">{e.userName ?? 'Sistema'} · {new Date(e.createdAt).toLocaleString('pt-BR')}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
   );
 }
 

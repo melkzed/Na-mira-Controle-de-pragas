@@ -16,6 +16,7 @@ interface AppState {
   logout: () => void;
   markAllRead: () => void;
   setCommandOpen: (open: boolean) => void;
+  addNotification: (n: Omit<AppNotification, 'id' | 'read' | 'createdAt'>) => void;
 }
 
 const USER_KEY = 'namira-user';
@@ -71,4 +72,11 @@ export const useAppStore = create<AppState>((set) => ({
       notifications: s.notifications.map((n) => ({ ...n, read: true })),
     })),
   setCommandOpen: (commandOpen) => set({ commandOpen }),
+  addNotification: (n) =>
+    set((s) => ({
+      notifications: [
+        { id: 'notif-' + Math.random().toString(36).slice(2, 9), read: false, createdAt: new Date().toISOString(), ...n },
+        ...s.notifications,
+      ],
+    })),
 }));

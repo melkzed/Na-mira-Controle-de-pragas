@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  CheckCircle2, ChevronRight, Clock, FileText, Info, Map, MapPin, Navigation,
-  PhoneCall, Play, TriangleAlert,
+  CheckCircle2, ChevronRight, Clock, FileText, Info, Map as MapIcon, MapPin, Navigation,
+  Pencil, PhoneCall, Play, TriangleAlert,
 } from 'lucide-react';
 import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -12,21 +12,64 @@ import { Badge } from '../components/ui/Badge';
 import { Progress } from '../components/ui/misc';
 import { Drawer } from '../components/ui/Drawer';
 import { Select, Textarea } from '../components/ui/Field';
+import { Segmented } from '../components/ui/Segmented';
 import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { PhotoCapture } from '../components/PhotoCapture';
 import { SignaturePad } from '../components/SignaturePad';
 import { useSettingsStore } from '@/store/settingsStore';
-import { appointmentsForTechnician, getCustomer, getProduct, getServiceType, serviceOrderForAppointment } from '@/application/repository';
+import { releasedAppointmentsForTechnician, getCustomer, getProduct, getServiceType, serviceOrderForAppointment } from '@/application/repository';
 import { useProductsStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
+import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
+import { useStockStore } from '@/store/stockStore';
+import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
 import { X } from 'lucide-react';
-import type { Appointment, ServiceOrder, ServiceOrderPhoto } from '@/domain/types';
+import type { Appointment, PaymentStatus, ServiceOrder, ServiceOrderPhoto, ServiceOrderProduct } from '@/domain/types';
 import { fmtTime } from '@/lib/date';
 import { cn } from '@/lib/utils';
 import { appleMapsLink, googleMapsRoute, wazeLink } from '@/lib/geo';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
+import { stockLocations } from '@/infrastructure/seed/data';
+
+/** Linha de produto aplicado em campo — quantidade e se foi de fato usado. */
+interface AppliedProductRow { productId: string; qty: number; used: boolean }
+
+/** Dados que o técnico registra ao finalizar/editar o atendimento. */
+interface FieldSaveData {
+  signature?: string;
+  products: AppliedProductRow[];
+  paymentStatus: PaymentStatus;
+}
+
+/** Ajusta o estoque do técnico pela diferença entre o que estava registrado
+ *  na OS e o que foi salvo agora — evita dar baixa em dobro ao editar depois
+ *  de finalizar (só a diferença é consumida ou devolvida). */
+function reconcileTechStock(techId: string, previous: ServiceOrderProduct[] | undefined, next: AppliedProductRow[]) {
+  const loc = stockLocations.find((l) => l.kind === 'tecnico' && l.ownerId === techId);
+  if (!loc) return;
+  const store = useStockStore.getState();
+  const prevMap = new Map((previous ?? []).map((p) => [p.productId, p.usedQty]));
+  const nextMap = new Map(next.filter((p) => p.used).map((p) => [p.productId, p.qty]));
+  const ids = new Set([...prevMap.keys(), ...nextMap.keys()]);
+  ids.forEach((id) => {
+    const diff = (nextMap.get(id) ?? 0) - (prevMap.get(id) ?? 0);
+    if (diff > 0) store.consume(loc.id, id, diff);
+    else if (diff < 0) store.entry(loc.id, id, -diff);
+  });
+}
+
+/** Produtos aplicados padrão da visita — parte do que já foi registrado na OS
+ *  (se o atendimento já foi finalizado antes) ou do plano original. */
+function defaultProductRows(appt: Appointment, linkedOs?: ServiceOrder): AppliedProductRow[] {
+  if (linkedOs?.products?.length) {
+    return linkedOs.products.map((p) => ({ productId: p.productId, qty: p.usedQty, used: true }));
+  }
+  const svc = getServiceType(appt.serviceTypeId);
+  const base = appt.products?.length ? appt.products.map((p) => ({ productId: p.productId, qty: p.plannedQty })) : (svc?.defaultProducts ?? []);
+  return base.map((b) => ({ productId: b.productId, qty: b.qty, used: true }));
+}
 
 /**
  * Painel do Técnico — experiência dedicada de campo (mobile-first).
@@ -39,9 +82,10 @@ export function CampoPage() {
   const setStatus = useAppointmentsStore((s) => s.setStatus);
   const updateAppt = useAppointmentsStore((s) => s.update);
   const storeAppts = useAppointmentsStore((s) => s.appointments); // reatividade
+  const updateOs = useServiceOrdersStore((s) => s.update);
 
   const todayIso = new Date().toISOString();
-  const appts = useMemo(() => appointmentsForTechnician(techId, todayIso), [techId, todayIso, storeAppts]);
+  const appts = useMemo(() => releasedAppointmentsForTechnician(techId, todayIso), [techId, todayIso, storeAppts]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const active = appts.find((a) => a.id === activeId) ?? appts[0];
 
@@ -49,6 +93,58 @@ export function CampoPage() {
   const [navAppt, setNavAppt] = useState<Appointment | null>(null);
 
   const doneCount = appts.filter((a) => a.status === 'finalizado').length;
+
+  /** Ao iniciar, também sinaliza a OS como em andamento — junto com as fotos
+   *  liberadas a partir daqui, serve de "check" de que o atendimento começou. */
+  const handleStart = () => {
+    if (!active) return;
+    setStatus(active.id, 'em_atendimento');
+    const so = serviceOrderForAppointment(active.id);
+    if (so && so.status !== 'concluida') {
+      updateOs(so.id, { status: 'em_andamento', startedAt: so.startedAt ?? new Date().toISOString() });
+    }
+  };
+
+  /** Finaliza o atendimento: grava assinatura, produtos aplicados e pagamento
+   *  na OS, dá baixa no estoque do técnico e registra o histórico da OS. */
+  const handleFinish = ({ signature, products, paymentStatus }: FieldSaveData) => {
+    if (!active) return;
+    const so = serviceOrderForAppointment(active.id);
+    const now = new Date().toISOString();
+    updateAppt(active.id, { technicianSignature: signature });
+    setStatus(active.id, 'finalizado');
+    if (so) {
+      updateOs(so.id, {
+        status: 'concluida',
+        finishedAt: now,
+        products: products.filter((p) => p.used).map((p) => ({ productId: p.productId, usedQty: p.qty })),
+        paymentStatus,
+        paymentDate: paymentStatus === 'pago' ? now : so.paymentDate,
+      });
+      reconcileTechStock(techId, so.products, products);
+      logChange('conclusão', 'ordem de serviço', `OS #${so.number} finalizada em campo por ${techName} em ${new Date(now).toLocaleString('pt-BR')}`, so.id);
+    }
+    const next = appts.find((a) => a.id !== active.id && a.status !== 'finalizado');
+    setActiveId(next ? next.id : null);
+    toast('Visita finalizada e assinada.', { tone: 'success' });
+  };
+
+  /** Corrige um atendimento já finalizado — atualiza a OS de novo, mas o
+   *  histórico registra "alteração", não uma nova finalização. */
+  const handleEditSave = ({ products, paymentStatus }: FieldSaveData) => {
+    if (!active) return;
+    const so = serviceOrderForAppointment(active.id);
+    if (!so) return;
+    const now = new Date().toISOString();
+    updateOs(so.id, {
+      products: products.filter((p) => p.used).map((p) => ({ productId: p.productId, usedQty: p.qty })),
+      paymentStatus,
+      paymentDate: paymentStatus === 'pago' ? (so.paymentDate ?? now) : so.paymentDate,
+    });
+    reconcileTechStock(techId, so.products, products);
+    logChange('alteração', 'ordem de serviço', `OS #${so.number} corrigida em campo por ${techName} em ${new Date(now).toLocaleString('pt-BR')}`, so.id);
+    toast('Alterações salvas no sistema.', { tone: 'success' });
+  };
 
   return (
     <div className="mx-auto max-w-md">
@@ -83,8 +179,9 @@ export function CampoPage() {
             techId={techId}
             onNavigate={() => setNavAppt(active)}
             onDetail={() => setDetailAppt(active)}
-            onStart={() => setStatus(active.id, 'em_atendimento')}
-            onFinish={(signature) => { updateAppt(active.id, { technicianSignature: signature }); setStatus(active.id, 'finalizado'); toast('Visita finalizada e assinada.', { tone: 'success' }); }}
+            onStart={handleStart}
+            onFinish={handleFinish}
+            onEditSave={handleEditSave}
             onPhotosChange={(photos) => updateAppt(active.id, { photos })}
           />
         )}
@@ -92,7 +189,7 @@ export function CampoPage() {
         {/* Rota do dia — toque abre; toque duplo abre os detalhes da visita */}
         <div className="mb-2 mt-6 flex items-center justify-between px-1">
           <p className="text-sm font-semibold text-foreground">Rota de hoje <span className="font-normal text-muted-foreground">· toque duplo p/ detalhes</span></p>
-          <Link to="/campo/mapa" className="flex items-center gap-1 text-xs font-medium text-brand hover:underline"><Map size={13} /> Mapa</Link>
+          <Link to="/campo/mapa" className="flex items-center gap-1 text-xs font-medium text-brand hover:underline"><MapIcon size={13} /> Mapa</Link>
         </div>
         <div className="space-y-2">
           {appts.map((a, i) => {
@@ -183,6 +280,19 @@ function VisitDetailDrawer({ appt, onClose, onNavigate }: { appt: Appointment | 
           <Button variant="outline" size="sm" leftIcon={<Navigation size={15} />} disabled={appt.latitude == null} onClick={() => onNavigate(appt)}>Navegar</Button>
           <Button variant="outline" size="sm" leftIcon={<PhoneCall size={15} />} disabled={!phone} onClick={() => phone && window.open(`tel:${phone}`)}>Ligar</Button>
         </div>
+
+        {(linkedOs?.areaTreated || linkedOs?.procedures) && (
+          <Section title="Necessidades do serviço">
+            <div className="space-y-1.5 text-sm">
+              {linkedOs?.areaTreated && (
+                <p className="text-foreground"><span className="font-medium">Áreas/cômodos a revisar:</span> {linkedOs.areaTreated}</p>
+              )}
+              {linkedOs?.procedures && (
+                <p className="text-foreground"><span className="font-medium">Observação da OS:</span> {linkedOs.procedures}</p>
+              )}
+            </div>
+          </Section>
+        )}
 
         <Section title="Produtos necessários">
           {planned.length === 0 ? <p className="text-sm text-muted-foreground">Sem produtos padrão para este serviço.</p> : (
@@ -305,47 +415,49 @@ function Info2({ label, value }: { label: string; value: string }) {
 }
 
 /** Produtos aplicados na visita: parte dos produtos padrão do serviço; o técnico
- *  marca os que realmente usou, ajusta a quantidade, remove ou adiciona outro. */
-function AppliedProducts({ appt }: { appt: Appointment }) {
+ *  marca os que realmente usou, ajusta a quantidade, remove ou adiciona outro.
+ *  Controlado pelo pai — persistido na OS e no estoque só ao salvar/finalizar. */
+function AppliedProducts({ value, onChange, disabled }: {
+  value: AppliedProductRow[];
+  onChange: (rows: AppliedProductRow[]) => void;
+  disabled?: boolean;
+}) {
   const allProducts = useProductsStore((s) => s.items);
-  const svc = getServiceType(appt.serviceTypeId);
-  const base = appt.products?.length
-    ? appt.products.map((p) => ({ productId: p.productId, qty: p.plannedQty }))
-    : (svc?.defaultProducts ?? []);
-  const [rows, setRows] = useState(() => base.map((b) => ({ productId: b.productId, qty: b.qty, used: true })));
   const [adding, setAdding] = useState('');
 
-  const toggle = (id: string) => setRows((r) => r.map((x) => (x.productId === id ? { ...x, used: !x.used } : x)));
-  const setQty = (id: string, qty: number) => setRows((r) => r.map((x) => (x.productId === id ? { ...x, qty } : x)));
-  const removeRow = (id: string) => setRows((r) => r.filter((x) => x.productId !== id));
-  const addRow = (id: string) => { if (id && !rows.some((x) => x.productId === id)) setRows((r) => [...r, { productId: id, qty: 1, used: true }]); setAdding(''); };
+  const toggle = (id: string) => onChange(value.map((x) => (x.productId === id ? { ...x, used: !x.used } : x)));
+  const setQty = (id: string, qty: number) => onChange(value.map((x) => (x.productId === id ? { ...x, qty } : x)));
+  const removeRow = (id: string) => onChange(value.filter((x) => x.productId !== id));
+  const addRow = (id: string) => { if (id && !value.some((x) => x.productId === id)) onChange([...value, { productId: id, qty: 1, used: true }]); setAdding(''); };
 
   return (
     <div>
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Produtos aplicados</p>
       <div className="space-y-1.5">
-        {rows.length === 0 && <p className="text-sm text-muted-foreground">Nenhum produto padrão para este serviço.</p>}
-        {rows.map((row) => {
+        {value.length === 0 && <p className="text-sm text-muted-foreground">Nenhum produto padrão para este serviço.</p>}
+        {value.map((row) => {
           const prod = getProduct(row.productId);
           return (
             <div key={row.productId} className="flex items-center gap-2 rounded-lg border border-border/60 p-2">
-              <button onClick={() => toggle(row.productId)} className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition', row.used ? 'border-brand bg-brand text-brand-foreground' : 'border-border')}>
+              <button disabled={disabled} onClick={() => toggle(row.productId)} className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition', row.used ? 'border-brand bg-brand text-brand-foreground' : 'border-border')}>
                 {row.used && <CheckCircle2 size={13} />}
               </button>
               <span className={cn('flex-1 truncate text-sm', row.used ? 'text-foreground' : 'text-muted-foreground line-through')}>{prod?.name ?? row.productId}</span>
-              <input type="number" min={0} step="0.5" value={row.qty} onChange={(e) => setQty(row.productId, Number(e.target.value) || 0)} disabled={!row.used} className="h-7 w-14 rounded border border-input bg-surface px-1.5 text-right text-sm disabled:opacity-50" />
+              <input type="number" min={0} step="0.5" value={row.qty} onChange={(e) => setQty(row.productId, Number(e.target.value) || 0)} disabled={disabled || !row.used} className="h-7 w-14 rounded border border-input bg-surface px-1.5 text-right text-sm disabled:opacity-50" />
               <span className="w-6 text-xs text-muted-foreground">{prod?.unit}</span>
-              <button onClick={() => removeRow(row.productId)} className="text-muted-foreground hover:text-danger" title="Remover"><X size={15} /></button>
+              <button disabled={disabled} onClick={() => removeRow(row.productId)} className="text-muted-foreground hover:text-danger disabled:opacity-40" title="Remover"><X size={15} /></button>
             </div>
           );
         })}
       </div>
-      <div className="mt-2">
-        <Select value={adding} onChange={(e) => addRow(e.target.value)} className="h-9 text-sm">
-          <option value="">+ Adicionar outro produto…</option>
-          {allProducts.filter((p) => !rows.some((r) => r.productId === p.id)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </Select>
-      </div>
+      {!disabled && (
+        <div className="mt-2">
+          <Select value={adding} onChange={(e) => addRow(e.target.value)} className="h-9 text-sm">
+            <option value="">+ Adicionar outro produto…</option>
+            {allProducts.filter((p) => !value.some((r) => r.productId === p.id)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </Select>
+        </div>
+      )}
     </div>
   );
 }
@@ -359,13 +471,14 @@ function HeaderStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onPhotosChange }: {
+function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEditSave, onPhotosChange }: {
   appt: Appointment;
   techId: string;
   onNavigate: () => void;
   onDetail: () => void;
   onStart: () => void;
-  onFinish: (signature?: string) => void;
+  onFinish: (data: FieldSaveData) => void;
+  onEditSave: (data: FieldSaveData) => void;
   onPhotosChange: (photos: ServiceOrderPhoto[]) => void;
 }) {
   const cust = getCustomer(appt.customerId);
@@ -376,8 +489,27 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onPh
   const checklist = ['Equipamentos', 'EPIs', 'Produtos', 'Veículo', 'Documentação'];
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [confirming, setConfirming] = useState(false);
+  const [editingAfterFinish, setEditingAfterFinish] = useState(false);
   const storedSig = useSettingsStore((s) => s.signatures[techId]);
   const [signature, setSignature] = useState<string | undefined>(appt.technicianSignature ?? storedSig);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(linkedOs?.paymentStatus ?? 'pendente');
+  const [productRows, setProductRows] = useState<AppliedProductRow[]>(() => defaultProductRows(appt, linkedOs));
+
+  // Ao trocar de visita ativa, repopula os estados locais a partir da OS dela.
+  useEffect(() => {
+    setEditingAfterFinish(false);
+    setConfirming(false);
+    setPaymentStatus(linkedOs?.paymentStatus ?? 'pendente');
+    setProductRows(defaultProductRows(appt, linkedOs));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appt.id]);
+
+  // Antes de "Iniciar atendimento" tudo fica travado; depois de finalizado,
+  // só volta a ficar editável se o técnico entrar no modo de edição — as
+  // fotos servem de "check" de que o atendimento realmente está em curso.
+  const canEditNow = (started && !finished) || editingAfterFinish;
+  const locked = !canEditNow;
+  const hasPayableValue = linkedOs?.serviceValue != null && linkedOs.serviceValue > 0;
 
   return (
     <Card hover className="overflow-hidden border-brand/30">
@@ -425,6 +557,14 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onPh
           </div>
         )}
 
+        {(linkedOs?.areaTreated || linkedOs?.procedures) && (
+          <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Necessidades do serviço</p>
+            {linkedOs?.areaTreated && <p className="text-foreground"><span className="font-medium">Áreas/cômodos a revisar:</span> {linkedOs.areaTreated}</p>}
+            {linkedOs?.procedures && <p className="mt-1 text-foreground"><span className="font-medium">Observação da OS:</span> {linkedOs.procedures}</p>}
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-2">
           <Button variant="outline" size="sm" leftIcon={<Navigation size={15} />} disabled={appt.latitude == null || appt.longitude == null} onClick={onNavigate}>Navegar</Button>
           <Button
@@ -450,32 +590,68 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onPh
         </div>
 
         {/* Produtos aplicados (padrão do serviço; técnico confirma o que usou) */}
-        <AppliedProducts appt={appt} />
+        <AppliedProducts value={productRows} onChange={setProductRows} disabled={locked} />
 
-        {/* Fotos de antes/depois — registradas direto na visita em destaque */}
+        {/* Fotos de antes/depois — só liberadas após iniciar; servem de check
+         *  de que o atendimento realmente está sendo feito. */}
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Fotos do atendimento (antes / depois)</p>
-          <PhotoCapture photos={appt.photos ?? []} onChange={onPhotosChange} compact />
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+            Fotos do atendimento (antes / depois){locked && !finished ? ' — inicie o atendimento para registrar' : ''}
+          </p>
+          <PhotoCapture photos={appt.photos ?? []} onChange={onPhotosChange} compact disabled={locked} />
         </div>
 
         <div className="grid grid-cols-1 gap-2">
-          {finished ? (
-            <div className="flex items-center justify-center gap-2 rounded-lg border border-success/40 bg-success-soft/40 py-2.5 text-sm font-medium text-success">
-              <CheckCircle2 size={16} /> Visita finalizada
-            </div>
-          ) : !started ? (
-            <Button leftIcon={<Play size={16} />} onClick={onStart}>Iniciar atendimento</Button>
-          ) : confirming ? (
-            <div className="rounded-xl border border-brand/40 bg-brand-soft/30 p-3">
-              <p className="mb-2 text-sm font-medium text-foreground">Assine para finalizar. O sistema da empresa será atualizado.</p>
-              <SignaturePad key={appt.id} value={signature} onChange={setSignature} height={120} label="Assinatura do técnico" />
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>Voltar</Button>
-                <Button variant="primary" size="sm" leftIcon={<CheckCircle2 size={15} />} onClick={() => { onFinish(signature); setConfirming(false); }}>Confirmar</Button>
+          {finished && !editingAfterFinish && (
+            <>
+              <div className="flex items-center justify-center gap-2 rounded-lg border border-success/40 bg-success-soft/40 py-2.5 text-sm font-medium text-success">
+                <CheckCircle2 size={16} /> Visita finalizada
               </div>
-            </div>
-          ) : (
-            <Button variant="primary" leftIcon={<CheckCircle2 size={16} />} onClick={() => setConfirming(true)}>Finalizar atendimento</Button>
+              <Button variant="outline" size="sm" leftIcon={<Pencil size={14} />} onClick={() => setEditingAfterFinish(true)}>Editar atendimento</Button>
+            </>
+          )}
+          {!finished && !started && (
+            <Button leftIcon={<Play size={16} />} onClick={onStart}>Iniciar atendimento</Button>
+          )}
+          {canEditNow && (
+            <>
+              {/* Marcadores de pagamento — o técnico confirma após passar a máquina */}
+              {hasPayableValue && (
+                <div className="rounded-xl border border-border bg-muted/30 p-2.5">
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">O serviço foi pago?</p>
+                  <Segmented
+                    size="sm"
+                    value={paymentStatus === 'pago' ? 'pago' : 'pendente'}
+                    onChange={(v) => setPaymentStatus(v as PaymentStatus)}
+                    options={[{ value: 'pendente', label: 'Não pago' }, { value: 'pago', label: 'Pago' }]}
+                  />
+                </div>
+              )}
+
+              {editingAfterFinish ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setEditingAfterFinish(false)}>Cancelar</Button>
+                  <Button
+                    variant="primary" size="sm" leftIcon={<CheckCircle2 size={15} />}
+                    onClick={() => { onEditSave({ products: productRows, paymentStatus }); setEditingAfterFinish(false); }}
+                  >Salvar alterações</Button>
+                </div>
+              ) : confirming ? (
+                <div className="rounded-xl border border-brand/40 bg-brand-soft/30 p-3">
+                  <p className="mb-2 text-sm font-medium text-foreground">Assine para finalizar. O sistema da empresa será atualizado.</p>
+                  <SignaturePad key={appt.id} value={signature} onChange={setSignature} height={120} label="Assinatura do técnico" />
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>Voltar</Button>
+                    <Button
+                      variant="primary" size="sm" leftIcon={<CheckCircle2 size={15} />}
+                      onClick={() => { onFinish({ signature, products: productRows, paymentStatus }); setConfirming(false); }}
+                    >Confirmar</Button>
+                  </div>
+                </div>
+              ) : (
+                <Button variant="primary" leftIcon={<CheckCircle2 size={16} />} onClick={() => setConfirming(true)}>Finalizar atendimento</Button>
+              )}
+            </>
           )}
           <div className="grid grid-cols-2 gap-2">
             <Button variant="secondary" size="sm">Reagendar</Button>

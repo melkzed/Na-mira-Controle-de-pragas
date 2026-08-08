@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Plus, Trash2, Truck } from 'lucide-react';
+import { Check, Pencil, Plus, Trash2, Truck } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -18,10 +18,13 @@ export function VeiculosPage() {
   const { items, add, update, remove } = useVehiclesStore();
   const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico' && u.isActive));
   const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Vehicle | null>(null);
+  const openNew = () => { setEditing(null); setFormOpen(true); };
+  const openEdit = (v: Vehicle) => { setEditing(v); setFormOpen(true); };
 
   return (
     <div>
-      <PageHeader title="Veículos" description={`${items.length} veículos · frota, abastecimentos e manutenções`} actions={<Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Novo veículo</Button>} />
+      <PageHeader title="Veículos" description={`${items.length} veículos · frota, abastecimentos e manutenções`} actions={<Button leftIcon={<Plus size={16} />} onClick={openNew}>Novo veículo</Button>} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((v) => {
           const driver = getUser(v.driverId);
@@ -31,6 +34,7 @@ export function VeiculosPage() {
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-soft text-brand"><Truck size={22} /></div>
                 <div className="flex items-center gap-2">
                   <Badge tone={v.inOperation ? 'brand' : 'neutral'} dot>{v.inOperation ? 'Em operação' : 'Na base'}</Badge>
+                  <button onClick={() => openEdit(v)} aria-label={`Editar veículo ${v.plate}`} className="rounded-md p-1 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-brand group-hover:opacity-100" title="Editar"><Pencil size={15} /></button>
                   <button onClick={() => { remove(v.id); toast('Veículo excluído', { tone: 'danger', action: { label: 'Desfazer', onClick: () => add(v) } }); }} aria-label={`Excluir veículo ${v.plate}`} className="rounded-md p-1 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-danger group-hover:opacity-100" title="Excluir"><Trash2 size={15} /></button>
                 </div>
               </div>
@@ -66,12 +70,21 @@ export function VeiculosPage() {
           );
         })}
       </div>
-      <VehicleForm open={formOpen} onClose={() => setFormOpen(false)} onSave={(v) => { add(v); setFormOpen(false); }} />
+      <VehicleForm
+        open={formOpen}
+        initial={editing}
+        onClose={() => setFormOpen(false)}
+        onSave={(v) => {
+          if (editing) update(editing.id, v);
+          else add({ id: uid('veh'), orgId: 'org-namira', isActive: true, ...v });
+          setFormOpen(false);
+        }}
+      />
     </div>
   );
 }
 
-function VehicleForm({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (v: Vehicle) => void }) {
+function VehicleForm({ open, initial, onClose, onSave }: { open: boolean; initial: Vehicle | null; onClose: () => void; onSave: (v: Omit<Vehicle, 'id' | 'orgId' | 'isActive'>) => void }) {
   const users = useUsersStore((s) => s.items);
   const [plate, setPlate] = useState('');
   const [model, setModel] = useState('');
@@ -79,20 +92,28 @@ function VehicleForm({ open, onClose, onSave }: { open: boolean; onClose: () => 
   const [odometer, setOdometer] = useState('');
   const [inOperation, setInOperation] = useState(false);
   const [touched, setTouched] = useState(false);
+  const isEdit = !!initial;
 
   useEffect(() => {
-    if (open) { setPlate(''); setModel(''); setDriverId(''); setOdometer(''); setInOperation(false); setTouched(false); }
-  }, [open]);
+    if (!open) return;
+    if (initial) {
+      setPlate(initial.plate); setModel(initial.model ?? ''); setDriverId(initial.driverId ?? '');
+      setOdometer(String(initial.odometerKm)); setInOperation(initial.inOperation ?? false);
+    } else {
+      setPlate(''); setModel(''); setDriverId(''); setOdometer(''); setInOperation(false);
+    }
+    setTouched(false);
+  }, [open, initial]);
 
   const submit = () => {
     setTouched(true);
     if (!plate.trim()) return;
-    onSave({ id: uid('veh'), orgId: 'org-namira', plate: plate.trim().toUpperCase(), model: model.trim() || undefined, driverId: driverId || undefined, odometerKm: Number(odometer) || 0, isActive: true, inOperation });
+    onSave({ plate: plate.trim().toUpperCase(), model: model.trim() || undefined, driverId: driverId || undefined, odometerKm: Number(odometer) || 0, inOperation });
   };
 
   return (
-    <Drawer open={open} onClose={onClose} title="Novo veículo" subtitle="Cadastro de veículo da frota"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!plate.trim()}>Adicionar</Button></div>}>
+    <Drawer open={open} onClose={onClose} title={isEdit ? 'Editar veículo' : 'Novo veículo'} subtitle={isEdit ? initial?.plate : 'Cadastro de veículo da frota'}
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!plate.trim()}>{isEdit ? 'Salvar' : 'Adicionar'}</Button></div>}>
       <div className="grid grid-cols-2 gap-4">
         <Field label="Placa" required><Input value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} placeholder="ABC-1D23" />{touched && !plate.trim() && <span className="mt-1 block text-xs text-danger">Informe a placa.</span>}</Field>
         <Field label="Modelo"><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="Fiat Fiorino" /></Field>

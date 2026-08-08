@@ -23,7 +23,7 @@ create type user_role as enum (
 create type customer_type as enum ('pf', 'pj');
 
 create type appointment_status as enum (
-  'agendado', 'confirmado', 'em_deslocamento', 'em_atendimento',
+  'programada', 'agendado', 'confirmado', 'em_deslocamento', 'em_atendimento',
   'finalizado', 'cancelado', 'reagendado'
 );
 
@@ -134,7 +134,11 @@ create table customers (
   document       text,               -- CPF ou CNPJ
   email          text,
   phone          text,
-  whatsapp       text,
+  whatsapp       text,               -- legado; ver `contacts` para múltiplos contatos
+  -- Telefone(s) de contato — quem de fato atende/agenda pelo cliente, pode
+  -- divergir do `phone` principal da empresa. Formato:
+  -- [{ id, name, phone, role?, isPrincipal? }]. Um item marcado como principal.
+  contacts       jsonb,
   -- Endereço
   cep            text,
   street         text,
@@ -344,6 +348,10 @@ create table service_types (
   name           text not null,     -- Dedetização, Desratização, Sanitização...
   default_duration_min int default 60,
   default_price  numeric(12,2) default 0,
+  -- Produtos padrão do serviço, pré-carregados na OS: [{ productId, qty }].
+  default_products jsonb,
+  -- Validade padrão do serviço (dias) — sugere a validade da OS.
+  default_validity_days int,
   color          text default '#6366f1',
   is_active      boolean not null default true,
   created_at     timestamptz not null default now()
@@ -352,7 +360,23 @@ create table service_types (
 create table pests (
   id      uuid primary key default gen_random_uuid(),
   org_id  uuid not null references organizations(id) on delete cascade,
-  name    text not null              -- baratas, ratos, cupins, formigas...
+  name    text not null,             -- baratas, ratos, cupins, formigas...
+  category    text,                  -- rasteira, voadora, roedor, cupim...
+  description text,
+  default_warranty_days int,          -- garantia padrão ao selecionar a praga
+  default_validity_days int,          -- validade da proteção — sugere a validade da OS
+  notes       text,
+  is_active   boolean not null default true
+);
+
+-- Áreas tratadas (catálogo operacional) — cadastro predefinido usado na OS
+-- para marcar quantidade por área (ex.: 2 Cozinha, 1 Depósito).
+create table treated_areas (
+  id         uuid primary key default gen_random_uuid(),
+  org_id     uuid not null references organizations(id) on delete cascade,
+  name       text not null,
+  notes      text,
+  is_active  boolean not null default true
 );
 
 -- ---------------------------------------------------------------------------
@@ -382,6 +406,14 @@ create table appointments (
   finished_at       timestamptz,
   route_id          uuid,             -- FK adicionada abaixo
   route_order       int,
+  -- Agrupa as ocorrências geradas por um mesmo plano de recorrência (cada uma
+  -- é independente); recurrence_rule rotula a periodicidade dessa ocorrência
+  -- específica (ex.: "Mensal", "Semanal") para a janela de confirmação.
+  recurrence_id     uuid,
+  recurrence_rule   text,
+  -- Data/hora em que a visita foi confirmada (fluxo: programada → agendado
+  -- "aguardando confirmação" → confirmado → liberada ao técnico).
+  confirmed_at      timestamptz,
   created_by        uuid references users(id) on delete set null,
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
@@ -389,6 +421,7 @@ create table appointments (
 create index on appointments (org_id, scheduled_start);
 create index on appointments (technician_id, scheduled_start);
 create index on appointments (status);
+create index on appointments (recurrence_id);
 
 -- Produtos previstos para o atendimento
 create table appointment_products (
@@ -457,12 +490,26 @@ create table service_orders (
   customer_signature_url  text,
   technician_signature_url text,
   pdf_url          text,
+  -- Valor final acordado do serviço — sempre com origem explícita (sugerido
+  -- pelo preço padrão do serviço, mas editável) e só confirmado após o clique
+  -- em "Confirmar valor"; nunca presumido a partir da sugestão automática.
+  service_value           numeric(12,2),
+  service_value_confirmed boolean not null default false,
+  -- OS associada (ex.: retorno/garantia de um atendimento anterior).
+  associated_order_id     uuid references service_orders(id) on delete set null,
+  -- Plano de recorrência multi-fase: { enabled, frequency?, phases?: [{ id,
+  -- frequency, occurrences }], recurrenceGroupId? } — cada fase soma sua
+  -- periodicidade à data anterior; plano com fim definido, não repetição
+  -- infinita. Ver Appointment.recurrence_id para as visitas geradas.
+  recurrence              jsonb,
+  next_visit_date         timestamptz,
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
   unique (org_id, number)
 );
 create index on service_orders (org_id, created_at);
 create index on service_orders (customer_id);
+create index on service_orders (associated_order_id);
 
 create table service_order_products (
   id               uuid primary key default gen_random_uuid(),

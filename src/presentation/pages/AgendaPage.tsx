@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Check, ChevronLeft, ChevronRight, Lock, MapPin, Plus } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
@@ -11,7 +12,7 @@ import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge
 import { Badge } from '../components/ui/Badge';
 import { Select } from '../components/ui/Field';
 import { AppointmentForm } from '../components/AppointmentForm';
-import { getCustomer, getServiceType, getUser } from '@/application/repository';
+import { getCustomer, getServiceType, getUser, primaryContactPhone } from '@/application/repository';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { logChange } from '@/store/auditStore';
 import { useMessagesStore } from '@/store/messagesStore';
@@ -40,6 +41,18 @@ export function AgendaPage() {
   const [techFilter, setTechFilter] = useState<string>('todos');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [formOpen, setFormOpen] = useState(false);
+  const [params, setParams] = useSearchParams();
+
+  // Vindo de um alerta de confirmação (Dashboard, OS, notificações): filtra
+  // direto para as visitas aguardando confirmação.
+  useEffect(() => {
+    if (params.get('confirmar') === '1') {
+      setStatusFilter('agendado');
+      setView('agenda');
+      setParams((p) => { p.delete('confirmar'); return p; }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const allAppointments = useAppointmentsStore((s) => s.appointments);
   const appts = useMemo(
@@ -76,27 +89,28 @@ export function AgendaPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <select
+          <Select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-surface px-3 text-sm text-foreground"
+            className="h-9 w-auto"
           >
             <option value="todos">Todos os status</option>
+            <option value="programada">Programadas</option>
             <option value="agendado">Aguardando confirmação</option>
             <option value="confirmado">Confirmadas</option>
             <option value="reagendado">Reagendadas</option>
             <option value="cancelado">Canceladas</option>
-          </select>
-          <select
+          </Select>
+          <Select
             value={techFilter}
             onChange={(e) => setTechFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-surface px-3 text-sm text-foreground"
+            className="h-9 w-auto"
           >
             <option value="todos">Todos os técnicos</option>
             {technicians.map((t) => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
-          </select>
+          </Select>
           <Segmented
             value={view}
             onChange={setView}
@@ -425,6 +439,12 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
         </label>
 
         {/* Confirmação da visita */}
+        {appt.status === 'programada' && (
+          <div className="rounded-xl border border-border bg-muted/40 p-3">
+            <p className="text-sm text-foreground">Visita <b>programada</b> — ainda fora do período de confirmação (liberado ao técnico só após confirmar).</p>
+            <Button size="sm" variant="outline" className="mt-2" leftIcon={<Check size={14} />} onClick={confirmVisit}>Confirmar já</Button>
+          </div>
+        )}
         {appt.status === 'agendado' && (
           <div className="rounded-xl border border-warning/40 bg-warning-soft/50 p-3">
             <p className="text-sm text-foreground">Esta visita <b>aguarda confirmação</b> do cliente.</p>
@@ -485,7 +505,7 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
         {tech && <Section title="Técnico responsável"><div className="flex items-center gap-2"><Avatar name={tech.name} size="sm" /><span className="text-sm text-foreground">{tech.name}</span></div></Section>}
         <Section title="Contato">
           <p className="text-sm text-foreground">{cust?.phone}</p>
-          {cust?.whatsapp && <p className="text-sm text-success">WhatsApp: {cust.whatsapp}</p>}
+          {primaryContactPhone(cust) && primaryContactPhone(cust) !== cust?.phone && <p className="text-sm text-success">Telefone de contato: {primaryContactPhone(cust)}</p>}
         </Section>
         <div className="grid grid-cols-2 gap-3">
           <Info label="Tempo estimado" value={`${appt.estimatedMinutes} min`} />
@@ -504,6 +524,13 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
               <Button variant="secondary" onClick={() => setRescheduling(true)}>Reagendar / técnico</Button>
               <Button variant="outline" onClick={() => { setStatus(appt.id, 'cancelado'); logChange('cancelamento', 'agendamento', `Visita cancelada · ${cust?.name ?? ''}`, appt.id); }}>Cancelar visita</Button>
             </div>
+            <Button
+              variant="outline"
+              className="text-danger"
+              onClick={() => { update(appt.id, { status: 'cancelado', notes: 'Desistência do cliente' }); logChange('cancelamento', 'agendamento', `Desistência do cliente · ${cust?.name ?? ''}`, appt.id); }}
+            >
+              Registrar desistência do cliente
+            </Button>
             <Button variant="danger" onClick={() => { removeAppt(appt.id); logChange('exclusão', 'agendamento', `Visita excluída · ${cust?.name ?? ''}`, appt.id); onClose(); }}>Excluir</Button>
           </div>
         )}
@@ -567,7 +594,7 @@ function WhatsAppPanel({ appt, cust, serviceName, onClientConfirm }: { appt: App
 
   const dispatch = (type: 'confirmacao' | 'lembrete' | 'conclusao') => {
     const body = buildWhatsMessage(type, cust, appt, serviceName);
-    send({ appointmentId: appt.id, customerId: cust.id, phone: cust.whatsapp ?? cust.phone, type, body });
+    send({ appointmentId: appt.id, customerId: cust.id, phone: primaryContactPhone(cust), type, body });
     logChange('mensagem', 'whatsapp', `${WHATS_TYPE_LABEL[type]} enviada · ${cust.name}`, appt.id);
   };
 
@@ -585,7 +612,7 @@ function WhatsAppPanel({ appt, cust, serviceName, onClientConfirm }: { appt: App
         <p className="text-[11px] font-semibold uppercase tracking-wide text-success">WhatsApp</p>
         <Badge tone="neutral" className="text-[10px]">simulação</Badge>
       </div>
-      <p className="mb-2 text-xs text-muted-foreground">{cust.whatsapp ?? cust.phone ?? 'Sem número cadastrado'}</p>
+      <p className="mb-2 text-xs text-muted-foreground">{primaryContactPhone(cust) ?? 'Sem número cadastrado'}</p>
       <div className="grid grid-cols-3 gap-1.5">
         <Button size="sm" variant="outline" onClick={() => dispatch('confirmacao')}>Confirmação</Button>
         <Button size="sm" variant="outline" onClick={() => dispatch('lembrete')}>Lembrete</Button>
