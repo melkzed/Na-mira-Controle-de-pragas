@@ -449,12 +449,15 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     return days.length ? Math.max(...days) : undefined;
   }, [serviceTypeIds, pestIds, serviceTypes, pests]);
 
+  // Base do cálculo: a Data do Serviço quando informada; sem data marcada,
+  // conta sempre a partir de hoje (nunca de uma data anterior) — mesma regra
+  // já usada na validade por praga e na próxima visita, agora unificada aqui.
   useEffect(() => {
     if (validityTouched || suggestedValidityDays == null) return;
-    const d = new Date();
-    d.setDate(d.getDate() + suggestedValidityDays);
-    setValidityDate(toDateInputValue(d));
-  }, [suggestedValidityDays, validityTouched]);
+    const base = execDate ? parseDateInput(execDate) : new Date();
+    base.setDate(base.getDate() + suggestedValidityDays);
+    setValidityDate(toDateInputValue(base));
+  }, [suggestedValidityDays, validityTouched, execDate]);
 
   // Validade do certificado — segue a validade do serviço enquanto não for editada
   // manualmente; sem garantia, o certificado não se aplica (fica em branco).
