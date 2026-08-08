@@ -13,31 +13,39 @@ import { useProductsStore, useUsersStore } from '@/store/entityStores';
 import { useCustomersStore } from '@/store/customersStore';
 import { downloadCsv, downloadXls } from '@/lib/export';
 import { printDataReport, type ReportColumn } from '@/lib/printReports';
-import { fmtDate } from '@/lib/date';
+import { fmtDate, toDateInputValue } from '@/lib/date';
 import { formatCurrency } from '@/lib/utils';
+import { SERVICE_ORDER_STATUS_META, type ServiceOrderStatus } from '@/domain/enums';
 
-interface Filters { search: string; customerId: string; technicianId: string; serviceTypeId: string; range: string }
+interface Filters { search: string; customerId: string; technicianId: string; serviceTypeId: string; status: string; startDate: string; endDate: string }
 interface ReportData {
   columns: ReportColumn<any>[];
   rows: any[];
   summary: { label: string; value: string | number }[];
 }
 
-function cutoffFor(range: string): Date {
-  const now = Date.now();
-  if (range === '7d') return new Date(now - 7 * 864e5);
-  if (range === '30d') return new Date(now - 30 * 864e5);
-  if (range === '90d') return new Date(now - 90 * 864e5);
-  return new Date(new Date().getFullYear(), 0, 1);
+/** Início/fim do período respeitam exatamente as datas escolhidas — início às
+ *  00:00 e fim às 23:59:59 do dia selecionado, sem depender de presets fixos. */
+function rangeBounds(f: Filters): { start: Date; end: Date } {
+  const start = f.startDate ? new Date(`${f.startDate}T00:00:00`) : new Date(0);
+  const end = f.endDate ? new Date(`${f.endDate}T23:59:59.999`) : new Date();
+  return { start, end };
 }
+const inRange = (iso: string, start: Date, end: Date) => { const d = new Date(iso); return d >= start && d <= end; };
+
+const defaultFilters = (): Filters => ({
+  search: '', customerId: '', technicianId: '', serviceTypeId: '', status: '',
+  startDate: toDateInputValue(new Date(new Date().getFullYear(), 0, 1)),
+  endDate: toDateInputValue(new Date()),
+});
 
 /** Monta o conjunto de dados do relatório aplicando os filtros e a pesquisa. */
 function buildReport(group: string, f: Filters): ReportData {
   const q = f.search.trim().toLowerCase();
-  const cutoff = cutoffFor(f.range);
+  const { start, end } = rangeBounds(f);
 
   if (group === 'Financeiro & Fiscal') {
-    let rows = seed.financeEntries.filter((e) => new Date(e.dueDate ?? e.createdAt) >= cutoff);
+    let rows = seed.financeEntries.filter((e) => inRange(e.dueDate ?? e.createdAt, start, end));
     if (f.customerId) rows = rows.filter((e) => e.customerId === f.customerId);
     if (q) rows = rows.filter((e) => e.description.toLowerCase().includes(q) || e.type.includes(q) || e.status.includes(q));
     const receita = rows.filter((e) => e.type === 'receita').reduce((s, e) => s + e.amount, 0);
@@ -81,10 +89,11 @@ function buildReport(group: string, f: Filters): ReportData {
   }
 
   // Operação (padrão): ordens de serviço
-  let rows = useServiceOrdersStore.getState().orders.filter((so) => new Date(so.createdAt) >= cutoff);
+  let rows = useServiceOrdersStore.getState().orders.filter((so) => inRange(so.createdAt, start, end));
   if (f.customerId) rows = rows.filter((so) => so.customerId === f.customerId);
   if (f.technicianId) rows = rows.filter((so) => so.technicianId === f.technicianId);
   if (f.serviceTypeId) rows = rows.filter((so) => so.serviceTypeId === f.serviceTypeId);
+  if (f.status) rows = rows.filter((so) => so.status === f.status);
   if (q) rows = rows.filter((so) =>
     `#${so.number}`.includes(q)
     || (getCustomer(so.customerId)?.name ?? '').toLowerCase().includes(q)
@@ -138,8 +147,15 @@ const reports = [
   ] },
 ];
 
-const RANGE_LABEL: Record<string, string> = { '7d': 'Últimos 7 dias', '30d': 'Últimos 30 dias', '90d': 'Últimos 90 dias', year: 'Este ano' };
 const fileName = (name: string) => name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-');
+
+/** Atalhos que só preenchem período inicial/final — não substituem a escolha
+ *  livre de datas, apenas evitam digitar um intervalo comum manualmente. */
+const QUICK_RANGES: { label: string; days: number }[] = [
+  { label: '7 dias', days: 7 },
+  { label: '30 dias', days: 30 },
+  { label: '90 dias', days: 90 },
+];
 
 export function RelatoriosPage() {
   const customers = useCustomersStore((s) => s.customers);
@@ -147,9 +163,18 @@ export function RelatoriosPage() {
   useServiceOrdersStore((s) => s.orders); // reatividade das contagens
   useProductsStore((s) => s.items);
 
-  const [f, setF] = useState<Filters>({ search: '', customerId: '', technicianId: '', serviceTypeId: '', range: 'year' });
+  const [f, setF] = useState<Filters>(defaultFilters);
   const set = (patch: Partial<Filters>) => setF((prev) => ({ ...prev, ...patch }));
-  const hasFilter = !!(f.search || f.customerId || f.technicianId || f.serviceTypeId) || f.range !== 'year';
+  const def = useMemo(defaultFilters, []);
+  const hasFilter = !!(f.search || f.customerId || f.technicianId || f.serviceTypeId || f.status) || f.startDate !== def.startDate || f.endDate !== def.endDate;
+
+  // Período exibido de forma legível — respeita exatamente as datas escolhidas.
+  const rangeLabel = `${f.startDate ? fmtDate(f.startDate) : '…'} até ${f.endDate ? fmtDate(f.endDate) : '…'}`;
+  const applyQuickRange = (days: number) => {
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 864e5);
+    set({ startDate: toDateInputValue(start), endDate: toDateInputValue(end) });
+  };
 
   // Contagem por grupo, reativa aos filtros.
   const counts = useMemo(() => ({
@@ -159,50 +184,66 @@ export function RelatoriosPage() {
   }), [f]);
 
   const subtitleFor = (group: string) => {
-    const parts = [RANGE_LABEL[f.range]];
+    const parts = [rangeLabel];
     if (f.customerId) parts.push(getCustomer(f.customerId)?.name ?? '');
     if (f.technicianId) parts.push(getUser(f.technicianId)?.name ?? '');
     if (f.serviceTypeId) parts.push(getServiceType(f.serviceTypeId)?.name ?? '');
+    if (f.status) parts.push(SERVICE_ORDER_STATUS_META[f.status as ServiceOrderStatus]?.label ?? f.status);
     if (f.search) parts.push(`"${f.search}"`);
     return `${group} · ${parts.filter(Boolean).join(' · ')}`;
   };
 
   const exportPdf = (group: string, name: string) => { const { columns, rows, summary } = buildReport(group, f); printDataReport(name, subtitleFor(group), columns, rows, summary); };
-  const exportXls = (group: string, name: string) => { const { columns, rows } = buildReport(group, f); downloadXls(fileName(name), rows, columns, `${name} — ${RANGE_LABEL[f.range]}`); };
+  const exportXls = (group: string, name: string) => { const { columns, rows } = buildReport(group, f); downloadXls(fileName(name), rows, columns, `${name} — ${rangeLabel}`); };
   const exportCsv = (group: string, name: string) => { const { columns, rows } = buildReport(group, f); downloadCsv(fileName(name), rows, columns); };
 
   return (
     <div>
       <PageHeader title="Relatórios" description="Filtre, pesquise e exporte exatamente o que precisa" />
 
-      {/* Barra de filtros e pesquisa — aplica-se à exportação e às contagens */}
+      {/* Barra de filtros e pesquisa — aplica-se à exportação e às contagens.
+       *  Período inicial/final são livres (qualquer intervalo); os demais
+       *  filtros são opcionais e não exigem seleção para restringir só por data. */}
       <Card className="mb-6">
-        <CardBody className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="relative lg:col-span-2">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input value={f.search} onChange={(e) => set({ search: e.target.value })} placeholder="Pesquisar (cliente, serviço, técnico, status…)" className="pl-9" />
+        <CardBody className="space-y-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Período inicial</label>
+              <Input type="date" value={f.startDate} onChange={(e) => set({ startDate: e.target.value })} onClick={(e) => e.currentTarget.showPicker?.()} aria-label="Período inicial" />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Período final</label>
+              <Input type="date" value={f.endDate} min={f.startDate || undefined} onChange={(e) => set({ endDate: e.target.value })} onClick={(e) => e.currentTarget.showPicker?.()} aria-label="Período final" />
+            </div>
+            <div className="flex items-end gap-1.5">
+              {QUICK_RANGES.map((qr) => (
+                <Button key={qr.label} type="button" variant="outline" size="sm" onClick={() => applyQuickRange(qr.days)}>{qr.label}</Button>
+              ))}
+            </div>
+            <div className="relative flex items-end">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input value={f.search} onChange={(e) => set({ search: e.target.value })} placeholder="Pesquisar…" className="pl-9" />
+            </div>
           </div>
-          <Select value={f.customerId} onChange={(e) => set({ customerId: e.target.value })} aria-label="Filtrar por cliente">
-            <option value="">Todos os clientes</option>
-            {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </Select>
-          <Select value={f.technicianId} onChange={(e) => set({ technicianId: e.target.value })} aria-label="Filtrar por técnico">
-            <option value="">Todos os técnicos</option>
-            {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </Select>
-          <Select value={f.serviceTypeId} onChange={(e) => set({ serviceTypeId: e.target.value })} aria-label="Filtrar por serviço">
-            <option value="">Todos os serviços</option>
-            {seed.serviceTypes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </Select>
-          <div className="flex items-center gap-2 sm:col-span-2 lg:col-span-5">
-            <Select value={f.range} onChange={(e) => set({ range: e.target.value })} className="sm:max-w-[200px]" aria-label="Período">
-              <option value="7d">Últimos 7 dias</option>
-              <option value="30d">Últimos 30 dias</option>
-              <option value="90d">Últimos 90 dias</option>
-              <option value="year">Este ano</option>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <Select value={f.customerId} onChange={(e) => set({ customerId: e.target.value })} aria-label="Filtrar por cliente">
+              <option value="">Todos os clientes</option>
+              {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+            <Select value={f.technicianId} onChange={(e) => set({ technicianId: e.target.value })} aria-label="Filtrar por técnico">
+              <option value="">Todos os técnicos</option>
+              {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </Select>
+            <Select value={f.serviceTypeId} onChange={(e) => set({ serviceTypeId: e.target.value })} aria-label="Filtrar por serviço">
+              <option value="">Todos os serviços</option>
+              {seed.serviceTypes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+            <Select value={f.status} onChange={(e) => set({ status: e.target.value })} aria-label="Filtrar por status">
+              <option value="">Todos os status</option>
+              {(Object.keys(SERVICE_ORDER_STATUS_META) as ServiceOrderStatus[]).map((s) => <option key={s} value={s}>{SERVICE_ORDER_STATUS_META[s].label}</option>)}
             </Select>
             {hasFilter && (
-              <Button variant="ghost" size="sm" leftIcon={<X size={14} />} onClick={() => setF({ search: '', customerId: '', technicianId: '', serviceTypeId: '', range: 'year' })}>Limpar filtros</Button>
+              <Button variant="ghost" size="sm" leftIcon={<X size={14} />} onClick={() => setF(defaultFilters())}>Limpar filtros</Button>
             )}
           </div>
         </CardBody>
@@ -225,7 +266,7 @@ export function RelatoriosPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-foreground">{r.name}</p>
-                        <p className="text-xs text-muted-foreground">{RANGE_LABEL[f.range]} · {counts[section.group as keyof typeof counts]} registro(s)</p>
+                        <p className="text-xs text-muted-foreground">{rangeLabel} · {counts[section.group as keyof typeof counts]} registro(s)</p>
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5">
