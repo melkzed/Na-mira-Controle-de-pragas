@@ -76,27 +76,27 @@ export function AgendaPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <select
+          <Select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-surface px-3 text-sm text-foreground"
+            className="h-9 w-auto"
           >
             <option value="todos">Todos os status</option>
             <option value="agendado">Aguardando confirmação</option>
             <option value="confirmado">Confirmadas</option>
             <option value="reagendado">Reagendadas</option>
             <option value="cancelado">Canceladas</option>
-          </select>
-          <select
+          </Select>
+          <Select
             value={techFilter}
             onChange={(e) => setTechFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-surface px-3 text-sm text-foreground"
+            className="h-9 w-auto"
           >
             <option value="todos">Todos os técnicos</option>
             {technicians.map((t) => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
-          </select>
+          </Select>
           <Segmented
             value={view}
             onChange={setView}

@@ -5,6 +5,7 @@ import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
+import { Select } from '../components/ui/Field';
 import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { appointmentsForTechnician, getCustomer, getServiceType } from '@/application/repository';
 import { useUsersStore } from '@/store/entityStores';
@@ -85,9 +86,9 @@ export function RotasPage() {
       />
 
       <div className="mb-4 flex items-center gap-2">
-        <select value={techId} onChange={(e) => setTechId(e.target.value)} className="h-9 rounded-lg border border-input bg-surface px-3 text-sm">
+        <Select value={techId} onChange={(e) => setTechId(e.target.value)} className="h-9 w-auto">
           {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
+        </Select>
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
