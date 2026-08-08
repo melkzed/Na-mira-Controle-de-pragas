@@ -17,7 +17,7 @@ Arquivos: [`db/schema.sql`](../db/schema.sql) (DDL) e [`db/seed.sql`](../db/seed
 | --- | --- |
 | `user_role` | admin, supervisor, financeiro, atendimento, estoque, tecnico |
 | `customer_type` | pf, pj |
-| `appointment_status` | agendado, confirmado, em_deslocamento, em_atendimento, finalizado, cancelado, reagendado |
+| `appointment_status` | programada, agendado, confirmado, em_deslocamento, em_atendimento, finalizado, cancelado, reagendado |
 | `appointment_priority` | baixa, normal, alta, urgente |
 | `service_order_status` | rascunho, em_andamento, concluida, cancelada |
 | `stock_movement_type` | entrada, saida, transferencia, consumo, perda, ajuste, devolucao |
@@ -89,9 +89,19 @@ erDiagram
 > por `stock_movements` (auditável). Consumo de OS baixa do local do técnico.
 
 ### Operação
-`service_types`, `pests`, `appointments`, `appointment_products`, `routes`,
+`service_types`, `pests`, `treated_areas`, `appointments`, `appointment_products`, `routes`,
 `service_orders`, `service_order_products`, `service_order_pests`,
 `service_order_equipment`, `checklist_templates`, `checklist_runs`, `attachments`.
+
+> **Catálogo operacional** (`service_types`, `pests`, `treated_areas`):
+> `is_active` controla a seleção em novas OS sem afetar OS/documentos já
+> emitidos (ausente = ativo). `service_orders.recurrence` guarda o plano de
+> recorrência multi-fase (fases com frequência + nº de ocorrências); as
+> visitas futuras geradas ficam em `appointments`, agrupadas por
+> `recurrence_id` — nascem como `programada` e só avançam para `agendado`
+> (aguardando confirmação) dentro da janela de confirmação (3 dias para
+> serviços semanais, 7 para os demais), nunca sendo liberadas ao técnico
+> antes de `confirmado`.
 
 ### Recursos
 `equipment`, `equipment_maintenance`, `vehicles`, `vehicle_fuel_logs`,
