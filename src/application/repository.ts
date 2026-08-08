@@ -31,6 +31,14 @@ export function getCustomer(id: string): Customer | undefined {
   return useCustomersStore.getState().customers.find((c) => c.id === id);
 }
 
+/** Telefone do contato principal do cliente — quem de fato atende/agenda,
+ *  com fallback para o telefone principal/WhatsApp de cadastros antigos. */
+export function primaryContactPhone(c?: Customer): string | undefined {
+  if (!c) return undefined;
+  const principal = c.contacts?.find((ct) => ct.isPrincipal) ?? c.contacts?.[0];
+  return principal?.phone ?? c.whatsapp ?? c.phone;
+}
+
 export function getUser(id?: string): User | undefined {
   if (!id) return undefined;
   return useUsersStore.getState().items.find((u) => u.id === id);

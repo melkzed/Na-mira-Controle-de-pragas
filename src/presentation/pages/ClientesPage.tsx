@@ -153,6 +153,7 @@ function ClienteDetail({
       onClose={() => { setConfirmDel(false); onClose(); }}
       title={customer.name}
       subtitle={formatDocument(customer.document)}
+      centered
       footer={
         <div className="flex items-center justify-between gap-2">
           {confirmDel ? (
@@ -175,6 +176,7 @@ function ClienteDetail({
         </div>
       }
     >
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[380px_1fr]">
       <div className="space-y-5">
         <div className="flex items-center gap-3">
           <Avatar name={customer.name} size="lg" />
@@ -196,7 +198,13 @@ function ClienteDetail({
 
         <div className="grid grid-cols-1 gap-2">
           {customer.phone && <ContactRow icon={<Phone size={14} />} value={customer.phone} />}
-          {customer.whatsapp && <ContactRow icon={<Phone size={14} className="text-success" />} value={`WhatsApp: ${customer.whatsapp}`} />}
+          {(customer.contacts?.length ? customer.contacts : customer.whatsapp ? [{ id: 'legacy', name: 'Contato', phone: customer.whatsapp, isPrincipal: true }] : []).map((ct) => (
+            <ContactRow
+              key={ct.id}
+              icon={<Phone size={14} className="text-success" />}
+              value={`Telefone de contato${ct.name && ct.name !== 'Contato' ? ` (${ct.name}${ct.role ? ` · ${ct.role}` : ''})` : ''}${ct.isPrincipal ? ' · principal' : ''}: ${ct.phone}`}
+            />
+          ))}
           {customer.email && <ContactRow icon={<Mail size={14} />} value={customer.email} />}
           {(customer.street || customer.city) && (
             <ContactRow icon={<MapPin size={14} />} value={[customer.street && `${customer.street}, ${customer.number ?? 's/n'}`, customer.district, customer.city && `${customer.city}/${customer.state ?? ''}`].filter(Boolean).join(' — ')} />
@@ -264,6 +272,9 @@ function ClienteDetail({
           </div>
         )}
 
+      </div>
+
+      <div className="space-y-5">
         {customer.monitoringContracted && (
           <div>
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Monitoramento (armadilhas / MIP)</p>
@@ -313,6 +324,7 @@ function ClienteDetail({
             })}
           </div>
         </div>
+      </div>
       </div>
     </Drawer>
   );

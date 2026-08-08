@@ -11,7 +11,7 @@ import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge
 import { Badge } from '../components/ui/Badge';
 import { Select } from '../components/ui/Field';
 import { AppointmentForm } from '../components/AppointmentForm';
-import { getCustomer, getServiceType, getUser } from '@/application/repository';
+import { getCustomer, getServiceType, getUser, primaryContactPhone } from '@/application/repository';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { logChange } from '@/store/auditStore';
 import { useMessagesStore } from '@/store/messagesStore';
@@ -485,7 +485,7 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
         {tech && <Section title="Técnico responsável"><div className="flex items-center gap-2"><Avatar name={tech.name} size="sm" /><span className="text-sm text-foreground">{tech.name}</span></div></Section>}
         <Section title="Contato">
           <p className="text-sm text-foreground">{cust?.phone}</p>
-          {cust?.whatsapp && <p className="text-sm text-success">WhatsApp: {cust.whatsapp}</p>}
+          {primaryContactPhone(cust) && primaryContactPhone(cust) !== cust?.phone && <p className="text-sm text-success">Telefone de contato: {primaryContactPhone(cust)}</p>}
         </Section>
         <div className="grid grid-cols-2 gap-3">
           <Info label="Tempo estimado" value={`${appt.estimatedMinutes} min`} />
@@ -567,7 +567,7 @@ function WhatsAppPanel({ appt, cust, serviceName, onClientConfirm }: { appt: App
 
   const dispatch = (type: 'confirmacao' | 'lembrete' | 'conclusao') => {
     const body = buildWhatsMessage(type, cust, appt, serviceName);
-    send({ appointmentId: appt.id, customerId: cust.id, phone: cust.whatsapp ?? cust.phone, type, body });
+    send({ appointmentId: appt.id, customerId: cust.id, phone: primaryContactPhone(cust), type, body });
     logChange('mensagem', 'whatsapp', `${WHATS_TYPE_LABEL[type]} enviada · ${cust.name}`, appt.id);
   };
 
@@ -585,7 +585,7 @@ function WhatsAppPanel({ appt, cust, serviceName, onClientConfirm }: { appt: App
         <p className="text-[11px] font-semibold uppercase tracking-wide text-success">WhatsApp</p>
         <Badge tone="neutral" className="text-[10px]">simulação</Badge>
       </div>
-      <p className="mb-2 text-xs text-muted-foreground">{cust.whatsapp ?? cust.phone ?? 'Sem número cadastrado'}</p>
+      <p className="mb-2 text-xs text-muted-foreground">{primaryContactPhone(cust) ?? 'Sem número cadastrado'}</p>
       <div className="grid grid-cols-3 gap-1.5">
         <Button size="sm" variant="outline" onClick={() => dispatch('confirmacao')}>Confirmação</Button>
         <Button size="sm" variant="outline" onClick={() => dispatch('lembrete')}>Lembrete</Button>

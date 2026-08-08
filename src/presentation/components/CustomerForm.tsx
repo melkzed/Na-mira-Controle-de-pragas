@@ -8,7 +8,7 @@ import { Badge } from './ui/Badge';
 import { useCustomersStore, type CustomerInput } from '@/store/customersStore';
 import { useUsersStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
-import type { ContractStatus, Customer, Reservoir, ServiceContract } from '@/domain/types';
+import type { ContractStatus, Customer, CustomerContact, Reservoir, ServiceContract } from '@/domain/types';
 import type { CustomerType } from '@/domain/enums';
 import { isEmail, isValidDocument, maskCep, maskDocument, maskPhone } from '@/lib/validation';
 import { lookupCnpj } from '@/lib/cnpj';
@@ -50,7 +50,6 @@ type FormState = {
   companyName: string;
   document: string;
   phone: string;
-  whatsapp: string;
   email: string;
   cep: string;
   street: string;
@@ -70,7 +69,7 @@ type FormState = {
 };
 
 const empty: FormState = {
-  type: 'pf', name: '', companyName: '', document: '', phone: '', whatsapp: '',
+  type: 'pf', name: '', companyName: '', document: '', phone: '',
   email: '', cep: '', street: '', number: '', complement: '', district: '',
   city: '', state: '', propertyType: '', areaM2: '', tags: '', notes: '',
   permanentNotes: '', monitoring: false, registrationStatus: '', economicActivity: '',
@@ -79,7 +78,7 @@ const empty: FormState = {
 function fromCustomer(c: Customer): FormState {
   return {
     type: c.type, name: c.name, companyName: c.companyName ?? '', document: c.document ?? '',
-    phone: c.phone ?? '', whatsapp: c.whatsapp ?? '', email: c.email ?? '', cep: c.cep ?? '',
+    phone: c.phone ?? '', email: c.email ?? '', cep: c.cep ?? '',
     street: c.street ?? '', number: c.number ?? '', complement: c.complement ?? '',
     district: c.district ?? '', city: c.city ?? '', state: c.state ?? '',
     propertyType: c.propertyType ?? '', areaM2: c.areaM2 ? String(c.areaM2) : '',
@@ -96,7 +95,6 @@ function toInput(f: FormState): CustomerInput {
     companyName: f.companyName.trim() || undefined,
     document: f.document.trim() || undefined,
     phone: f.phone.trim() || undefined,
-    whatsapp: f.whatsapp.trim() || undefined,
     email: f.email.trim() || undefined,
     cep: f.cep.trim() || undefined,
     street: f.street.trim() || undefined,
@@ -137,6 +135,7 @@ export function CustomerForm({
 
   const [tier, setTier] = useState<'basico' | 'completo'>('completo');
   const [localStructure, setLocalStructure] = useState<string[]>([]);
+  const [contacts, setContacts] = useState<CustomerContact[]>([]);
   const [reservoirs, setReservoirs] = useState<Reservoir[]>([]);
   const [contactNextAt, setContactNextAt] = useState('');
   const [contactResponsibleId, setContactResponsibleId] = useState('');
@@ -151,6 +150,7 @@ export function CustomerForm({
       setForm(fromCustomer(initial));
       setTier(initial.registrationTier ?? 'completo');
       setLocalStructure(initial.localStructure ?? []);
+      setContacts(initial.contacts?.length ? initial.contacts : (initial.whatsapp ? [{ id: uid('ct'), name: 'Contato', phone: initial.whatsapp, isPrincipal: true }] : []));
       setReservoirs(initial.reservoirs ?? []);
       setContactNextAt(initial.contactSchedule?.nextContactAt?.slice(0, 10) ?? '');
       setContactResponsibleId(initial.contactSchedule?.responsibleId ?? '');
@@ -167,7 +167,7 @@ export function CustomerForm({
         setForm(empty);
       }
       setTier('basico');
-      setLocalStructure([]); setReservoirs([]); setContactNextAt(''); setContactResponsibleId(''); setContactNotes(''); setContracts([]); setComplementary([]);
+      setLocalStructure([]); setContacts([]); setReservoirs([]); setContactNextAt(''); setContactResponsibleId(''); setContactNotes(''); setContracts([]); setComplementary([]);
     }
     setTouched(false);
   }, [open, initial]);
@@ -190,10 +190,13 @@ export function CustomerForm({
   const errors = useMemo(() => {
     const e: Partial<Record<keyof FormState, string>> = {};
     if (!form.name.trim()) e.name = 'Informe o nome.';
-    if (form.document.trim() && !isValidDocument(form.document)) e.document = 'Documento inválido.';
+    // Não bloqueia a edição de cadastros já existentes com documento
+    // desatualizado/inválido (ex.: dados de exemplo) — só valida quando o
+    // usuário de fato altera o campo.
+    if (form.document.trim() && form.document !== (initial?.document ?? '') && !isValidDocument(form.document)) e.document = 'Documento inválido.';
     if (form.email.trim() && !isEmail(form.email)) e.email = 'E-mail inválido.';
     return e;
-  }, [form]);
+  }, [form, initial]);
 
   const set = (k: keyof FormState, v: string | boolean) => {
     setTouched(true);
@@ -240,6 +243,7 @@ export function CustomerForm({
       ...toInput(form),
       registrationTier: tier,
       localStructure: tier === 'completo' && localStructure.length ? localStructure : undefined,
+      contacts: tier === 'completo' && contacts.length ? contacts : undefined,
       reservoirs: tier === 'completo' && reservoirs.length ? reservoirs : undefined,
       contactSchedule: tier === 'completo' && (contactNextAt || contactResponsibleId || contactNotes.trim())
         ? { nextContactAt: contactNextAt ? dateInputToIso(contactNextAt) : undefined, responsibleId: contactResponsibleId || undefined, notes: contactNotes.trim() || undefined }
@@ -338,12 +342,15 @@ export function CustomerForm({
           <Field label="Telefone">
             <Input value={form.phone} onChange={(e) => set('phone', maskPhone(e.target.value))} placeholder="(11) 90000-0000" inputMode="tel" />
           </Field>
-          {tier === 'completo' && (
-            <Field label="WhatsApp">
-              <Input value={form.whatsapp} onChange={(e) => set('whatsapp', maskPhone(e.target.value))} placeholder="(11) 90000-0000" inputMode="tel" />
-            </Field>
-          )}
         </div>
+
+        {tier === 'completo' && (
+          <div className="border-t border-border pt-4">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Telefone de contato</p>
+            <p className="mb-3 text-xs text-muted-foreground">Pessoa responsável pelo atendimento/agendamento — pode ser diferente do telefone principal. Marque um contato como principal.</p>
+            <ContactsPanel value={contacts} onChange={setContacts} />
+          </div>
+        )}
 
         <div className="border-t border-border pt-4">
           <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Endereço</p>
@@ -428,6 +435,47 @@ export function CustomerForm({
 }
 
 /** Lista de reservatórios (caixa d'água, cisterna…) com adição/remoção inline. */
+/** Telefone(s) de contato do cliente — quem de fato atende/agenda, com um
+ *  marcado como contato principal (usado por padrão no WhatsApp/ligações). */
+function ContactsPanel({ value, onChange }: { value: CustomerContact[]; onChange: (next: CustomerContact[]) => void }) {
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [role, setRole] = useState('');
+
+  const add = () => {
+    if (!phone.trim()) return;
+    onChange([...value, { id: uid('ct'), name: name.trim() || 'Contato', phone: phone.trim(), role: role.trim() || undefined, isPrincipal: value.length === 0 }]);
+    setName(''); setPhone(''); setRole('');
+  };
+  const remove = (id: string) => {
+    const removed = value.find((c) => c.id === id);
+    const next = value.filter((c) => c.id !== id);
+    if (removed?.isPrincipal && next.length) next[0] = { ...next[0], isPrincipal: true };
+    onChange(next);
+  };
+  const setPrincipal = (id: string) => onChange(value.map((c) => ({ ...c, isPrincipal: c.id === id })));
+
+  return (
+    <div className="space-y-2">
+      {value.map((c) => (
+        <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 text-sm">
+          <span className="min-w-0 flex-1 text-foreground">{c.name}{c.role ? ` · ${c.role}` : ''} — {c.phone}</span>
+          <button type="button" onClick={() => setPrincipal(c.id)} className="shrink-0" aria-label={c.isPrincipal ? `${c.name} é o contato principal` : `Definir ${c.name} como contato principal`}>
+            <Badge tone={c.isPrincipal ? 'brand' : 'neutral'}>{c.isPrincipal ? 'Principal' : 'Definir principal'}</Badge>
+          </button>
+          <button type="button" onClick={() => remove(c.id)} className="shrink-0 text-muted-foreground hover:text-danger" aria-label={`Remover ${c.name}`}><Trash2 size={14} /></button>
+        </div>
+      ))}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome" className="h-9 rounded-lg border border-input bg-surface px-2.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-ring/40" />
+        <input value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} placeholder="(11) 90000-0000" inputMode="tel" className="h-9 rounded-lg border border-input bg-surface px-2.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-ring/40" />
+        <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Cargo (opcional)" className="h-9 rounded-lg border border-input bg-surface px-2.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-ring/40" />
+      </div>
+      <Button type="button" size="sm" variant="outline" leftIcon={<Plus size={14} />} onClick={add} disabled={!phone.trim()}>Adicionar contato</Button>
+    </div>
+  );
+}
+
 function ReservoirsPanel({ value, onChange }: { value: Reservoir[]; onChange: (next: Reservoir[]) => void }) {
   const [type, setType] = useState(RESERVOIR_TYPES[0]);
   const [location, setLocation] = useState('');

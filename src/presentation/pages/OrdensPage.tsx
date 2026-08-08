@@ -134,7 +134,7 @@ export function OrdensPage() {
         footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setFormOpen(false)}>Cancelar</Button><Button onClick={() => createFormRef.current?.submit()} leftIcon={<Check size={15} />}>Criar OS</Button></div>}
       >
         {formOpen && (
-          <div className="mx-auto max-w-2xl">
+          <div className="mx-auto max-w-4xl">
             <OsFormBody ref={createFormRef} initial={null} onSaved={(so) => { setFormOpen(false); setSelected(so); setEditMode(false); }} />
           </div>
         )}
@@ -165,7 +165,7 @@ export function OrdensPage() {
         )}
       >
         {selected && editMode && (
-          <div className="mx-auto max-w-2xl">
+          <div className="mx-auto max-w-4xl">
             <OsFormBody ref={editFormRef} initial={selected} onSaved={(so) => { setSelected(so); setEditMode(false); }} />
           </div>
         )}
@@ -883,7 +883,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           <Field label="Status"><Select value={status} onChange={(e) => setStatus(e.target.value as ServiceOrderStatus)}>{(Object.keys(OS_STATUS_LABEL) as ServiceOrderStatus[]).map((s) => <option key={s} value={s}>{OS_STATUS_LABEL[s]}</option>)}</Select></Field>
           <Field label="Data do Serviço"><Input type="date" value={execDate} onChange={(e) => setExecDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
           <Field label="Data de Vencimento do Pagamento"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>

@@ -49,18 +49,24 @@ export function TrapsPanel({ customerId, compact = false }: { customerId: string
             const li = lastInsp(t.id);
             const late = t.nextInspectionAt && new Date(t.nextInspectionAt) < new Date();
             return (
-              <div key={t.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border/60 p-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand"><Radar size={18} /></div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-foreground">{t.code}</p>
-                  <p className="truncate text-xs text-muted-foreground"><MapPin size={11} className="mr-1 inline" />{t.type}{t.location ? ` · ${t.location}` : ''}</p>
-                  {t.nextInspectionAt && <p className={`text-[11px] ${late ? 'text-danger' : 'text-muted-foreground'}`}>Próxima inspeção: {fmtDate(t.nextInspectionAt)}{late ? ' (atrasada)' : ''}</p>}
+              <div key={t.id} className="rounded-xl border border-border/60 p-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand"><Radar size={18} /></div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-foreground">{t.code}</p>
+                    <p className="truncate text-xs text-muted-foreground"><MapPin size={11} className="mr-1 inline" />{t.type}{t.location ? ` · ${t.location}` : ''}</p>
+                    {t.nextInspectionAt && <p className={`text-[11px] ${late ? 'text-danger' : 'text-muted-foreground'}`}>Próxima inspeção: {fmtDate(t.nextInspectionAt)}{late ? ' (atrasada)' : ''}</p>}
+                  </div>
                 </div>
-                {li && <Badge tone={li.consumed ? 'danger' : 'success'} dot>{li.consumed ? 'Consumo' : 'Sem consumo'} · {fmtDate(li.date)}</Badge>}
-                <Badge tone={TRAP_STATUS_META[t.status].tone}>{TRAP_STATUS_META[t.status].label}</Badge>
-                <Button size="sm" variant="outline" leftIcon={<History size={14} />} onClick={() => setHistoryTrap(t)}>Histórico</Button>
-                <Button size="sm" variant="outline" leftIcon={<ClipboardList size={14} />} onClick={() => setInspectTrap(t)}>Inspeção</Button>
-                <button onClick={() => { removeTrap(t.id); toast(`Armadilha "${t.code}" excluída`, { tone: 'danger', action: { label: 'Desfazer', onClick: () => restoreTrap(t) } }); }} aria-label={`Excluir armadilha ${t.code}`} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-danger" title="Excluir"><Trash2 size={15} /></button>
+                <div className="mt-3 flex flex-wrap items-center gap-2 pl-12">
+                  {li && <Badge tone={li.consumed ? 'danger' : 'success'} dot>{li.consumed ? 'Consumo' : 'Sem consumo'} · {fmtDate(li.date)}</Badge>}
+                  <Badge tone={TRAP_STATUS_META[t.status].tone}>{TRAP_STATUS_META[t.status].label}</Badge>
+                  <div className="ml-auto flex flex-wrap items-center gap-2">
+                    <Button size="sm" variant="outline" leftIcon={<History size={14} />} onClick={() => setHistoryTrap(t)}>Histórico</Button>
+                    <Button size="sm" variant="outline" leftIcon={<ClipboardList size={14} />} onClick={() => setInspectTrap(t)}>Inspeção</Button>
+                    <button onClick={() => { removeTrap(t.id); toast(`Armadilha "${t.code}" excluída`, { tone: 'danger', action: { label: 'Desfazer', onClick: () => restoreTrap(t) } }); }} aria-label={`Excluir armadilha ${t.code}`} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-danger" title="Excluir"><Trash2 size={15} /></button>
+                  </div>
+                </div>
               </div>
             );
           })}

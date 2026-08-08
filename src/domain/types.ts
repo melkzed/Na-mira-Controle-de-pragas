@@ -57,7 +57,12 @@ export interface Customer {
   document?: string;
   email?: string;
   phone?: string;
+  /** @deprecated Mantido para compatibilidade com cadastros antigos — use
+   *  `contacts` (telefone de contato + contatos adicionais). */
   whatsapp?: string;
+  /** Telefone(s) de contato — quem de fato atende/agenda pelo cliente, pode
+   *  ser diferente do telefone principal da empresa. Um é o contato principal. */
+  contacts?: CustomerContact[];
   cep?: string;
   street?: string;
   number?: string;
@@ -93,6 +98,16 @@ export interface Customer {
   contracts?: ServiceContract[];
   /** Serviços complementares contratados (ex.: Limpeza de Coifa, Sanitização). */
   complementaryServices?: string[];
+}
+
+/** Telefone de contato do cliente — pessoa responsável pelo atendimento ou
+ *  agendamento, não necessariamente o telefone principal da empresa. */
+export interface CustomerContact {
+  id: string;
+  name: string;
+  phone: string;
+  role?: string;
+  isPrincipal?: boolean;
 }
 
 /** Reservatório de água do cliente (caixa d'água, cisterna, reservatório elevado…). */
