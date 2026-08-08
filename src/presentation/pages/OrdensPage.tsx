@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Check, Download, Pencil, Plus, Zap } from 'lucide-react';
+import { Check, Download, Pencil, Plus, Trash2, Zap } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -11,9 +11,10 @@ import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
 import { ServiceOrderStatusBadge } from '../components/StatusBadge';
 import { appointmentsForCustomer, getCustomer, getPest, getProduct, getServiceType, getUser, lastOrderForCustomer } from '@/application/repository';
-import type { Pest, PaymentStatus, ServiceOrder, ServiceType, TreatedArea } from '@/domain/types';
+import type { Pest, PaymentStatus, RecurrencePhase, ServiceOrder, ServiceType, TreatedArea } from '@/domain/types';
 import type { AppointmentStatus, RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
-import { PAYMENT_METHODS, RECURRENCE_FREQ_DAYS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
+import { PAYMENT_METHODS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
+import { computeRecurrenceOccurrences, recurrenceSummaryLabel, totalOccurrences } from '@/lib/recurrence';
 import { dateInputToIso, fmtDate, parseDateInput, toDateInputValue } from '@/lib/date';
 import { downloadCsv } from '@/lib/export';
 import { printServiceOrder } from '@/lib/printOrder';
@@ -179,7 +180,7 @@ export function OrdensPage() {
                   <Info label="Serviços" value={(selected.serviceTypeIds?.length ? selected.serviceTypeIds : [selected.serviceTypeId]).map((id) => getServiceType(id)?.name).filter(Boolean).join(', ') || '—'} />
                   <Info label="Áreas tratadas" value={selected.areaTreated ?? '—'} />
                   <Info label="Garantia" value={selected.warranty?.has ? `${selected.warranty.value ?? ''} ${selected.warranty.unit ?? ''}${selected.warranty.type ? ` · ${WARRANTY_TYPE_LABEL[selected.warranty.type]}` : ''}`.trim() : 'Sem garantia'} />
-                  <Info label="Recorrência" value={selected.recurrence?.enabled ? (selected.recurrence.frequency ? RECURRENCE_FREQ_LABEL[selected.recurrence.frequency] : 'Sim') : 'Não'} />
+                  <Info label="Recorrência" value={recurrenceSummaryLabel(selected.recurrence)} />
                   <Info label="Valor do Serviço" value={selected.serviceValue != null ? formatCurrency(selected.serviceValue) : '—'} />
                   <Info label="Pagamento" value={selected.paymentStatus ? PAYMENT_STATUS_LABEL[selected.paymentStatus] : 'Pendente'} />
                   <Info label="Forma de pagamento" value={selected.paymentMethod ?? '—'} />
@@ -264,6 +265,8 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   const allOrders = useServiceOrdersStore((s) => s.orders);
   const addAppointment = useAppointmentsStore((s) => s.add);
   const updateAppointment = useAppointmentsStore((s) => s.update);
+  const removeAppointment = useAppointmentsStore((s) => s.remove);
+  const allAppointments = useAppointmentsStore((s) => s.appointments);
   const financeEntries = useFinanceStore((s) => s.items);
   const addFinanceEntry = useFinanceStore((s) => s.add);
   const updateFinanceEntry = useFinanceStore((s) => s.update);
@@ -307,14 +310,12 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   const [warrantyUnit, setWarrantyUnit] = useState<WarrantyUnit>('meses');
   const [warrantyType, setWarrantyType] = useState<WarrantyType>('corretivo');
   const [recEnabled, setRecEnabled] = useState(false);
-  const [recFreq, setRecFreq] = useState<RecurrenceFreq>('mensal');
+  const [recPhases, setRecPhases] = useState<RecurrencePhase[]>([]);
   const [execDate, setExecDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [validityDate, setValidityDate] = useState('');
   const [certValidityDate, setCertValidityDate] = useState('');
   const [certValidityTouched, setCertValidityTouched] = useState(false);
-  const [nextVisitDate, setNextVisitDate] = useState('');
-  const [nextVisitTouched, setNextVisitTouched] = useState(false);
   const [equipmentIds, setEquipmentIds] = useState<string[]>([]);
   const [returnAt, setReturnAt] = useState('');
   const [touched, setTouched] = useState(false);
@@ -384,15 +385,13 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       setWarrantyUnit(initial.warranty?.unit ?? 'meses');
       setWarrantyType(initial.warranty?.type ?? 'corretivo');
       setRecEnabled(initial.recurrence?.enabled ?? false);
-      setRecFreq(initial.recurrence?.frequency ?? 'mensal');
+      setRecPhases(initial.recurrence?.phases?.length ? initial.recurrence.phases : (initial.recurrence?.frequency ? [{ id: uid('ph'), frequency: initial.recurrence.frequency, occurrences: 1 }] : []));
       setExecDate(toInput(initial.executionDate));
       setDueDate(toInput(initial.dueDate));
       setValidityDate(toInput(initial.validityDate));
       setValidityTouched(true);
       setCertValidityDate(toInput(initial.certificateValidityDate));
       setCertValidityTouched(true);
-      setNextVisitDate(toInput(initial.nextVisitDate));
-      setNextVisitTouched(true);
       setEquipmentIds(initial.equipmentIds ?? []);
       setReturnAt('');
       setTouched(false);
@@ -407,8 +406,8 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     setSellerId(''); setStatus('em_andamento'); setAreaQty({}); setLegacyAreaText(''); setPestIds([]); setPestValidity({}); setDuration(''); setProcedures(''); setTechnicianMessage('');
     setPaymentMethod(''); setServiceValue(''); setServiceValueTouched(false); setValueConfirmed(false); setAssociatedOrderId(''); setPaymentStatus('pendente'); setPaymentDate('');
     setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
-    setRecEnabled(false); setRecFreq('mensal'); setExecDate(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
-    setCertValidityDate(''); setCertValidityTouched(false); setNextVisitDate(''); setNextVisitTouched(false);
+    setRecEnabled(false); setRecPhases([]); setExecDate(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
+    setCertValidityDate(''); setCertValidityTouched(false);
     setEquipmentIds([]); setReturnAt(''); setTouched(false); setFilledFrom(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -432,7 +431,10 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       if (last.warranty.unit) setWarrantyUnit(last.warranty.unit);
       if (last.warranty.type) setWarrantyType(last.warranty.type);
     }
-    if (last.recurrence) { setRecEnabled(last.recurrence.enabled); if (last.recurrence.frequency) setRecFreq(last.recurrence.frequency); }
+    if (last.recurrence) {
+      setRecEnabled(last.recurrence.enabled);
+      setRecPhases(last.recurrence.phases?.length ? last.recurrence.phases.map((p) => ({ ...p, id: uid('ph') })) : (last.recurrence.frequency ? [{ id: uid('ph'), frequency: last.recurrence.frequency, occurrences: 1 }] : []));
+    }
     setFilledFrom(last.number);
   };
 
@@ -443,7 +445,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
 
   const clearFill = () => {
     setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
-    setPestIds([]); setPestValidity({}); setAreaQty({}); setLegacyAreaText(''); setPaymentMethod(''); setRecEnabled(false); setFilledFrom(null);
+    setPestIds([]); setPestValidity({}); setAreaQty({}); setLegacyAreaText(''); setPaymentMethod(''); setRecEnabled(false); setRecPhases([]); setFilledFrom(null);
     setValidityDate(''); setValidityTouched(false);
   };
 
@@ -496,14 +498,17 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     setCertValidityDate(warrantyHas ? validityDate : '');
   }, [validityDate, warrantyHas, certValidityTouched]);
 
-  // Próxima visita sugerida — data de execução + intervalo da recorrência escolhida.
-  useEffect(() => {
-    if (!recEnabled) { if (!nextVisitTouched) setNextVisitDate(''); return; }
-    if (nextVisitTouched) return;
-    const base = execDate ? parseDateInput(execDate) : new Date();
-    base.setDate(base.getDate() + RECURRENCE_FREQ_DAYS[recFreq]);
-    setNextVisitDate(toDateInputValue(base));
-  }, [recEnabled, recFreq, execDate, nextVisitTouched]);
+  // Prévia do plano de recorrência: cada ocorrência é calculada a partir da
+  // anterior (nunca de hoje) — plano com fim definido, não repetição infinita.
+  const recurrenceOccurrences = useMemo(() => {
+    if (!recEnabled || !recPhases.length) return [];
+    const baseIso = execDate ? dateInputToIso(execDate) : new Date().toISOString();
+    return computeRecurrenceOccurrences(baseIso, recPhases);
+  }, [recEnabled, recPhases, execDate]);
+
+  const addRecPhase = () => setRecPhases((arr) => [...arr, { id: uid('ph'), frequency: 'mensal', occurrences: 1 }]);
+  const updateRecPhase = (id: string, patch: Partial<RecurrencePhase>) => setRecPhases((arr) => arr.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  const removeRecPhase = (id: string) => setRecPhases((arr) => arr.filter((p) => p.id !== id));
 
   // Validade individual por praga — sugerida pelo cadastro da praga (ou pela
   // sugestão geral da OS), editável por praga; some quando a praga é removida.
@@ -550,6 +555,50 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     setServiceValue(suggestedServiceValue ? String(suggestedServiceValue) : '');
   }, [suggestedServiceValue, serviceValueTouched]);
 
+  /** Gera/atualiza os agendamentos futuros do plano de recorrência. Só
+   *  regenera quando o plano (habilitado/fases) realmente mudou — reabrir e
+   *  salvar a OS sem tocar na recorrência nunca duplica visitas já criadas.
+   *  Ao mudar o plano, remove apenas as visitas futuras ainda não confirmadas
+   *  (status "agendado") do plano anterior antes de gerar o novo. */
+  const syncRecurrencePlan = (): { recurrenceGroupId?: string; nextVisitDate?: string } => {
+    const prevPlan = initial?.recurrence;
+    const prevSignature = prevPlan?.enabled ? JSON.stringify(prevPlan.phases ?? []) : null;
+    const nextSignature = recEnabled ? JSON.stringify(recPhases) : null;
+    if (initial && prevSignature === nextSignature) {
+      return { recurrenceGroupId: prevPlan?.recurrenceGroupId, nextVisitDate: initial.nextVisitDate };
+    }
+    if (prevPlan?.recurrenceGroupId) {
+      allAppointments
+        .filter((a) => a.recurrenceId === prevPlan.recurrenceGroupId && a.status === 'agendado' && new Date(a.scheduledStart) > new Date())
+        .forEach((a) => removeAppointment(a.id));
+    }
+    if (!recEnabled || !recPhases.length) return {};
+    const occurrences = computeRecurrenceOccurrences(execDate ? dateInputToIso(execDate) : new Date().toISOString(), recPhases);
+    if (!occurrences.length) return {};
+    const groupId = uid('rec');
+    const svc = serviceTypes.find((s) => s.id === serviceTypeIds[0]);
+    const durationMin = duration ? Number(duration) : (svc?.defaultDurationMin ?? 60);
+    const custObj = getCustomer(customerId);
+    occurrences.forEach((occ) => {
+      const endIso = new Date(new Date(occ.date).getTime() + durationMin * 60000).toISOString();
+      addAppointment({
+        customerId,
+        serviceTypeId: serviceTypeIds[0],
+        technicianId: technicianIds[0],
+        status: 'agendado',
+        priority: 'normal',
+        scheduledStart: occ.date,
+        scheduledEnd: endIso,
+        estimatedMinutes: durationMin,
+        address: address(custObj),
+        products: suggestedProducts.map((p) => ({ productId: p.productId, plannedQty: p.qty })),
+        recurrenceId: groupId,
+        recurrenceRule: RECURRENCE_FREQ_LABEL[occ.frequency],
+      });
+    });
+    return { recurrenceGroupId: groupId, nextVisitDate: occurrences[0].date };
+  };
+
   const submit = () => {
     setTouched(true);
     if (!customerId) return;
@@ -565,6 +614,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       return;
     }
     const now = new Date().toISOString();
+    const recPlan = syncRecurrencePlan();
     const input: ServiceOrderInput = {
       customerId,
       appointmentId: appointmentId || undefined,
@@ -592,12 +642,17 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       paymentStatus,
       paymentDate: paymentStatus === 'pago' && paymentDate ? dateInputToIso(paymentDate) : undefined,
       warranty: { has: warrantyHas, value: warrantyHas ? Number(warrantyValue) || undefined : undefined, unit: warrantyHas ? warrantyUnit : undefined, type: warrantyHas ? warrantyType : undefined },
-      recurrence: { enabled: recEnabled, frequency: recEnabled ? recFreq : undefined },
+      recurrence: {
+        enabled: recEnabled,
+        frequency: recEnabled ? recPhases[0]?.frequency : undefined,
+        phases: recEnabled && recPhases.length ? recPhases : undefined,
+        recurrenceGroupId: recPlan.recurrenceGroupId,
+      },
       executionDate: execDate ? dateInputToIso(execDate) : undefined,
       dueDate: dueDate ? dateInputToIso(dueDate) : undefined,
       validityDate: validityDate ? dateInputToIso(validityDate) : undefined,
       certificateValidityDate: certValidityDate ? dateInputToIso(certValidityDate) : undefined,
-      nextVisitDate: nextVisitDate ? dateInputToIso(nextVisitDate) : undefined,
+      nextVisitDate: recPlan.nextVisitDate,
       equipmentIds,
       hasCustomerSignature: initial?.hasCustomerSignature ?? false,
     };
@@ -822,13 +877,27 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
 
         {/* Recorrência */}
         <div className="rounded-xl border border-border bg-muted/30 p-3">
-          <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={recEnabled} onChange={(e) => setRecEnabled(e.target.checked)} className="h-4 w-4 rounded border-border" /> Serviço recorrente</label>
+          <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={recEnabled} onChange={(e) => { setRecEnabled(e.target.checked); if (e.target.checked && !recPhases.length) setRecPhases([{ id: uid('ph'), frequency: 'mensal', occurrences: 1 }]); }} className="h-4 w-4 rounded border-border" /> Serviço recorrente</label>
           {recEnabled && (
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <Select value={recFreq} onChange={(e) => setRecFreq(e.target.value as RecurrenceFreq)}>{(Object.keys(RECURRENCE_FREQ_LABEL) as RecurrenceFreq[]).map((r) => <option key={r} value={r}>{RECURRENCE_FREQ_LABEL[r]}</option>)}</Select>
-              <Field label="Próxima visita">
-                <Input type="date" value={nextVisitDate} onChange={(e) => { setNextVisitDate(e.target.value); setNextVisitTouched(true); }} onClick={(e) => e.currentTarget.showPicker?.()} />
-              </Field>
+            <div className="mt-3 space-y-2">
+              <p className="text-[11px] text-muted-foreground">Programe fases distintas — ex.: "Fase 1: 45 dias · 1 visita" seguida de "Fase 2: Semestral · 2 visitas". Cada data é calculada a partir da anterior; o plano tem fim definido, não é repetição infinita.</p>
+              {recPhases.map((phase, idx) => (
+                <div key={phase.id} className="flex items-center gap-2">
+                  <span className="w-14 shrink-0 text-xs text-muted-foreground">Fase {idx + 1}</span>
+                  <Select value={phase.frequency} onChange={(e) => updateRecPhase(phase.id, { frequency: e.target.value as RecurrenceFreq })} className="flex-1">
+                    {(Object.keys(RECURRENCE_FREQ_LABEL) as RecurrenceFreq[]).map((r) => <option key={r} value={r}>{RECURRENCE_FREQ_LABEL[r]}</option>)}
+                  </Select>
+                  <Input type="number" min={1} max={52} value={phase.occurrences} onChange={(e) => updateRecPhase(phase.id, { occurrences: Math.max(1, Number(e.target.value) || 1) })} className="w-20" />
+                  <span className="shrink-0 text-xs text-muted-foreground">ocorrência(s)</span>
+                  <button type="button" onClick={() => removeRecPhase(phase.id)} disabled={recPhases.length <= 1} aria-label={`Remover fase ${idx + 1}`} className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-danger disabled:pointer-events-none disabled:opacity-40"><Trash2 size={14} /></button>
+                </div>
+              ))}
+              <Button type="button" size="sm" variant="outline" leftIcon={<Plus size={14} />} onClick={addRecPhase}>Adicionar fase</Button>
+              {recurrenceOccurrences.length > 0 && (
+                <p className="rounded-lg border border-brand/30 bg-brand-soft/30 p-2 text-xs text-brand">
+                  {totalOccurrences(recPhases)} visita(s) programada(s) — próxima em {fmtDate(recurrenceOccurrences[0].date)}, até {fmtDate(recurrenceOccurrences[recurrenceOccurrences.length - 1].date)}.
+                </p>
+              )}
             </div>
           )}
         </div>

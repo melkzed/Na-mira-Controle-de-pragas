@@ -9,10 +9,10 @@
 import type { ServiceOrder } from '@/domain/types';
 import { getCustomer, getEquipment, getProduct, getServiceType, getUser } from '@/application/repository';
 import * as seed from '@/infrastructure/seed/data';
-import { RECURRENCE_FREQ_LABEL } from '@/domain/enums';
 import { useSettingsStore } from '@/store/settingsStore';
 import { formatCurrency } from './utils';
 import { currentBatch } from './batches';
+import { recurrenceSummaryLabel } from './recurrence';
 import {
   esc, fmtDate, fmtDateTime, header, licensesBlock, warrantyText, pestWarrantyText,
   pestValidityDate, responsibleSignatureLine, clientTechSignatures,
@@ -38,7 +38,7 @@ export function printServiceOrder(so: ServiceOrder): void {
   const sellerName = so.sellerId ? getUser(so.sellerId)?.name : undefined;
   const dataHora = fmtDateTime(so.startedAt ?? so.executionDate ?? so.createdAt);
   const validade = so.validityDate ? fmtDate(so.validityDate) : '—';
-  const recorrencia = so.recurrence?.enabled ? (so.recurrence.frequency ? RECURRENCE_FREQ_LABEL[so.recurrence.frequency] : 'Sim') : 'Não';
+  const recorrencia = recurrenceSummaryLabel(so.recurrence);
   const proximaVisita = so.recurrence?.enabled && so.nextVisitDate ? fmtDate(so.nextVisitDate) : undefined;
   const equipNames = (so.equipmentIds ?? []).map((id) => getEquipment(id)?.name).filter(Boolean).join(', ');
   const pests = osPests(so);

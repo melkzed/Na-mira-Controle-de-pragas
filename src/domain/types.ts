@@ -561,7 +561,26 @@ export type PaymentStatus = 'pendente' | 'pago' | 'vencido' | 'cancelado';
 
 export interface OsRecurrence {
   enabled: boolean;
+  /** Frequência simples (legado/exibição) — quando há `phases`, reflete a
+   *  frequência da primeira fase. */
   frequency?: RecurrenceFreq;
+  /** Programação em fases: ex. "Fase 1: 45 dias → 1 ocorrência", "Fase 2:
+   *  Semestral → 2 ocorrências". A data de cada ocorrência é calculada
+   *  automaticamente a partir da anterior + periodicidade da fase — não é
+   *  repetição infinita, é um plano com fim definido. */
+  phases?: RecurrencePhase[];
+  /** Agrupa esta OS aos agendamentos futuros gerados pelo plano de
+   *  recorrência (Appointment.recurrenceId) — usado para regenerar o plano
+   *  sem duplicar visitas já criadas ao editar a OS. */
+  recurrenceGroupId?: string;
+}
+
+/** Uma fase de um plano de recorrência: repete `occurrences` vezes na
+ *  periodicidade `frequency`, encadeada às fases anteriores. */
+export interface RecurrencePhase {
+  id: string;
+  frequency: RecurrenceFreq;
+  occurrences: number;
 }
 
 /** Forma de emissão do pagamento. */
