@@ -36,7 +36,11 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE).then((c) => c.put('/index.html', copy));
           return res;
         })
-        .catch(() => caches.match('/index.html').then((r) => r || caches.match('/'))),
+        .catch(() =>
+          caches.match('/index.html')
+            .then((r) => r || caches.match('/'))
+            .then((r) => r || Response.error()),
+        ),
     );
     return;
   }
