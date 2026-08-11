@@ -1,7 +1,14 @@
 # Banco de dados — Na Mira · Controle de Pragas
 
 Modelagem PostgreSQL normalizada, multi-tenant e auditável.
-Arquivos: [`db/schema.sql`](../db/schema.sql) (DDL) e [`db/seed.sql`](../db/seed.sql) (dados).
+Arquivos: [`db/schema.sql`](../db/schema.sql) (DDL), [`db/rls.sql`](../db/rls.sql)
+(Row Level Security) e [`db/auth_hook.sql`](../db/auth_hook.sql) (claims do JWT).
+
+> **Ordem de aplicação no Supabase**: `schema.sql` → `rls.sql` → `auth_hook.sql`
+> → registrar o hook em Authentication → Hooks → Custom Access Token
+> (selecionar `public.custom_access_token_hook`). Sem esse último passo no
+> painel, as políticas de RLS negam tudo (fail-closed) — o app não funciona,
+> mas nenhum dado vaza.
 
 ## Convenções
 
