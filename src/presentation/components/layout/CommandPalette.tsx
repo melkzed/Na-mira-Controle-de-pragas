@@ -3,7 +3,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/store/appStore';
 import { useCustomersStore } from '@/store/customersStore';
-import { navForRole } from '@/application/navigation';
+import { navForUser } from '@/application/permissions';
+import { useDepartmentsStore } from '@/store/entityStores';
 import { Icon } from '../ui/Icon';
 import { cn } from '@/lib/utils';
 
@@ -11,6 +12,7 @@ import { cn } from '@/lib/utils';
 export function CommandPalette() {
   const { commandOpen, setCommandOpen, currentUser } = useAppStore();
   const customers = useCustomersStore((s) => s.customers);
+  const departments = useDepartmentsStore((s) => s.items);
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
 
@@ -39,7 +41,7 @@ export function CommandPalette() {
     if (!commandOpen) setQuery('');
   }, [commandOpen]);
 
-  const nav = currentUser ? navForRole(currentUser.role) : [];
+  const nav = currentUser ? navForUser(currentUser, departments) : [];
 
   const results = useMemo(() => {
     const q = query.toLowerCase().trim();

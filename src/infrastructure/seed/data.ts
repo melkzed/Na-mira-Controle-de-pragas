@@ -10,6 +10,7 @@ import type {
   BankAccount,
   CrmLead,
   Customer,
+  Department,
   Equipment,
   FinanceEntry,
   Invoice,
@@ -55,15 +56,26 @@ function daysFromNow(n: number): string {
 }
 
 // ── Usuários / equipe ──────────────────────────────────────────────────────
+/** Departamentos padrão — cada um define os módulos administrativos que seus
+ *  integrantes acessam por padrão (Configurações → Departamento). O admin
+ *  (dono da conta) sempre tem acesso total, independente de departamento. */
+export const departments: Department[] = [
+  { id: 'dept-vendas', orgId: ORG, name: 'Vendas', modules: ['dashboard', 'agenda', 'ordens', 'clientes', 'crm', 'monitoramento', 'nao_conformidade'] },
+  { id: 'dept-adm', orgId: ORG, name: 'Administrativo', modules: ['dashboard', 'agenda', 'ordens', 'clientes', 'crm', 'monitoramento', 'nao_conformidade', 'estoque', 'produtos', 'equipamentos', 'tecnicos', 'veiculos', 'historico'] },
+  { id: 'dept-sup', orgId: ORG, name: 'Supervisão', modules: ['dashboard', 'agenda', 'rotas', 'ordens', 'clientes', 'crm', 'monitoramento', 'nao_conformidade', 'estoque', 'produtos', 'equipamentos', 'tecnicos', 'veiculos', 'relatorios', 'historico'] },
+  { id: 'dept-cont', orgId: ORG, name: 'Contabilidade', modules: ['dashboard', 'clientes', 'financeiro', 'fiscal', 'relatorios', 'historico'] },
+  { id: 'dept-tec', orgId: ORG, name: 'Técnico', modules: ['dashboard', 'agenda', 'ordens'] },
+];
+
 export const users: User[] = [
-  { id: 'u-owner', orgId: ORG, name: 'Vanessa · Na Mira', email: 'namiracomercial@gmail.com', role: 'admin', isActive: true, phone: '(11) 99999-0000' },
-  { id: 'u-admin', orgId: ORG, name: 'Marina Duarte', email: 'marina@namira.com', role: 'admin', isActive: true, phone: '(11) 99999-0001' },
-  { id: 'u-sup', orgId: ORG, name: 'Rafael Nunes', email: 'rafael@namira.com', role: 'supervisor', isActive: true, phone: '(11) 99999-0002' },
-  { id: 'u-fin', orgId: ORG, name: 'Camila Reis', email: 'camila@namira.com', role: 'financeiro', isActive: true, phone: '(11) 99999-0003' },
-  { id: 'u-t1', orgId: ORG, name: 'Diego Almeida', email: 'diego@namira.com', role: 'tecnico', isActive: true, phone: '(11) 98888-1001' },
-  { id: 'u-t2', orgId: ORG, name: 'Bruno Carvalho', email: 'bruno@namira.com', role: 'tecnico', isActive: true, phone: '(11) 98888-1002' },
-  { id: 'u-t3', orgId: ORG, name: 'Paula Freitas', email: 'paula@namira.com', role: 'tecnico', isActive: true, phone: '(11) 98888-1003' },
-  { id: 'u-t4', orgId: ORG, name: 'Lucas Moreira', email: 'lucas@namira.com', role: 'tecnico', isActive: true, phone: '(11) 98888-1004' },
+  { id: 'u-owner', orgId: ORG, name: 'Vanessa · Na Mira', email: 'namiracomercial@gmail.com', role: 'admin', isActive: true, phone: '(11) 99999-0000', departmentId: 'dept-adm' },
+  { id: 'u-admin', orgId: ORG, name: 'Marina Duarte', email: 'marina@namira.com', role: 'admin', isActive: true, phone: '(11) 99999-0001', departmentId: 'dept-adm' },
+  { id: 'u-sup', orgId: ORG, name: 'Rafael Nunes', email: 'rafael@namira.com', role: 'supervisor', isActive: true, phone: '(11) 99999-0002', departmentId: 'dept-sup' },
+  { id: 'u-fin', orgId: ORG, name: 'Camila Reis', email: 'camila@namira.com', role: 'financeiro', isActive: true, phone: '(11) 99999-0003', departmentId: 'dept-cont' },
+  { id: 'u-t1', orgId: ORG, name: 'Diego Almeida', email: 'diego@namira.com', role: 'tecnico', isActive: true, phone: '(11) 98888-1001', departmentId: 'dept-tec' },
+  { id: 'u-t2', orgId: ORG, name: 'Bruno Carvalho', email: 'bruno@namira.com', role: 'tecnico', isActive: true, phone: '(11) 98888-1002', departmentId: 'dept-tec' },
+  { id: 'u-t3', orgId: ORG, name: 'Paula Freitas', email: 'paula@namira.com', role: 'tecnico', isActive: true, phone: '(11) 98888-1003', departmentId: 'dept-tec' },
+  { id: 'u-t4', orgId: ORG, name: 'Lucas Moreira', email: 'lucas@namira.com', role: 'tecnico', isActive: true, phone: '(11) 98888-1004', departmentId: 'dept-tec' },
 ];
 
 export const technicians = users.filter((u) => u.role === 'tecnico');

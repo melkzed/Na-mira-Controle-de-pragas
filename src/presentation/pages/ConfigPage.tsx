@@ -8,7 +8,7 @@ import { Button } from '../components/ui/Button';
 import { Field, Input, Select } from '../components/ui/Field';
 import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
-import { useAreasStore, usePestsStore, useProductsStore, useServiceTypesStore, useTrapTypesStore, useUsersStore, useLicensesStore } from '@/store/entityStores';
+import { useAreasStore, useDepartmentsStore, usePestsStore, useProductsStore, useServiceTypesStore, useTrapTypesStore, useUsersStore, useLicensesStore } from '@/store/entityStores';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useOrgProfileStore } from '@/store/orgProfileStore';
 import { uid } from '@/store/createEntityStore';
@@ -17,20 +17,8 @@ import { cn, daysUntil, formatCurrency } from '@/lib/utils';
 import { maskDocument, maskCep, maskPhone } from '@/lib/validation';
 import { dateInputToIso } from '@/lib/date';
 import { SignaturePad } from '../components/SignaturePad';
-import { ROLE_META, type UserRole } from '@/domain/enums';
-import type { User } from '@/domain/types';
-
-const permissionMatrix: { module: string; roles: UserRole[] }[] = [
-  { module: 'Dashboard', roles: ['admin', 'supervisor', 'financeiro', 'atendimento', 'estoque'] },
-  { module: 'Agenda / Ordens', roles: ['admin', 'supervisor', 'atendimento'] },
-  { module: 'Clientes / CRM', roles: ['admin', 'supervisor', 'atendimento'] },
-  { module: 'Estoque / Produtos', roles: ['admin', 'supervisor', 'estoque'] },
-  { module: 'Financeiro / Fiscal', roles: ['admin', 'financeiro'] },
-  { module: 'Relatórios', roles: ['admin', 'supervisor', 'financeiro'] },
-  { module: 'App do Técnico', roles: ['tecnico', 'admin', 'supervisor'] },
-];
-const ALL_ROLES: UserRole[] = ['admin', 'supervisor', 'financeiro', 'atendimento', 'estoque', 'tecnico'];
-const DEPARTMENTS = ['Vendas', 'Administrativo', 'Supervisão', 'Contabilidade', 'Técnico'];
+import { ROLE_META, MODULE_META, ALL_MODULES, type PermissionModule } from '@/domain/enums';
+import type { Department, User } from '@/domain/types';
 
 type Tab = 'empresa' | 'departamento' | 'cadastro' | 'operacional';
 
@@ -201,57 +189,155 @@ function SanitaryLicensePanel() {
 // ── Departamento ─────────────────────────────────────────────────────────
 function DepartamentoTab() {
   const users = useUsersStore((s) => s.items);
+  const updateUser = useUsersStore((s) => s.update);
+  const departments = useDepartmentsStore((s) => s.items);
+  const addDept = useDepartmentsStore((s) => s.add);
+  const updateDept = useDepartmentsStore((s) => s.update);
+  const removeDept = useDepartmentsStore((s) => s.remove);
+
   const columns: Column<User>[] = [
     { key: 'name', header: 'Usuário', render: (u) => (
       <div className="flex items-center gap-2.5"><Avatar name={u.name} size="sm" /><div><p className="font-medium">{u.name}</p><p className="text-xs text-muted-foreground">{u.email}</p></div></div>
     ) },
     { key: 'role', header: 'Perfil', render: (u) => <Badge tone="brand">{ROLE_META[u.role].label}</Badge> },
-    { key: 'phone', header: 'Telefone', render: (u) => <span className="text-muted-foreground">{u.phone ?? '—'}</span> },
+    { key: 'dept', header: 'Departamento', render: (u) => (
+      u.role === 'admin'
+        ? <span className="text-xs text-muted-foreground">Acesso total</span>
+        : <Select value={u.departmentId ?? ''} onChange={(e) => updateUser(u.id, { departmentId: e.target.value || undefined })} className="h-8 w-40 text-xs">
+            <option value="">— sem departamento —</option>
+            {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </Select>
+    ) },
     { key: 'status', header: 'Status', align: 'right', render: (u) => <Badge tone={u.isActive ? 'success' : 'neutral'} dot>{u.isActive ? 'Ativo' : 'Inativo'}</Badge> },
   ];
 
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-        Departamentos disponíveis: {DEPARTMENTS.join(' · ')}. A matriz abaixo mostra o acesso por perfil hoje — permissão granular por
-        usuário/departamento (liberar ou restringir módulo individualmente, ex.: Administrativo sem acesso ao Financeiro) é a próxima etapa.
+        O Administrador sempre tem acesso total a todos os módulos. Para os demais, o acesso é definido pelo departamento
+        do usuário — e pode ser ajustado individualmente em "Exceções por usuário", abaixo (ex.: liberar Financeiro só para
+        uma pessoa do Administrativo, sem abrir pro departamento inteiro).
       </div>
 
+      <DepartmentsPanel departments={departments} onAdd={addDept} onUpdate={updateDept} onRemove={removeDept} />
+
       <Card>
-        <CardHeader title="Usuários e equipe" subtitle={`${users.length} usuários`} />
+        <CardHeader title="Usuários e equipe" subtitle={`${users.length} usuários · defina o departamento de cada um`} />
         <CardBody className="p-0">
           <div className="px-4 pb-4"><Table columns={columns} rows={users} keyField={(u) => u.id} /></div>
         </CardBody>
       </Card>
 
-      <Card>
-        <CardHeader title="Matriz de permissões (RBAC)" subtitle="Controle de acesso por perfil" />
-        <CardBody className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Módulo</th>
-                  {ALL_ROLES.map((r) => <th key={r} className="px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{ROLE_META[r].label}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {permissionMatrix.map((row) => (
-                  <tr key={row.module} className="border-b border-border/60 last:border-0">
-                    <td className="px-4 py-3 font-medium text-foreground">{row.module}</td>
-                    {ALL_ROLES.map((r) => (
-                      <td key={r} className="px-3 py-3 text-center">
-                        {row.roles.includes(r) ? <span className="inline-block h-2 w-2 rounded-full bg-brand" /> : <span className="inline-block h-2 w-2 rounded-full bg-border" />}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardBody>
-      </Card>
+      <UserOverridesPanel users={users} departments={departments} onUpdateUser={updateUser} />
     </div>
+  );
+}
+
+/** Departamentos e os módulos que cada um acessa por padrão. */
+function DepartmentsPanel({ departments, onAdd, onUpdate, onRemove }: {
+  departments: Department[];
+  onAdd: (d: Department) => void;
+  onUpdate: (id: string, patch: Partial<Department>) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [name, setName] = useState('');
+  const create = () => {
+    if (!name.trim()) return;
+    onAdd({ id: uid('dept'), orgId: 'org-namira', name: name.trim(), modules: ['dashboard'] });
+    setName('');
+  };
+  const toggleModule = (dept: Department, mod: PermissionModule) => {
+    const has = dept.modules.includes(mod);
+    onUpdate(dept.id, { modules: has ? dept.modules.filter((m) => m !== mod) : [...dept.modules, mod] });
+  };
+
+  return (
+    <Card>
+      <CardHeader title="Departamentos" subtitle="Módulos que cada departamento acessa por padrão" />
+      <CardBody className="space-y-4">
+        <div className="flex gap-2">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Novo departamento" onKeyDown={(e) => e.key === 'Enter' && create()} />
+          <Button leftIcon={<Plus size={15} />} onClick={create} disabled={!name.trim()}>Adicionar</Button>
+        </div>
+        <div className="space-y-3">
+          {departments.map((d) => (
+            <div key={d.id} className="rounded-xl border border-border p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <Input value={d.name} onChange={(e) => onUpdate(d.id, { name: e.target.value })} className="h-8 w-48 text-sm font-medium" aria-label={`Nome do departamento ${d.name}`} />
+                <button onClick={() => onRemove(d.id)} aria-label={`Excluir ${d.name}`} className="ml-auto shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-danger"><Trash2 size={14} /></button>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
+                {ALL_MODULES.map((m) => (
+                  <label key={m} className="flex items-center gap-1.5 text-xs text-foreground">
+                    <input type="checkbox" checked={d.modules.includes(m)} onChange={() => toggleModule(d, m)} className="h-3.5 w-3.5 rounded border-border" />
+                    {MODULE_META[m].label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+          {departments.length === 0 && <p className="text-xs text-muted-foreground">Nenhum departamento cadastrado.</p>}
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+/** Exceções individuais — libera ou bloqueia um módulo específico para um
+ *  usuário, além do que o departamento dele já define. */
+function UserOverridesPanel({ users, departments, onUpdateUser }: {
+  users: User[];
+  departments: Department[];
+  onUpdateUser: (id: string, patch: Partial<User>) => void;
+}) {
+  const eligible = users.filter((u) => u.role !== 'admin' && u.role !== 'tecnico');
+  const [userId, setUserId] = useState('');
+  useEffect(() => { if ((!userId || !eligible.some((u) => u.id === userId)) && eligible[0]) setUserId(eligible[0].id); }, [userId, eligible]);
+  const user = eligible.find((u) => u.id === userId);
+  const dept = user?.departmentId ? departments.find((d) => d.id === user.departmentId) : undefined;
+
+  const setOverride = (mod: PermissionModule, value: 'default' | 'grant' | 'deny') => {
+    if (!user) return;
+    const next = { ...(user.permissionOverrides ?? {}) };
+    if (value === 'default') delete next[mod];
+    else next[mod] = value === 'grant';
+    onUpdateUser(user.id, { permissionOverrides: next });
+  };
+
+  return (
+    <Card>
+      <CardHeader title="Exceções por usuário" subtitle="Libera ou bloqueia um módulo específico além do padrão do departamento" />
+      <CardBody className="space-y-3">
+        <Field label="Usuário">
+          <Select value={userId} onChange={(e) => setUserId(e.target.value)}>
+            {eligible.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </Select>
+        </Field>
+        {user && (
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+            {ALL_MODULES.map((m) => {
+              const override = user.permissionOverrides?.[m];
+              const inherited = dept?.modules.includes(m) ?? false;
+              return (
+                <div key={m} className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-2.5 py-1.5 text-xs">
+                  <span className="text-foreground">{MODULE_META[m].label}</span>
+                  <Select
+                    value={override === undefined ? 'default' : override ? 'grant' : 'deny'}
+                    onChange={(e) => setOverride(m, e.target.value as 'default' | 'grant' | 'deny')}
+                    className="h-7 w-36 px-1.5 text-[11px]"
+                  >
+                    <option value="default">{inherited ? 'Padrão (libera)' : 'Padrão (bloqueia)'}</option>
+                    <option value="grant">Liberar</option>
+                    <option value="deny">Bloquear</option>
+                  </Select>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {!user && <p className="text-xs text-muted-foreground">Nenhum usuário elegível (admin sempre tem acesso total; técnico só usa o App de Campo).</p>}
+      </CardBody>
+    </Card>
   );
 }
 

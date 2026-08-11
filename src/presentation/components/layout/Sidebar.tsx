@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAppStore } from '@/store/appStore';
-import { navForRole } from '@/application/navigation';
+import { navForUser } from '@/application/permissions';
+import { useDepartmentsStore } from '@/store/entityStores';
 import { Icon } from '../ui/Icon';
 import { LogoMark } from '../ui/Logo';
 import { cn } from '@/lib/utils';
@@ -10,8 +11,9 @@ import { Avatar } from '../ui/Avatar';
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const user = useAppStore((s) => s.currentUser);
+  const departments = useDepartmentsStore((s) => s.items);
   if (!user) return null;
-  const items = navForRole(user.role);
+  const items = navForUser(user, departments);
 
   const groups = items.reduce<Record<string, typeof items>>((acc, item) => {
     (acc[item.group] ??= []).push(item);

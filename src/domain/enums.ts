@@ -119,6 +119,38 @@ export const ROLE_META: Record<UserRole, { label: string }> = {
   tecnico: { label: 'Técnico' },
 };
 
+/** Módulos administrativos que podem ser liberados/restringidos por
+ *  departamento e por usuário (Configurações → Departamento). Espelha as
+ *  rotas administrativas em application/navigation.ts — /campo (App do
+ *  Técnico) fica de fora, é controlado só pelo papel (UserRole). */
+export type PermissionModule =
+  | 'dashboard' | 'agenda' | 'rotas' | 'ordens' | 'clientes' | 'crm' | 'monitoramento'
+  | 'nao_conformidade' | 'estoque' | 'produtos' | 'equipamentos' | 'tecnicos' | 'veiculos'
+  | 'financeiro' | 'fiscal' | 'relatorios' | 'historico' | 'configuracoes';
+
+export const MODULE_META: Record<PermissionModule, { label: string }> = {
+  dashboard: { label: 'Dashboard' },
+  agenda: { label: 'Agenda' },
+  rotas: { label: 'Roteirização' },
+  ordens: { label: 'Ordens de Serviço' },
+  clientes: { label: 'Clientes' },
+  crm: { label: 'CRM' },
+  monitoramento: { label: 'Monitoramento' },
+  nao_conformidade: { label: 'Não Conformidade' },
+  estoque: { label: 'Estoque' },
+  produtos: { label: 'Produtos' },
+  equipamentos: { label: 'Equipamentos' },
+  tecnicos: { label: 'Técnicos' },
+  veiculos: { label: 'Veículos' },
+  financeiro: { label: 'Financeiro' },
+  fiscal: { label: 'Fiscal' },
+  relatorios: { label: 'Relatórios' },
+  historico: { label: 'Histórico' },
+  configuracoes: { label: 'Configurações' },
+};
+
+export const ALL_MODULES: PermissionModule[] = Object.keys(MODULE_META) as PermissionModule[];
+
 // ── Ordem de Serviço avançada ──────────────────────────────────────────────
 export type WarrantyUnit = 'dias' | 'meses';
 export type WarrantyType = 'preventivo' | 'corretivo' | 'monitoramento';
