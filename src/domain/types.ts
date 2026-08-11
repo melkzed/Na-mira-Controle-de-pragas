@@ -10,6 +10,7 @@ import type {
   EquipmentStatus,
   FinanceEntryStatus,
   FinanceEntryType,
+  PermissionModule,
   RecurrenceFreq,
   ServiceOrderStatus,
   StockLocationKind,
@@ -26,6 +27,17 @@ export interface Organization {
   cnpj?: string;
 }
 
+/** Departamento (Configurações → Departamento) — define quais módulos
+ *  administrativos seus integrantes acessam por padrão. Cada usuário pode
+ *  ainda ter exceções individuais em User.permissionOverrides. */
+export interface Department {
+  id: string;
+  orgId: string;
+  name: string;
+  modules: PermissionModule[];
+  isActive?: boolean;
+}
+
 export interface User {
   id: string;
   orgId: string;
@@ -37,6 +49,12 @@ export interface User {
   isActive: boolean;
   /** Permissão de acesso ao aplicativo de campo (só relevante para técnicos). */
   fieldAppAccess?: boolean;
+  /** Departamento do usuário — define o acesso padrão a módulos administrativos. */
+  departmentId?: string;
+  /** Exceções individuais além do padrão do departamento: true libera um
+   *  módulo mesmo que o departamento não o inclua; false bloqueia mesmo que
+   *  o departamento o inclua. Quem decide isso é o admin (dono da conta). */
+  permissionOverrides?: Partial<Record<PermissionModule, boolean>>;
 }
 
 export interface Team {
@@ -148,6 +166,17 @@ export interface Supplier {
 
 // ── Monitoramento de armadilhas (MIP) ───────────────────────────────────────
 export type TrapStatus = 'ativa' | 'extraviada' | 'substituida' | 'retirada';
+
+/** Catálogo de tipos de armadilha (Configurações → Cadastro) — alimenta o
+ *  campo "Tipo" ao instalar uma armadilha no cliente. */
+export interface TrapType {
+  id: string;
+  orgId: string;
+  name: string;
+  /** Inativo não aparece para seleção em novas instalações, mas permanece
+   *  íntegro em armadilhas já cadastradas. Ausente = ativo (compatibilidade). */
+  isActive?: boolean;
+}
 
 export interface TrapDevice {
   id: string;

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { AppNotification, User } from '@/domain/types';
-import { users } from '@/infrastructure/seed/data';
+import { useUsersStore } from '@/store/entityStores';
 import { authenticate, getSessionUser, signOut as authSignOut } from '@/application/auth';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { daysFromNowIso } from '@/lib/misc';
@@ -41,11 +41,15 @@ function initTheme(): Theme {
   return theme;
 }
 
-/** Modo standalone: reidrata a sessão local pelo id salvo no localStorage. */
+/** Modo standalone: reidrata a sessão local pelo id salvo no localStorage.
+ *  Lê de useUsersStore (dado vivo, persistido), não do seed estático — senão
+ *  qualquer edição no usuário (departamento, exceções de permissão, papel,
+ *  ativo/inativo) some ao recarregar a página, voltando ao snapshot original
+ *  do seed. */
 function initUserStandalone(): User | null {
   const id = localStorage.getItem(USER_KEY);
   if (!id) return null;
-  return users.find((u) => u.id === id && u.isActive) ?? null;
+  return useUsersStore.getState().items.find((u) => u.id === id && u.isActive) ?? null;
 }
 
 export const useAppStore = create<AppState>((set) => ({

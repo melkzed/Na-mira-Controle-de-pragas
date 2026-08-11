@@ -193,9 +193,10 @@ Rodando sem backend (dados persistidos no navegador via localStorage):
 
 ## 🗺️ Roadmap de integração (requer serviços externos)
 
-- [ ] Conectar `repository.ts` ao Supabase (Auth + Postgres + Storage) — RLS já pronta em [`db/rls.sql`](db/rls.sql)
+- [x] Autenticação real via Supabase Auth (login por funcionário, multiusuário) — RLS pronta em [`db/rls.sql`](db/rls.sql)
+- [ ] Conectar `repository.ts`/stores ao Postgres do Supabase (hoje só o login é real; dados de clientes/agenda/OS/financeiro etc. continuam no `localStorage`)
 - [ ] Distâncias/tempos reais de trânsito (Google Maps Directions / Distance Matrix) — a otimização por janelas já funciona com distância geodésica
-- [ ] Emissão de NFS-e via provedor municipal
+- [ ] Emissão de NFS-e em produção — estrutura multi-provedor pronta (Governo · NFS-e Nacional e Focus NFe), falta configurar o backend (certificado ou token) e testar em homologação. Ver [`docs/FISCAL.md`](docs/FISCAL.md)
 - [ ] Notificações reais (WhatsApp / push / e-mail)
 - [ ] App mobile nativo do técnico (offline-first)
 

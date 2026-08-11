@@ -1,9 +1,10 @@
 import { createEntityStore } from './createEntityStore';
 import * as seed from '@/infrastructure/seed/data';
-import type { BankAccount, Check, Equipment, FinanceEntry, License, LoanInvestment, NonConformity, Pest, Product, RecurringPayable, ServiceType, TreatedArea, User, Vehicle } from '@/domain/types';
+import type { BankAccount, Check, Department, Equipment, FinanceEntry, License, LoanInvestment, NonConformity, Pest, Product, RecurringPayable, ServiceType, TreatedArea, TrapType, User, Vehicle } from '@/domain/types';
 
 /** Stores reativas dos demais módulos (CRUD standalone, persistido). */
 export const useUsersStore = createEntityStore<User>('namira-users', seed.users);
+export const useDepartmentsStore = createEntityStore<Department>('namira-departments', seed.departments);
 export const useProductsStore = createEntityStore<Product>('namira-products', seed.products);
 export const useFinanceStore = createEntityStore<FinanceEntry>('namira-finance', seed.financeEntries);
 export const useEquipmentStore = createEntityStore<Equipment>('namira-equipment', seed.equipment);
@@ -12,6 +13,7 @@ export const useServiceTypesStore = createEntityStore<ServiceType>('namira-servi
 export const useNonConformitiesStore = createEntityStore<NonConformity>('namira-nonconformities', seed.nonConformities);
 export const usePestsStore = createEntityStore<Pest>('namira-pests', seed.pests);
 export const useAreasStore = createEntityStore<TreatedArea>('namira-areas', seed.treatedAreas);
+export const useTrapTypesStore = createEntityStore<TrapType>('namira-trap-types', seed.trapTypes);
 export const useLicensesStore = createEntityStore<License>('namira-licenses', seed.licenses);
 export const useRecurringPayablesStore = createEntityStore<RecurringPayable>('namira-recurring-payables', seed.recurringPayables);
 export const useBankAccountsStore = createEntityStore<BankAccount>('namira-bank-accounts', seed.bankAccounts);

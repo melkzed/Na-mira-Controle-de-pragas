@@ -33,6 +33,7 @@ import { QuickAddChip } from '../components/QuickAddChip';
 import { Combobox, MultiCombobox } from '../components/ui/Combobox';
 import { useSettingsStore } from '@/store/settingsStore';
 import { computeTaxes } from '@/application/fiscal/tax';
+import { providerLabel } from '@/application/fiscal/providers';
 import { formatCurrency } from '@/lib/utils';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { Award, FileCode, FileText, Receipt } from 'lucide-react';
@@ -1091,13 +1092,13 @@ function FiscalSection({ so }: { so: ServiceOrder }) {
         { documento: customer?.document, nome: customer?.name, pessoaJuridica: customer?.type === 'pj' },
       );
       logChange('emissão', 'fiscal', `NFS-e #${inv.number} (${inv.provider}) · ${customer?.name ?? ''}`, so.id);
-      toast(inv.status === 'emitida' ? `NFS-e #${inv.number} emitida (${fiscal.provider === 'governo-nacional' ? 'NFS-e Nacional' : 'simulação'}).` : `NFS-e rejeitada: ${inv.message}`, { tone: inv.status === 'emitida' ? 'success' : 'danger' });
+      toast(inv.status === 'emitida' ? `NFS-e #${inv.number} emitida (${providerLabel(inv.provider)}).` : inv.status === 'processando' ? `NFS-e #${inv.number} em processamento (${providerLabel(inv.provider)}).` : `NFS-e rejeitada: ${inv.message}`, { tone: inv.status === 'emitida' ? 'success' : inv.status === 'processando' ? 'warning' : 'danger' });
     } finally {
       setEmitting(false);
     }
   };
 
-  const providerLabel = fiscal.provider === 'governo-nacional' ? (fiscal.backendUrl ? 'Governo · NFS-e Nacional' : 'Governo · NFS-e Nacional (simulação — sem backend)') : 'Simulação';
+  const activeProviderLabel = fiscal.provider === 'simulado' ? 'Simulação' : fiscal.backendUrl ? providerLabel(fiscal.provider) : `${providerLabel(fiscal.provider)} (simulação — sem backend)`;
 
   return (
     <Section title="Fiscal (NFS-e)">
@@ -1108,9 +1109,9 @@ function FiscalSection({ so }: { so: ServiceOrder }) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-foreground">NFS-e #{invoice.number} · série {invoice.series}</p>
-              <p className="text-xs text-muted-foreground">Emitida em {new Date(invoice.issuedAt).toLocaleDateString('pt-BR')} · {invoice.provider === 'governo-nacional' ? 'NFS-e Nacional' : 'simulação'}</p>
+              <p className="text-xs text-muted-foreground">Emitida em {new Date(invoice.issuedAt).toLocaleDateString('pt-BR')} · {providerLabel(invoice.provider)}</p>
             </div>
-            <Badge tone={invoice.status === 'emitida' ? 'success' : 'danger'} dot>{invoice.status === 'emitida' ? 'Emitida' : invoice.status === 'rejeitada' ? 'Rejeitada' : 'Cancelada'}</Badge>
+            <Badge tone={invoice.status === 'emitida' ? 'success' : invoice.status === 'processando' ? 'warning' : 'danger'} dot>{invoice.status === 'emitida' ? 'Emitida' : invoice.status === 'processando' ? 'Processando' : invoice.status === 'rejeitada' ? 'Rejeitada' : 'Cancelada'}</Badge>
           </div>
           {invoice.accessKey && <p className="mt-1 break-all text-[11px] text-muted-foreground">Chave: {invoice.accessKey}{invoice.verificationCode ? ` · Cód. verificação: ${invoice.verificationCode}` : ''}</p>}
           {invoice.taxes && <TaxBreakdown amount={invoice.amount} t={invoice.taxes} />}
@@ -1124,7 +1125,7 @@ function FiscalSection({ so }: { so: ServiceOrder }) {
       ) : (
         <div className="space-y-2">
           <div className="rounded-lg border border-border bg-muted/30 p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Prévia da tributação · {providerLabel}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Prévia da tributação · {activeProviderLabel}</p>
             <TaxBreakdown amount={amount} t={preview} />
           </div>
           <Button leftIcon={<Receipt size={15} />} onClick={doEmit} disabled={emitting}>{emitting ? 'Emitindo…' : 'Emitir NFS-e'}</Button>

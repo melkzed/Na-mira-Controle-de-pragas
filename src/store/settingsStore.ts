@@ -10,10 +10,13 @@ const KEY = 'namira-settings';
 
 /** Configuração fiscal — provedor de emissão e tributação. */
 export interface FiscalConfig {
-  /** 'governo-nacional' = NFS-e Nacional (via backend + certificado); 'simulado'. */
-  provider: 'governo-nacional' | 'simulado';
-  /** URL do backend que assina e transmite ao governo (Edge Function). Vazio = simulação. */
+  /** 'governo-nacional' = NFS-e Nacional direto (backend + certificado e-CNPJ);
+   *  'focusnfe' = via Focus NFe (backend + token, sem certificado próprio); 'simulado'. */
+  provider: 'governo-nacional' | 'focusnfe' | 'simulado';
+  /** URL do backend que assina/transmite (Edge Function) — específica do provedor selecionado. Vazio = simulação. */
   backendUrl: string;
+  /** Ambiente de emissão — homologação não tem validade fiscal. */
+  environment: 'homologacao' | 'producao';
   /** Código IBGE do município do prestador. */
   municipioIbge: string;
   /** Item da lista de serviços (LC 116) — dedetização = 14.02. */
@@ -29,6 +32,7 @@ export interface FiscalConfig {
 const DEFAULT_FISCAL: FiscalConfig = {
   provider: 'simulado',
   backendUrl: '',
+  environment: 'homologacao',
   municipioIbge: '3550308', // São Paulo/SP
   itemListaServico: '14.02',
   issRate: DEFAULT_TAX_CONFIG.issRate,

@@ -8,8 +8,8 @@
  */
 import type { ServiceOrder } from '@/domain/types';
 import { getCustomer, getEquipment, getProduct, getServiceType, getUser } from '@/application/repository';
-import * as seed from '@/infrastructure/seed/data';
 import { useSettingsStore } from '@/store/settingsStore';
+import { getOrgProfile } from '@/store/orgProfileStore';
 import { formatCurrency } from './utils';
 import { currentBatch } from './batches';
 import { recurrenceSummaryLabel } from './recurrence';
@@ -31,7 +31,7 @@ function serviceValue(so: ServiceOrder): number {
 
 export function printServiceOrder(so: ServiceOrder): void {
   const c = getCustomer(so.customerId);
-  const org = seed.orgProfile;
+  const org = getOrgProfile();
   const techIds = so.technicianIds?.length ? so.technicianIds : [so.technicianId];
   const techName = getUser(techIds[0])?.name ?? '—';
   const helperName = techIds[1] ? getUser(techIds[1])?.name : undefined;
