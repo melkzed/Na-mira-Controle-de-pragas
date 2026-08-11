@@ -141,27 +141,72 @@ function LicenseForm({ open, onClose, onSave }: { open: boolean; onClose: () => 
 }
 
 /** Configuração da emissão de NFS-e (provedor governo + tributação). */
+const PROVIDER_INFO = {
+  'governo-nacional': {
+    title: 'Integração NFS-e (Governo · Nacional)',
+    subtitle: 'Emissão pela API oficial da Receita Federal via backend + certificado e-CNPJ',
+    active: 'Governo ativo',
+    simMode: 'Governo · simulação',
+    functionPath: 'supabase/functions/emitir-nfse/',
+    notice: (
+      <>A emissão oficial exige um <strong>certificado digital e-CNPJ (A1/A3)</strong> e um <strong>backend</strong> que assina e transmite ao governo — o navegador não pode fazer isso sozinho.</>
+    ),
+  },
+  focusnfe: {
+    title: 'Integração NFS-e (Focus NFe)',
+    subtitle: 'Emissão via API da Focus NFe através de backend + token — sem certificado próprio',
+    active: 'Focus NFe ativo',
+    simMode: 'Focus NFe · simulação',
+    functionPath: 'supabase/functions/emitir-nfse-focus/',
+    notice: (
+      <>A Focus NFe cuida da assinatura e da transmissão à prefeitura por você — só é preciso um <strong>backend</strong> que guarde o <strong>token da conta Focus NFe</strong> (nunca no navegador, ele dá acesso total à emissão).</>
+    ),
+  },
+  simulado: {
+    title: 'Integração NFS-e',
+    subtitle: 'Sem provedor configurado — nenhuma nota é transmitida',
+    active: 'Simulação',
+    simMode: 'Simulação',
+    functionPath: null,
+    notice: <>Nenhum provedor selecionado — o sistema calcula os tributos e mostra o que seria enviado, mas não transmite nada.</>,
+  },
+} as const;
+
 function FiscalConfigPanel() {
   const { fiscal, setFiscal } = useSettingsStore();
+  const info = PROVIDER_INFO[fiscal.provider];
+  const needsBackend = fiscal.provider !== 'simulado';
   return (
     <Card className="mt-6">
       <CardHeader
-        title="Integração NFS-e (Governo · Nacional)"
-        subtitle="Emissão pela API oficial da Receita Federal via backend + certificado e-CNPJ"
-        action={<Badge tone={fiscal.provider === 'governo-nacional' && fiscal.backendUrl ? 'success' : 'warning'} dot>{fiscal.provider === 'governo-nacional' ? (fiscal.backendUrl ? 'Governo ativo' : 'Governo · simulação') : 'Simulação'}</Badge>}
+        title={info.title}
+        subtitle={info.subtitle}
+        action={<Badge tone={needsBackend && fiscal.backendUrl ? 'success' : 'warning'} dot>{needsBackend ? (fiscal.backendUrl ? info.active : info.simMode) : info.simMode}</Badge>}
       />
       <CardBody className="space-y-4">
         <div className="rounded-lg border border-warning/30 bg-warning-soft/40 p-3 text-xs text-foreground">
-          A emissão oficial exige um <strong>certificado digital e-CNPJ (A1/A3)</strong> e um <strong>backend</strong> que assina e transmite ao governo — o navegador não pode fazer isso sozinho. Informe a URL da função de emissão (ex.: Supabase Edge Function <code>emitir-nfse</code>); sem ela, o sistema opera em <strong>simulação</strong> mostrando exatamente o que seria enviado.
+          {info.notice}{' '}
+          {needsBackend && <>Informe a URL da função de emissão abaixo; sem ela, o sistema opera em <strong>simulação</strong> mostrando exatamente o que seria enviado.</>}
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Provedor">
-            <Select value={fiscal.provider} onChange={(e) => setFiscal({ provider: e.target.value as 'governo-nacional' | 'simulado' })}>
+            <Select value={fiscal.provider} onChange={(e) => setFiscal({ provider: e.target.value as 'governo-nacional' | 'focusnfe' | 'simulado' })}>
               <option value="governo-nacional">Governo · NFS-e Nacional</option>
+              <option value="focusnfe">Focus NFe</option>
               <option value="simulado">Simulação (sem transmissão)</option>
             </Select>
           </Field>
-          <Field label="URL do backend de emissão (assina + transmite)"><Input value={fiscal.backendUrl} onChange={(e) => setFiscal({ backendUrl: e.target.value })} placeholder="https://…/functions/v1/emitir-nfse" /></Field>
+          {needsBackend && (
+            <Field label="URL do backend de emissão"><Input value={fiscal.backendUrl} onChange={(e) => setFiscal({ backendUrl: e.target.value })} placeholder={`https://…/functions/v1/${info.functionPath?.split('/')[2] ?? 'emitir-nfse'}`} /></Field>
+          )}
+          {needsBackend && (
+            <Field label="Ambiente">
+              <Select value={fiscal.environment} onChange={(e) => setFiscal({ environment: e.target.value as 'homologacao' | 'producao' })}>
+                <option value="homologacao">Homologação (teste, sem validade fiscal)</option>
+                <option value="producao">Produção</option>
+              </Select>
+            </Field>
+          )}
           <Field label="Município (código IBGE)"><Input value={fiscal.municipioIbge} onChange={(e) => setFiscal({ municipioIbge: e.target.value.replace(/\D/g, '') })} placeholder="3550308" /></Field>
           <Field label="Item lista de serviços (LC 116)"><Input value={fiscal.itemListaServico} onChange={(e) => setFiscal({ itemListaServico: e.target.value })} placeholder="14.02" /></Field>
           <Field label="Regime tributário"><Select value={fiscal.regime} onChange={(e) => setFiscal({ regime: e.target.value as any })}><option value="simples">Simples Nacional</option><option value="presumido">Lucro Presumido</option><option value="real">Lucro Real</option></Select></Field>
@@ -172,7 +217,7 @@ function FiscalConfigPanel() {
           <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={fiscal.retencoes} onChange={(e) => setFiscal({ retencoes: e.target.checked })} className="h-4 w-4 rounded border-border" /> Reter tributos federais (tomador PJ)</label>
           <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={fiscal.inssRetido} onChange={(e) => setFiscal({ inssRetido: e.target.checked })} className="h-4 w-4 rounded border-border" /> Reter INSS (11%)</label>
         </div>
-        <p className="text-xs text-muted-foreground">Template do backend incluído no repositório em <code>supabase/functions/emitir-nfse/</code>. As alíquotas variam por município e CNAE — confirme com sua contabilidade.</p>
+        {info.functionPath && <p className="text-xs text-muted-foreground">Template do backend incluído no repositório em <code>{info.functionPath}</code>. As alíquotas variam por município e CNAE — confirme com sua contabilidade.</p>}
       </CardBody>
     </Card>
   );
@@ -186,7 +231,16 @@ function NotasFiscais() {
     { key: 'date', header: 'Emissão', render: (i) => fmtDate(i.issuedAt) },
     { key: 'iss', header: 'ISS', align: 'right', render: (i) => formatCurrency(i.taxAmount) },
     { key: 'amount', header: 'Valor', align: 'right', render: (i) => <span className="font-semibold">{formatCurrency(i.amount)}</span> },
-    { key: 'status', header: 'Status', align: 'right', render: (i) => <Badge tone={i.status === 'emitida' ? 'success' : 'danger'} dot>{i.status === 'emitida' ? 'Emitida' : 'Cancelada'}</Badge> },
+    { key: 'status', header: 'Status', align: 'right', render: (i) => {
+      const map = {
+        emitida: { tone: 'success', label: 'Emitida' },
+        processando: { tone: 'warning', label: 'Processando' },
+        rejeitada: { tone: 'danger', label: 'Rejeitada' },
+        cancelada: { tone: 'neutral', label: 'Cancelada' },
+      } as const;
+      const s = map[i.status];
+      return <Badge tone={s.tone} dot>{s.label}</Badge>;
+    } },
     { key: 'act', header: '', align: 'right', render: (i) => {
       const c = getCustomer(i.customerId ?? '');
       return (

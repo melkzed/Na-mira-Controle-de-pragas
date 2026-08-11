@@ -77,7 +77,7 @@ export const useInvoicesStore = create<InvoicesState>((set, get) => ({
       description: input.description,
       amount: input.amount,
       taxAmount: taxes.iss,
-      status: result.status === 'emitida' ? 'emitida' : 'rejeitada',
+      status: result.status,
       issuedAt: new Date().toISOString(),
       provider: result.provider,
       accessKey: result.accessKey,
