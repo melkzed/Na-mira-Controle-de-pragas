@@ -10,8 +10,10 @@
 create or replace function auth_org_id() returns uuid
   language sql stable as $$ select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'org_id','')::uuid $$;
 
+-- Lê "app_role" (papel da aplicação), não "role" — esse último é reservado
+-- pelo PostgREST para a role do Postgres da conexão (ver db/auth_hook.sql).
 create or replace function auth_role() returns text
-  language sql stable as $$ select current_setting('request.jwt.claims', true)::jsonb ->> 'role' $$;
+  language sql stable as $$ select current_setting('request.jwt.claims', true)::jsonb ->> 'app_role' $$;
 
 create or replace function auth_user_id() returns uuid
   language sql stable as $$ select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'user_id','')::uuid $$;

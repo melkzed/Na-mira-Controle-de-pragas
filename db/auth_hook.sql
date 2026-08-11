@@ -33,7 +33,11 @@ begin
 
   if app_user is not null then
     claims := jsonb_set(claims, '{org_id}', to_jsonb(app_user.org_id::text));
-    claims := jsonb_set(claims, '{role}', to_jsonb(app_user.role));
+    -- "role" no topo do JWT é reservado pelo PostgREST (define a role do
+    -- Postgres da conexão: anon/authenticated/service_role). Usar esse nome
+    -- aqui faz o PostgREST tentar "SET ROLE admin" e falhar (role não existe
+    -- no Postgres) — por isso o papel da aplicação vai em app_role.
+    claims := jsonb_set(claims, '{app_role}', to_jsonb(app_user.role));
     claims := jsonb_set(claims, '{user_id}', to_jsonb(app_user.user_id::text));
   end if;
 
