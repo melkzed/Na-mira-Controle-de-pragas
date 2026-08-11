@@ -111,11 +111,129 @@ begin
   end loop;
 end $$;
 
+-- ---------------------------------------------------------------------------
+-- 4) Tabelas sem coluna org_id própria — a varredura automática do passo (1)
+--    não as alcança. O cliente (supabase-js/PostgREST) pode consultá-las
+--    diretamente, então cada uma precisa de política explícita, herdando o
+--    isolamento por organização via FK para a tabela-pai.
+-- ---------------------------------------------------------------------------
+
+-- organizations: cada usuário só enxerga a própria organização (linha única).
+alter table public.organizations enable row level security;
+alter table public.organizations force row level security;
+drop policy if exists org_self on public.organizations;
+create policy org_self on public.organizations
+  for all
+  using (id = auth_org_id())
+  with check (id = auth_org_id());
+
+-- permissions / role_permissions: catálogo global (não por organização) —
+-- leitura liberada para qualquer usuário autenticado; sem política de escrita,
+-- então INSERT/UPDATE/DELETE do cliente ficam bloqueados por padrão (só a
+-- service role, usada em migrações, pode alterar).
+alter table public.permissions enable row level security;
+drop policy if exists permissions_read on public.permissions;
+create policy permissions_read on public.permissions
+  for select
+  using (auth.role() = 'authenticated');
+
+alter table public.role_permissions enable row level security;
+drop policy if exists role_permissions_read on public.role_permissions;
+create policy role_permissions_read on public.role_permissions
+  for select
+  using (auth.role() = 'authenticated');
+
+-- Tabelas de junção/detalhe: isolamento via FK para a tabela-pai (que já tem
+-- org_id e RLS pelo passo 1). O padrão é sempre o mesmo — usar/checar que o
+-- pai pertence à organização do usuário autenticado.
+alter table public.user_permissions enable row level security;
+alter table public.user_permissions force row level security;
+drop policy if exists user_permissions_org on public.user_permissions;
+create policy user_permissions_org on public.user_permissions
+  for all
+  using (user_id in (select id from public.users where org_id = auth_org_id()))
+  with check (user_id in (select id from public.users where org_id = auth_org_id()));
+
+alter table public.team_members enable row level security;
+alter table public.team_members force row level security;
+drop policy if exists team_members_org on public.team_members;
+create policy team_members_org on public.team_members
+  for all
+  using (team_id in (select id from public.teams where org_id = auth_org_id()))
+  with check (team_id in (select id from public.teams where org_id = auth_org_id()));
+
+alter table public.equipment_maintenance enable row level security;
+alter table public.equipment_maintenance force row level security;
+drop policy if exists equipment_maintenance_org on public.equipment_maintenance;
+create policy equipment_maintenance_org on public.equipment_maintenance
+  for all
+  using (equipment_id in (select id from public.equipment where org_id = auth_org_id()))
+  with check (equipment_id in (select id from public.equipment where org_id = auth_org_id()));
+
+alter table public.vehicle_fuel_logs enable row level security;
+alter table public.vehicle_fuel_logs force row level security;
+drop policy if exists vehicle_fuel_logs_org on public.vehicle_fuel_logs;
+create policy vehicle_fuel_logs_org on public.vehicle_fuel_logs
+  for all
+  using (vehicle_id in (select id from public.vehicles where org_id = auth_org_id()))
+  with check (vehicle_id in (select id from public.vehicles where org_id = auth_org_id()));
+
+alter table public.vehicle_maintenance enable row level security;
+alter table public.vehicle_maintenance force row level security;
+drop policy if exists vehicle_maintenance_org on public.vehicle_maintenance;
+create policy vehicle_maintenance_org on public.vehicle_maintenance
+  for all
+  using (vehicle_id in (select id from public.vehicles where org_id = auth_org_id()))
+  with check (vehicle_id in (select id from public.vehicles where org_id = auth_org_id()));
+
+alter table public.appointment_products enable row level security;
+alter table public.appointment_products force row level security;
+drop policy if exists appointment_products_org on public.appointment_products;
+create policy appointment_products_org on public.appointment_products
+  for all
+  using (appointment_id in (select id from public.appointments where org_id = auth_org_id()))
+  with check (appointment_id in (select id from public.appointments where org_id = auth_org_id()));
+
+alter table public.service_order_products enable row level security;
+alter table public.service_order_products force row level security;
+drop policy if exists service_order_products_org on public.service_order_products;
+create policy service_order_products_org on public.service_order_products
+  for all
+  using (service_order_id in (select id from public.service_orders where org_id = auth_org_id()))
+  with check (service_order_id in (select id from public.service_orders where org_id = auth_org_id()));
+
+alter table public.service_order_pests enable row level security;
+alter table public.service_order_pests force row level security;
+drop policy if exists service_order_pests_org on public.service_order_pests;
+create policy service_order_pests_org on public.service_order_pests
+  for all
+  using (service_order_id in (select id from public.service_orders where org_id = auth_org_id()))
+  with check (service_order_id in (select id from public.service_orders where org_id = auth_org_id()));
+
+alter table public.service_order_equipment enable row level security;
+alter table public.service_order_equipment force row level security;
+drop policy if exists service_order_equipment_org on public.service_order_equipment;
+create policy service_order_equipment_org on public.service_order_equipment
+  for all
+  using (service_order_id in (select id from public.service_orders where org_id = auth_org_id()))
+  with check (service_order_id in (select id from public.service_orders where org_id = auth_org_id()));
+
+alter table public.crm_activities enable row level security;
+alter table public.crm_activities force row level security;
+drop policy if exists crm_activities_org on public.crm_activities;
+create policy crm_activities_org on public.crm_activities
+  for all
+  using (lead_id in (select id from public.crm_leads where org_id = auth_org_id()))
+  with check (lead_id in (select id from public.crm_leads where org_id = auth_org_id()));
+
 -- ============================================================================
 -- Observações:
---  • As tabelas de junção sem org_id (ex.: team_members, service_order_pests)
---    herdam a proteção via FKs às tabelas com RLS; adicione políticas próprias
---    se forem acessadas diretamente pelo cliente.
 --  • Ajuste os papéis conforme sua regra de negócio (ex.: 'estoque' pode
 --    precisar de acesso a stock_* em toda a org).
+--  • auth_org_id()/auth_role()/auth_user_id() só funcionam se o JWT emitido
+--    pelo Supabase Auth carregar os claims org_id/role/user_id — isso exige
+--    um Custom Access Token Hook (Auth Hooks) lendo public.users pelo
+--    auth_user_id. Sem o hook, toda política acima nega tudo por padrão
+--    (fail-closed): mais seguro que vazar dados, mas o app não funciona até
+--    o hook estar configurado.
 -- ============================================================================

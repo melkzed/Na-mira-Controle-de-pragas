@@ -23,32 +23,27 @@ export function LoginPage() {
     return <Navigate to={landingPathFor(currentUser)} replace />;
   }
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    // pequena espera para simular a autenticação (feedback de loading)
-    setTimeout(() => {
-      const user = login(email, password);
-      setLoading(false);
-      if (!user) {
-        setError('E-mail ou senha inválidos. Use a senha de demonstração abaixo.');
-        return;
-      }
-      navigate(landingPathFor(user), { replace: true });
-    }, 450);
+    const user = await login(email, password);
+    setLoading(false);
+    if (!user) {
+      setError(demoAccounts.length ? 'E-mail ou senha inválidos. Use a senha de demonstração abaixo.' : 'E-mail ou senha inválidos.');
+      return;
+    }
+    navigate(landingPathFor(user), { replace: true });
   };
 
-  const quickLogin = (accEmail: string) => {
+  const quickLogin = async (accEmail: string) => {
     setEmail(accEmail);
     setPassword(DEMO_PASSWORD);
     setError(null);
     setLoading(true);
-    setTimeout(() => {
-      const user = login(accEmail, DEMO_PASSWORD);
-      setLoading(false);
-      if (user) navigate(landingPathFor(user), { replace: true });
-    }, 300);
+    const user = await login(accEmail, DEMO_PASSWORD);
+    setLoading(false);
+    if (user) navigate(landingPathFor(user), { replace: true });
   };
 
   return (
@@ -169,28 +164,30 @@ export function LoginPage() {
             </Button>
           </form>
 
-          {/* Acesso rápido (demonstração) */}
-          <div className="mt-8">
-            <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
-              <Sparkles size={13} /> Acesso rápido · demonstração
+          {/* Acesso rápido (demonstração) — só existe no modo standalone, sem Supabase configurado */}
+          {demoAccounts.length > 0 && (
+            <div className="mt-8">
+              <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
+                <Sparkles size={13} /> Acesso rápido · demonstração
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {demoAccounts.map((acc) => (
+                  <button
+                    key={acc.email}
+                    onClick={() => quickLogin(acc.email)}
+                    disabled={loading}
+                    className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-left text-sm transition hover:border-brand/50 hover:bg-muted disabled:opacity-50"
+                  >
+                    <span className="font-medium text-foreground">{acc.label}</span>
+                    {acc.role === 'tecnico' && <Badge tone="brand">campo</Badge>}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-3 text-center text-xs text-muted-foreground">
+                Senha de demonstração: <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">{DEMO_PASSWORD}</code>
+              </p>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              {demoAccounts.map((acc) => (
-                <button
-                  key={acc.email}
-                  onClick={() => quickLogin(acc.email)}
-                  disabled={loading}
-                  className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-left text-sm transition hover:border-brand/50 hover:bg-muted disabled:opacity-50"
-                >
-                  <span className="font-medium text-foreground">{acc.label}</span>
-                  {acc.role === 'tecnico' && <Badge tone="brand">campo</Badge>}
-                </button>
-              ))}
-            </div>
-            <p className="mt-3 text-center text-xs text-muted-foreground">
-              Senha de demonstração: <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">{DEMO_PASSWORD}</code>
-            </p>
-          </div>
+          )}
         </motion.div>
       </div>
     </div>

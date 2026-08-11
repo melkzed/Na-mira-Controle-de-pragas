@@ -315,24 +315,22 @@ export function CustomerForm({
               <Input value={form.companyName} onChange={(e) => set('companyName', e.target.value)} />
             </Field>
           )}
-          {tier === 'completo' && (
-            <Field label={form.type === 'pf' ? 'CPF' : 'CNPJ'}>
-              <div className="flex gap-2">
-                <Input value={form.document} onChange={(e) => set('document', maskDocument(e.target.value, form.type))} placeholder={form.type === 'pf' ? '000.000.000-00' : '00.000.000/0000-00'} inputMode="numeric" />
-                {form.type === 'pj' && (
-                  <Button type="button" variant="outline" size="icon" onClick={doLookupCnpj} disabled={cnpjLoading} title="Consultar na Receita" aria-label="Consultar CNPJ na Receita">
-                    {cnpjLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-                  </Button>
-                )}
-              </div>
-              {touched && errors.document && <Err msg={errors.document} />}
-              {cnpjMsg === 'ok' && <span className="mt-1 block text-xs text-success">Dados preenchidos pela Receita.</span>}
-              {cnpjMsg && cnpjMsg !== 'ok' && <span className="mt-1 block text-xs text-danger">{cnpjMsg}</span>}
-              {form.type === 'pj' && form.registrationStatus && (
-                <span className="mt-1 inline-flex"><Badge tone={/ativa/i.test(form.registrationStatus) ? 'success' : 'warning'}>{form.registrationStatus}</Badge></span>
+          <Field label={form.type === 'pf' ? 'CPF' : 'CNPJ'}>
+            <div className="flex gap-2">
+              <Input value={form.document} onChange={(e) => set('document', maskDocument(e.target.value, form.type))} placeholder={form.type === 'pf' ? '000.000.000-00' : '00.000.000/0000-00'} inputMode="numeric" />
+              {form.type === 'pj' && (
+                <Button type="button" variant="outline" size="icon" onClick={doLookupCnpj} disabled={cnpjLoading} title="Consultar na Receita" aria-label="Consultar CNPJ na Receita">
+                  {cnpjLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                </Button>
               )}
-            </Field>
-          )}
+            </div>
+            {touched && errors.document && <Err msg={errors.document} />}
+            {cnpjMsg === 'ok' && <span className="mt-1 block text-xs text-success">Dados preenchidos pela Receita.</span>}
+            {cnpjMsg && cnpjMsg !== 'ok' && <span className="mt-1 block text-xs text-danger">{cnpjMsg}</span>}
+            {form.type === 'pj' && form.registrationStatus && (
+              <span className="mt-1 inline-flex"><Badge tone={/ativa/i.test(form.registrationStatus) ? 'success' : 'warning'}>{form.registrationStatus}</Badge></span>
+            )}
+          </Field>
           {tier === 'completo' && (
             <Field label="E-mail">
               <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="cliente@email.com" />

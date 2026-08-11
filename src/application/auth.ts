@@ -1,40 +1,105 @@
 /**
  * Aplicação — autenticação.
- * No modo standalone (seed), valida credenciais contra os usuários de exemplo.
- * Ao integrar o Supabase, troque `authenticate` por uma chamada ao Supabase Auth
- * mantendo a mesma assinatura — as telas de login não mudam.
+ * Com Supabase configurado (VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY), usa
+ * Supabase Auth de verdade — cada funcionário com e-mail e senha próprios,
+ * sessão compartilhada entre dispositivos via o mesmo backend.
+ * Sem essas variáveis, cai no modo standalone (seed em memória) para
+ * desenvolvimento/demonstração sem backend — mesma assinatura das funções,
+ * a tela de login não muda.
  */
 import type { User } from '@/domain/types';
+import type { UserRole } from '@/domain/enums';
 import { useUsersStore } from '@/store/entityStores';
+import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 
-/** Senha única de demonstração para todos os usuários de exemplo. */
+/** Senha única de demonstração — vale só no modo standalone (sem Supabase). */
 export const DEMO_PASSWORD = 'namira123';
-
-/**
- * Credenciais específicas (contas reais). Têm senha própria, distinta da senha
- * de demonstração, e não aparecem no acesso rápido da tela de login.
- */
-const ACCOUNT_PASSWORDS: Record<string, string> = {
-  'namiracomercial@gmail.com': 'vanessa@adm',
-};
 
 export interface AuthResult {
   user: User | null;
-  error?: 'invalid_email' | 'invalid_password';
+  error?: 'invalid_email' | 'invalid_password' | 'unknown';
 }
 
-export function authenticate(email: string, password: string): AuthResult {
+interface UsersRow {
+  id: string;
+  org_id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  avatar_url: string | null;
+  role: UserRole;
+  is_active: boolean;
+}
+
+function rowToUser(row: UsersRow): User {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    name: row.name,
+    email: row.email,
+    phone: row.phone ?? undefined,
+    avatarUrl: row.avatar_url ?? undefined,
+    role: row.role,
+    isActive: row.is_active,
+  };
+}
+
+/** Busca o registro de aplicação (public.users) vinculado ao usuário logado
+ *  no Supabase Auth — é esse registro que carrega org/role/nome exibidos no app. */
+async function fetchAppUser(authUserId: string): Promise<User | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, org_id, name, email, phone, avatar_url, role, is_active')
+    .eq('auth_user_id', authUserId)
+    .eq('is_active', true)
+    .maybeSingle();
+  if (error || !data) return null;
+  return rowToUser(data as UsersRow);
+}
+
+export async function authenticate(email: string, password: string): Promise<AuthResult> {
   const normalized = email.trim().toLowerCase();
-  const user = useUsersStore.getState().items.find((u) => u.email.toLowerCase() === normalized && u.isActive);
-  if (!user) return { user: null, error: 'invalid_email' };
-  // Contas com senha própria exigem essa senha; as demais aceitam a senha demo.
-  const expected = ACCOUNT_PASSWORDS[normalized] ?? DEMO_PASSWORD;
-  if (password !== expected) return { user: null, error: 'invalid_password' };
-  return { user };
+
+  if (supabaseEnabled && supabase) {
+    const { data, error } = await supabase.auth.signInWithPassword({ email: normalized, password });
+    if (error || !data.user) return { user: null, error: 'invalid_password' };
+    const user = await fetchAppUser(data.user.id);
+    if (!user) {
+      // Login válido no Supabase Auth, mas sem cadastro correspondente em
+      // public.users (ou usuário inativo) — trata como acesso negado.
+      await supabase.auth.signOut();
+      return { user: null, error: 'invalid_email' };
+    }
+    return { user };
+  }
+
+  // Modo standalone (sem Supabase configurado): valida contra o seed local.
+  const found = useUsersStore.getState().items.find((u) => u.email.toLowerCase() === normalized && u.isActive);
+  if (!found) return { user: null, error: 'invalid_email' };
+  if (password !== DEMO_PASSWORD) return { user: null, error: 'invalid_password' };
+  return { user: found };
 }
 
-/** Contas de demonstração exibidas na tela de login (acesso rápido). */
-export const demoAccounts: { email: string; role: string; label: string }[] = [
+/** Reidrata o usuário a partir de uma sessão Supabase já persistida (recarregar
+ *  a página, outra aba). No modo standalone não há sessão a resolver aqui —
+ *  a store cuida disso sincronamente pelo localStorage simples. */
+export async function getSessionUser(): Promise<User | null> {
+  if (!supabaseEnabled || !supabase) return null;
+  const { data } = await supabase.auth.getSession();
+  const authUser = data.session?.user;
+  if (!authUser) return null;
+  return fetchAppUser(authUser.id);
+}
+
+export async function signOut(): Promise<void> {
+  if (supabaseEnabled && supabase) await supabase.auth.signOut();
+}
+
+/** Contas de demonstração exibidas na tela de login (acesso rápido) — só no
+ *  modo standalone; com Supabase configurado, cada funcionário usa a própria
+ *  conta e este atalho não aparece. */
+export const demoAccounts: { email: string; role: string; label: string }[] = supabaseEnabled ? [] : [
   { email: 'marina@namira.com', role: 'admin', label: 'Administrador' },
   { email: 'rafael@namira.com', role: 'supervisor', label: 'Supervisor' },
   { email: 'camila@namira.com', role: 'financeiro', label: 'Financeiro' },

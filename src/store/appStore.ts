@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import type { AppNotification, User } from '@/domain/types';
 import { users } from '@/infrastructure/seed/data';
-import { authenticate } from '@/application/auth';
+import { authenticate, getSessionUser, signOut as authSignOut } from '@/application/auth';
+import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { daysFromNowIso } from '@/lib/misc';
 
 type Theme = 'light' | 'dark';
@@ -9,10 +10,14 @@ type Theme = 'light' | 'dark';
 interface AppState {
   theme: Theme;
   currentUser: User | null;
+  /** true enquanto a sessão do Supabase Auth ainda está sendo resolvida ao
+   *  carregar o app — evita redirecionar para /login antes de saber se já
+   *  existe sessão válida (localStorage, sem Supabase, não precisa disso). */
+  authLoading: boolean;
   notifications: AppNotification[];
   commandOpen: boolean;
   toggleTheme: () => void;
-  login: (email: string, password: string) => User | null;
+  login: (email: string, password: string) => Promise<User | null>;
   logout: () => void;
   markAllRead: () => void;
   setCommandOpen: (open: boolean) => void;
@@ -36,8 +41,8 @@ function initTheme(): Theme {
   return theme;
 }
 
-/** Reidrata a sessão a partir do localStorage (sessão persistente). */
-function initUser(): User | null {
+/** Modo standalone: reidrata a sessão local pelo id salvo no localStorage. */
+function initUserStandalone(): User | null {
   const id = localStorage.getItem(USER_KEY);
   if (!id) return null;
   return users.find((u) => u.id === id && u.isActive) ?? null;
@@ -45,7 +50,8 @@ function initUser(): User | null {
 
 export const useAppStore = create<AppState>((set) => ({
   theme: initTheme(),
-  currentUser: initUser(),
+  currentUser: supabaseEnabled ? null : initUserStandalone(),
+  authLoading: supabaseEnabled,
   notifications: initialNotifications,
   commandOpen: false,
   toggleTheme: () =>
@@ -55,17 +61,18 @@ export const useAppStore = create<AppState>((set) => ({
       localStorage.setItem('namira-theme', theme);
       return { theme };
     }),
-  login: (email, password) => {
-    const { user } = authenticate(email, password);
+  login: async (email, password) => {
+    const { user } = await authenticate(email, password);
     if (user) {
-      localStorage.setItem(USER_KEY, user.id);
+      if (!supabaseEnabled) localStorage.setItem(USER_KEY, user.id);
       set({ currentUser: user });
     }
     return user;
   },
   logout: () => {
-    localStorage.removeItem(USER_KEY);
+    if (!supabaseEnabled) localStorage.removeItem(USER_KEY);
     set({ currentUser: null, commandOpen: false });
+    void authSignOut();
   },
   markAllRead: () =>
     set((s) => ({
@@ -80,3 +87,19 @@ export const useAppStore = create<AppState>((set) => ({
       ],
     })),
 }));
+
+// Modo Supabase: resolve a sessão persistida (localStorage do supabase-js) ao
+// carregar o app, e mantém currentUser sincronizado com logout/expiração de
+// sessão vindos de outra aba. "SIGNED_IN" não é tratado aqui — login() já
+// atualiza o estado diretamente, evitando uma segunda busca redundante.
+if (supabaseEnabled && supabase) {
+  getSessionUser()
+    .then((user) => useAppStore.setState({ currentUser: user, authLoading: false }))
+    .catch(() => useAppStore.setState({ currentUser: null, authLoading: false }));
+
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT') {
+      useAppStore.setState({ currentUser: null });
+    }
+  });
+}
