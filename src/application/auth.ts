@@ -54,7 +54,10 @@ async function fetchAppUser(authUserId: string): Promise<User | null> {
     .eq('auth_user_id', authUserId)
     .eq('is_active', true)
     .maybeSingle();
-  if (error || !data) return null;
+  if (error || !data) {
+    console.error('[auth] fetchAppUser: nenhuma linha em public.users para', authUserId, error);
+    return null;
+  }
   return rowToUser(data as UsersRow);
 }
 
