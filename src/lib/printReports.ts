@@ -7,7 +7,7 @@
 import { parseISO } from 'date-fns';
 import type { Customer, NonConformity, TrapDevice, TrapInspection } from '@/domain/types';
 import { getUser } from '@/application/repository';
-import * as seed from '@/infrastructure/seed/data';
+import { getOrgProfile } from '@/store/orgProfileStore';
 import { formatDocument } from './utils';
 import { toast } from '@/store/toastStore';
 
@@ -56,7 +56,7 @@ const SHELL_CSS = `
 `;
 
 function header(subtitle: string): string {
-  const org = seed.orgProfile;
+  const org = getOrgProfile();
   return `<div class="head">
     <div class="brand"><div class="logo">NM</div><div><h1>${esc(org.name)}</h1><p>${esc(org.legalName)} · CNPJ ${esc(org.cnpj)}</p></div></div>
     <div class="title"><div class="s">${esc(subtitle)}</div><div class="t">${esc(org.name)}</div><div class="s">${new Date().toLocaleDateString('pt-BR')}</div></div>

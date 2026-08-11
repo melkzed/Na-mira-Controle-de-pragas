@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Bug, MapPin, Plus, Trash2, Wrench, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Bug, Building2, ImageUp, MapPin, Plus, Radar, Trash2, Wrench, X } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -8,12 +8,14 @@ import { Button } from '../components/ui/Button';
 import { Field, Input, Select } from '../components/ui/Field';
 import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
-import * as seed from '@/infrastructure/seed/data';
-import { useAreasStore, usePestsStore, useProductsStore, useServiceTypesStore, useUsersStore } from '@/store/entityStores';
+import { useAreasStore, usePestsStore, useProductsStore, useServiceTypesStore, useTrapTypesStore, useUsersStore, useLicensesStore } from '@/store/entityStores';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useOrgProfileStore } from '@/store/orgProfileStore';
 import { uid } from '@/store/createEntityStore';
 import { toast } from '@/store/toastStore';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, daysUntil, formatCurrency } from '@/lib/utils';
+import { maskDocument, maskCep, maskPhone } from '@/lib/validation';
+import { dateInputToIso } from '@/lib/date';
 import { SignaturePad } from '../components/SignaturePad';
 import { ROLE_META, type UserRole } from '@/domain/enums';
 import type { User } from '@/domain/types';
@@ -28,10 +30,177 @@ const permissionMatrix: { module: string; roles: UserRole[] }[] = [
   { module: 'App do Técnico', roles: ['tecnico', 'admin', 'supervisor'] },
 ];
 const ALL_ROLES: UserRole[] = ['admin', 'supervisor', 'financeiro', 'atendimento', 'estoque', 'tecnico'];
+const DEPARTMENTS = ['Vendas', 'Administrativo', 'Supervisão', 'Contabilidade', 'Técnico'];
+
+type Tab = 'empresa' | 'departamento' | 'cadastro' | 'operacional';
 
 export function ConfigPage() {
+  const [tab, setTab] = useState<Tab>('empresa');
+
+  return (
+    <div>
+      <PageHeader title="Configurações" description="Empresa, departamentos, cadastros e operação" actions={<Button>Convidar usuário</Button>} />
+
+      <div className="mb-4">
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'empresa', label: 'Empresa' },
+            { value: 'departamento', label: 'Departamento' },
+            { value: 'cadastro', label: 'Cadastro' },
+            { value: 'operacional', label: 'Operacional' },
+          ]}
+        />
+      </div>
+
+      {tab === 'empresa' && <EmpresaTab />}
+      {tab === 'departamento' && <DepartamentoTab />}
+      {tab === 'cadastro' && <CadastroTab />}
+      {tab === 'operacional' && <OperacionalTab />}
+    </div>
+  );
+}
+
+// ── Empresa ──────────────────────────────────────────────────────────────
+function EmpresaTab() {
+  const { profile, setProfile } = useOrgProfileStore();
+  const [form, setForm] = useState(profile);
+  useEffect(() => setForm(profile), [profile]);
+  const dirty = JSON.stringify(form) !== JSON.stringify(profile);
+  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader title="Dados da empresa" subtitle="Identidade usada nos documentos, na NFS-e e no cabeçalho do sistema" action={<Building2 size={18} className="text-brand" />} />
+        <CardBody className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Nome fantasia"><Input value={form.name} onChange={(e) => set('name', e.target.value)} /></Field>
+            <Field label="Razão social" className="sm:col-span-2"><Input value={form.legalName} onChange={(e) => set('legalName', e.target.value)} /></Field>
+            <Field label="CNPJ"><Input value={form.cnpj} onChange={(e) => set('cnpj', maskDocument(e.target.value, 'pj'))} inputMode="numeric" /></Field>
+            <Field label="Regime tributário">
+              <Select value={form.taxRegime} onChange={(e) => set('taxRegime', e.target.value)}>
+                <option value="Simples Nacional">Simples Nacional</option>
+                <option value="Lucro Presumido">Lucro Presumido</option>
+                <option value="Lucro Real">Lucro Real</option>
+              </Select>
+            </Field>
+            <Field label="Inscrição municipal"><Input value={form.municipalRegistration} onChange={(e) => set('municipalRegistration', e.target.value)} placeholder="Opcional" /></Field>
+            <Field label="Inscrição estadual"><Input value={form.stateRegistration} onChange={(e) => set('stateRegistration', e.target.value)} placeholder="Opcional — só se emitir NF-e/NFC-e" /></Field>
+            <Field label="Telefone"><Input value={form.phone} onChange={(e) => set('phone', maskPhone(e.target.value))} /></Field>
+            <Field label="E-mail"><Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="contato@empresa.com" /></Field>
+            <Field label="CEP"><Input value={form.cep} onChange={(e) => set('cep', maskCep(e.target.value))} /></Field>
+            <Field label="Endereço" className="sm:col-span-2"><Input value={form.street} onChange={(e) => set('street', e.target.value)} /></Field>
+            <Field label="Bairro"><Input value={form.district} onChange={(e) => set('district', e.target.value)} /></Field>
+            <Field label="Cidade"><Input value={form.city} onChange={(e) => set('city', e.target.value)} /></Field>
+            <Field label="UF"><Input value={form.state} onChange={(e) => set('state', e.target.value.toUpperCase().slice(0, 2))} maxLength={2} /></Field>
+          </div>
+          <div className="flex justify-end">
+            <Button size="sm" disabled={!dirty} onClick={() => { setProfile(form); toast('Dados da empresa atualizados.', { tone: 'success' }); }}>Salvar</Button>
+          </div>
+        </CardBody>
+      </Card>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader title="Logo" subtitle="Exibida no cabeçalho de OS, Certificado, Laudo e Relatórios" />
+          <CardBody>
+            <LogoUpload value={profile.logoDataUrl} onChange={(v) => setProfile({ logoDataUrl: v })} />
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Responsável técnico" subtitle="Assina Certificado e Laudo — identificação + assinatura" />
+          <CardBody className="space-y-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <Field label="Nome" className="sm:col-span-3"><Input value={form.technicalResponsibleName} onChange={(e) => { set('technicalResponsibleName', e.target.value); }} onBlur={() => setProfile({ technicalResponsibleName: form.technicalResponsibleName })} /></Field>
+              <Field label="Formação"><Input value={form.technicalResponsibleRole} onChange={(e) => set('technicalResponsibleRole', e.target.value)} onBlur={() => setProfile({ technicalResponsibleRole: form.technicalResponsibleRole })} placeholder="Ex.: Farmacêutica" /></Field>
+              <Field label="Registro profissional" className="sm:col-span-2"><Input value={form.technicalResponsibleRegistry} onChange={(e) => set('technicalResponsibleRegistry', e.target.value)} onBlur={() => setProfile({ technicalResponsibleRegistry: form.technicalResponsibleRegistry })} placeholder="Ex.: CRF-SP 48213" /></Field>
+            </div>
+            <SignatureBlock />
+          </CardBody>
+        </Card>
+      </div>
+
+      <SanitaryLicensePanel />
+    </div>
+  );
+}
+
+/** Upload de imagem (sem desenho — diferente da assinatura). */
+function LogoUpload({ value, onChange }: { value?: string; onChange: (v?: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const load = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => onChange(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+  return (
+    <div>
+      <div className="flex h-28 items-center justify-center overflow-hidden rounded-xl border border-dashed border-border bg-surface">
+        {value ? <img src={value} alt="Logo da empresa" className="max-h-full max-w-full object-contain p-2" /> : <span className="text-sm text-muted-foreground">Nenhuma logo definida</span>}
+      </div>
+      <div className="mt-2 flex justify-end gap-1.5">
+        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) load(f); e.target.value = ''; }} />
+        <Button type="button" variant="outline" size="sm" leftIcon={<ImageUp size={13} />} onClick={() => inputRef.current?.click()}>Carregar imagem</Button>
+        {value && <Button type="button" variant="ghost" size="sm" onClick={() => onChange(undefined)}>Remover</Button>}
+      </div>
+    </div>
+  );
+}
+
+/** Assinatura do responsável técnico — usada em `responsibleSignatureLine()` (printDocuments.ts). */
+function SignatureBlock() {
+  const { companySignature, setCompanySignature } = useSettingsStore();
+  return (
+    <div>
+      <SignaturePad value={companySignature} onChange={(d) => setCompanySignature(d)} height={110} />
+      {companySignature && <p className="mt-1 text-xs text-success">Assinatura definida.</p>}
+    </div>
+  );
+}
+
+/** Alvará Sanitário — busca (ou cria) a licença correspondente em useLicensesStore
+ *  para edição rápida direto da aba Empresa, sem duplicar dado com o módulo Fiscal. */
+function SanitaryLicensePanel() {
+  const { items, add, update } = useLicensesStore();
+  const license = items.find((l) => l.name === 'Alvará Sanitário');
+  const [number, setNumber] = useState(license?.number ?? '');
+  const [expiresAt, setExpiresAt] = useState(license?.expiresAt ? license.expiresAt.slice(0, 10) : '');
+  useEffect(() => { setNumber(license?.number ?? ''); setExpiresAt(license?.expiresAt ? license.expiresAt.slice(0, 10) : ''); }, [license?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const save = () => {
+    const status = expiresAt && dateInputToIso(expiresAt) < new Date().toISOString() ? 'vencida' : 'ativa';
+    if (license) {
+      update(license.id, { number: number.trim() || undefined, expiresAt: expiresAt ? dateInputToIso(expiresAt) : undefined, status });
+    } else {
+      add({ id: uid('lic'), orgId: 'org-namira', name: 'Alvará Sanitário', number: number.trim() || undefined, expiresAt: expiresAt ? dateInputToIso(expiresAt) : undefined, status });
+    }
+    toast('Licença sanitária atualizada.', { tone: 'success' });
+  };
+  const dirty = number !== (license?.number ?? '') || expiresAt !== (license?.expiresAt ? license.expiresAt.slice(0, 10) : '');
+  const d = daysUntil(license?.expiresAt) ?? 999;
+
+  return (
+    <Card>
+      <CardHeader
+        title="Licença sanitária (Alvará)"
+        subtitle="Demais licenças e responsáveis técnicos ficam em Fiscal & Conformidade"
+        action={license?.expiresAt ? (d < 0 ? <Badge tone="danger" dot>Vencida</Badge> : d <= 30 ? <Badge tone="warning" dot>Vence em {d}d</Badge> : <Badge tone="success" dot>Ativa</Badge>) : undefined}
+      />
+      <CardBody className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Field label="Número"><Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Ex.: VS-2025-0001" /></Field>
+        <Field label="Vencimento"><Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+        <div className="flex items-end"><Button size="sm" disabled={!dirty} onClick={save} className="w-full">Salvar</Button></div>
+      </CardBody>
+    </Card>
+  );
+}
+
+// ── Departamento ─────────────────────────────────────────────────────────
+function DepartamentoTab() {
   const users = useUsersStore((s) => s.items);
-  const [tab, setTab] = useState<'geral' | 'catalogo'>('geral');
   const columns: Column<User>[] = [
     { key: 'name', header: 'Usuário', render: (u) => (
       <div className="flex items-center gap-2.5"><Avatar name={u.name} size="sm" /><div><p className="font-medium">{u.name}</p><p className="text-xs text-muted-foreground">{u.email}</p></div></div>
@@ -42,118 +211,109 @@ export function ConfigPage() {
   ];
 
   return (
-    <div>
-      <PageHeader title="Configurações" description="Usuários, permissões e preferências da organização" actions={<Button>Convidar usuário</Button>} />
-
-      <div className="mb-4">
-        <Segmented
-          value={tab}
-          onChange={setTab}
-          options={[{ value: 'geral', label: 'Geral' }, { value: 'catalogo', label: 'Catálogo Operacional' }]}
-        />
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+        Departamentos disponíveis: {DEPARTMENTS.join(' · ')}. A matriz abaixo mostra o acesso por perfil hoje — permissão granular por
+        usuário/departamento (liberar ou restringir módulo individualmente, ex.: Administrativo sem acesso ao Financeiro) é a próxima etapa.
       </div>
 
-      {tab === 'geral' && (
-        <>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
-              <CardHeader title="Usuários e equipe" subtitle={`${users.length} usuários`} />
-              <CardBody className="p-0">
-                <div className="px-4 pb-4"><Table columns={columns} rows={users} keyField={(u) => u.id} /></div>
-              </CardBody>
-            </Card>
+      <Card>
+        <CardHeader title="Usuários e equipe" subtitle={`${users.length} usuários`} />
+        <CardBody className="p-0">
+          <div className="px-4 pb-4"><Table columns={columns} rows={users} keyField={(u) => u.id} /></div>
+        </CardBody>
+      </Card>
 
-            <Card>
-              <CardHeader title="Organização" />
-              <CardBody className="space-y-2.5 text-sm">
-                <Row label="Nome" value={seed.orgProfile.name} />
-                <Row label="Razão social" value={seed.orgProfile.legalName} />
-                <Row label="CNPJ" value={seed.orgProfile.cnpj} />
-                <Row label="Cidade" value={`${seed.orgProfile.city}/${seed.orgProfile.state}`} />
-              </CardBody>
-            </Card>
-          </div>
-
-          <Card className="mt-4">
-            <CardHeader title="Matriz de permissões (RBAC)" subtitle="Controle de acesso por perfil" />
-            <CardBody className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/40">
-                      <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Módulo</th>
-                      {ALL_ROLES.map((r) => <th key={r} className="px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{ROLE_META[r].label}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {permissionMatrix.map((row) => (
-                      <tr key={row.module} className="border-b border-border/60 last:border-0">
-                        <td className="px-4 py-3 font-medium text-foreground">{row.module}</td>
-                        {ALL_ROLES.map((r) => (
-                          <td key={r} className="px-3 py-3 text-center">
-                            {row.roles.includes(r) ? <span className="inline-block h-2 w-2 rounded-full bg-brand" /> : <span className="inline-block h-2 w-2 rounded-full bg-border" />}
-                          </td>
-                        ))}
-                      </tr>
+      <Card>
+        <CardHeader title="Matriz de permissões (RBAC)" subtitle="Controle de acesso por perfil" />
+        <CardBody className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40">
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Módulo</th>
+                  {ALL_ROLES.map((r) => <th key={r} className="px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{ROLE_META[r].label}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {permissionMatrix.map((row) => (
+                  <tr key={row.module} className="border-b border-border/60 last:border-0">
+                    <td className="px-4 py-3 font-medium text-foreground">{row.module}</td>
+                    {ALL_ROLES.map((r) => (
+                      <td key={r} className="px-3 py-3 text-center">
+                        {row.roles.includes(r) ? <span className="inline-block h-2 w-2 rounded-full bg-brand" /> : <span className="inline-block h-2 w-2 rounded-full bg-border" />}
+                      </td>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardBody>
-          </Card>
-
-          <SignaturesPanel />
-          <EmergencyPanel />
-        </>
-      )}
-
-      {tab === 'catalogo' && (
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Cadastros que alimentam a Ordem de Serviço. Alterações aqui refletem automaticamente nas próximas OS — OS e documentos já existentes não são afetados.
-          </p>
-          <ServicesPanel />
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <PestsPanel />
-            <AreasPanel />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-      )}
+        </CardBody>
+      </Card>
     </div>
   );
 }
 
-/** Assinaturas digitais da empresa e dos técnicos — incorporadas ao PDF da OS. */
-function SignaturesPanel() {
-  const { companySignature, signatures, setCompanySignature, setUserSignature } = useSettingsStore();
+// ── Cadastro ─────────────────────────────────────────────────────────────
+function CadastroTab() {
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Cadastros que alimentam a Ordem de Serviço e o monitoramento. Alterações aqui refletem automaticamente nos próximos registros —
+        os já existentes não são afetados.
+      </p>
+      <ServicesPanel />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <PestsPanel />
+        <AreasPanel />
+      </div>
+      <TrapTypesPanel />
+      <Card>
+        <CardHeader title="Produtos" subtitle="Categorias, fornecedores, lotes e estoque — módulo próprio" />
+        <CardBody className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">O cadastro completo de produtos (com estoque e lotes) fica em Produtos, no menu lateral.</p>
+          <Button variant="outline" size="sm" onClick={() => { window.location.href = '/produtos'; }}>Abrir Produtos</Button>
+        </CardBody>
+      </Card>
+    </div>
+  );
+}
+
+// ── Operacional ──────────────────────────────────────────────────────────
+function OperacionalTab() {
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">Configurações usadas na Agenda e na Ordem de Serviço.</p>
+      <TechnicianSignaturesPanel />
+      <EmergencyPanel />
+    </div>
+  );
+}
+
+/** Assinatura de cada técnico — incorporada ao PDF da OS/Laudo como "Técnico de Execução". */
+function TechnicianSignaturesPanel() {
+  const { signatures, setUserSignature } = useSettingsStore();
   const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico'));
   const [userId, setUserId] = useState('');
   useEffect(() => { if (!userId && technicians[0]) setUserId(technicians[0].id); }, [userId, technicians]);
 
   return (
-    <Card className="mt-4">
-      <CardHeader title="Assinaturas digitais" subtitle="Empresa e técnicos — incorporadas automaticamente ao PDF da Ordem de Serviço" />
-      <CardBody className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div>
-          <p className="mb-2 text-sm font-semibold text-foreground">Assinatura da empresa</p>
-          <SignaturePad value={companySignature} onChange={(d) => setCompanySignature(d)} />
-          {companySignature && <p className="mt-1 text-xs text-success">Assinatura da empresa definida.</p>}
+    <Card>
+      <CardHeader title="Assinaturas dos técnicos" subtitle="Incorporadas ao PDF da Ordem de Serviço como 'Técnico de Execução'" />
+      <CardBody>
+        <div className="mb-2 flex items-center gap-2">
+          <Select value={userId} onChange={(e) => setUserId(e.target.value)} className="h-8 w-auto text-xs">
+            {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </Select>
         </div>
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <p className="text-sm font-semibold text-foreground">Assinatura do técnico</p>
-            <Select value={userId} onChange={(e) => setUserId(e.target.value)} className="h-8 w-auto text-xs">
-              {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </Select>
-          </div>
-          <SignaturePad key={userId} value={signatures[userId]} onChange={(d) => setUserSignature(userId, d)} />
-          <div className="mt-2 flex flex-wrap gap-2">
-            {technicians.filter((t) => signatures[t.id]).map((t) => (
-              <span key={t.id} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2 py-1 text-xs">
-                <img src={signatures[t.id]} alt={t.name} className="h-5 w-12 object-contain" /> {t.name.split(' ')[0]}
-              </span>
-            ))}
-          </div>
+        <SignaturePad key={userId} value={signatures[userId]} onChange={(d) => setUserSignature(userId, d)} />
+        <div className="mt-2 flex flex-wrap gap-2">
+          {technicians.filter((t) => signatures[t.id]).map((t) => (
+            <span key={t.id} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2 py-1 text-xs">
+              <img src={signatures[t.id]} alt={t.name} className="h-5 w-12 object-contain" /> {t.name.split(' ')[0]}
+            </span>
+          ))}
         </div>
       </CardBody>
     </Card>
@@ -168,7 +328,7 @@ function EmergencyPanel() {
   const dirty = phone !== emergencyPhone || info !== emergencyInfo;
 
   return (
-    <Card className="mt-4">
+    <Card>
       <CardHeader title="Emergência (CIT)" subtitle="Centro de Informação Toxicológica — exibido automaticamente nos documentos" />
       <CardBody className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field label="Telefone de emergência"><Input value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
@@ -287,7 +447,47 @@ function AreasPanel() {
   );
 }
 
-/** Cadastro de produtos padrão por tipo de serviço (#6). */
+/** Cadastro de tipos de armadilha — alimenta o campo "Tipo" ao instalar uma
+ *  armadilha no cliente (TrapsPanel). Inativos somem da seleção em novas
+ *  instalações, mas ficam preservados em armadilhas já cadastradas. */
+function TrapTypesPanel() {
+  const { items, add, update, remove } = useTrapTypesStore();
+  const [name, setName] = useState('');
+
+  const create = () => {
+    if (!name.trim()) return;
+    add({ id: uid('tt'), orgId: 'org-namira', name: name.trim(), isActive: true });
+    setName('');
+  };
+
+  return (
+    <Card>
+      <CardHeader title={<span className="flex items-center gap-2"><Radar size={16} className="text-brand" /> Armadilhas</span>} subtitle={`${items.length} tipos cadastrados · alimenta o cadastro de armadilhas do cliente`} />
+      <CardBody className="space-y-3">
+        <div className="flex gap-2">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Placa de cola" onKeyDown={(e) => e.key === 'Enter' && create()} />
+          <Button leftIcon={<Plus size={15} />} onClick={create} disabled={!name.trim()}>Adicionar</Button>
+        </div>
+        <div className="max-h-80 space-y-1.5 overflow-y-auto">
+          {items.map((t) => {
+            const active = t.isActive !== false;
+            return (
+              <div key={t.id} className={cn('flex items-center gap-2 rounded-lg border border-border/60 px-3 py-2', !active && 'opacity-60')}>
+                <Input value={t.name} onChange={(e) => update(t.id, { name: e.target.value })} className="h-8 min-w-0 flex-1 text-sm" aria-label={`Nome do tipo de armadilha ${t.name}`} />
+                <button onClick={() => update(t.id, { isActive: !active })} className="shrink-0" aria-label={active ? `Desativar ${t.name}` : `Ativar ${t.name}`}>
+                  <Badge tone={active ? 'success' : 'neutral'} dot>{active ? 'Ativo' : 'Inativo'}</Badge>
+                </button>
+                <button onClick={() => remove(t.id)} aria-label={`Excluir ${t.name}`} className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-danger"><Trash2 size={14} /></button>
+              </div>
+            );
+          })}
+          {items.length === 0 && <p className="text-xs text-muted-foreground">Nenhum tipo cadastrado.</p>}
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
 /** Cadastro de serviços — nome, valor padrão (opcional, sugerido na OS e
  *  editável antes da confirmação), produtos padrão e validade. Inativos
  *  somem da seleção em novas OS, mas ficam preservados em OS já existentes
@@ -381,8 +581,4 @@ function ServicesPanel() {
       </CardBody>
     </Card>
   );
-}
-
-function Row({ label, value }: { label: string; value?: string }) {
-  return <div className="flex items-center justify-between border-b border-border/60 pb-2"><span className="text-muted-foreground">{label}</span><span className="font-medium text-foreground">{value}</span></div>;
 }

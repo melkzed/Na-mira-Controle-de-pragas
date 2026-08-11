@@ -4,7 +4,7 @@
  * municipal (padrões ABRASF/GINFES etc.).
  */
 import type { Customer, Invoice } from '@/domain/types';
-import * as seed from '@/infrastructure/seed/data';
+import { getOrgProfile } from '@/store/orgProfileStore';
 import { formatCurrency, formatDocument } from './utils';
 import { toast } from '@/store/toastStore';
 
@@ -16,7 +16,7 @@ function fmt(iso?: string): string {
 }
 
 export function printNfse(invoice: Invoice, customer?: Customer): void {
-  const org = seed.orgProfile;
+  const org = getOrgProfile();
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/><title>NFS-e ${invoice.number}</title>
   <style>
     *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f172a;margin:0;padding:32px}
@@ -66,7 +66,7 @@ export function printNfse(invoice: Invoice, customer?: Customer): void {
 }
 
 export function downloadNfseXml(invoice: Invoice, customer?: Customer): void {
-  const org = seed.orgProfile;
+  const org = getOrgProfile();
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <NFSe>
   <InfNfse numero="${esc(invoice.number)}" serie="${esc(invoice.series)}">

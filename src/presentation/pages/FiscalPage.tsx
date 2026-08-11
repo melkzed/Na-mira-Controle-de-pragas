@@ -12,6 +12,7 @@ import { getCustomer, getUser } from '@/application/repository';
 import { useInvoicesStore } from '@/store/invoicesStore';
 import { useLicensesStore } from '@/store/entityStores';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useOrgProfileStore } from '@/store/orgProfileStore';
 import { uid } from '@/store/createEntityStore';
 import { toast } from '@/store/toastStore';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
@@ -22,6 +23,8 @@ import { dateInputToIso, fmtDate } from '@/lib/date';
 
 export function FiscalPage() {
   const { items: licenses, add, remove } = useLicensesStore();
+  const org = useOrgProfileStore((s) => s.profile);
+  const fiscal = useSettingsStore((s) => s.fiscal);
   const [formOpen, setFormOpen] = useState(false);
 
   const columns: Column<License>[] = [
@@ -54,12 +57,12 @@ export function FiscalPage() {
         <Card>
           <CardHeader title="Dados fiscais" subtitle="Cadastro da empresa" action={<ShieldCheck size={18} className="text-brand" />} />
           <CardBody className="space-y-2.5 text-sm">
-            <Row label="Razão social" value={seed.orgProfile.legalName} />
-            <Row label="CNPJ" value={seed.orgProfile.cnpj} />
-            <Row label="Regime tributário" value={seed.orgProfile.taxRegime} />
-            <Row label="Município" value={`${seed.orgProfile.city}/${seed.orgProfile.state}`} />
-            <Row label="Código de serviço (NFS-e)" value="14.02 – Dedetização" />
-            <Row label="Alíquota ISS" value="3,0%" />
+            <Row label="Razão social" value={org.legalName} />
+            <Row label="CNPJ" value={org.cnpj} />
+            <Row label="Regime tributário" value={org.taxRegime} />
+            <Row label="Município" value={`${org.city}/${org.state}`} />
+            <Row label="Código de serviço (NFS-e)" value={fiscal.itemListaServico} />
+            <Row label="Alíquota ISS" value={`${(fiscal.issRate * 100).toFixed(1)}%`} />
           </CardBody>
         </Card>
 

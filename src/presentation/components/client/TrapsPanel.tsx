@@ -10,7 +10,7 @@ import { Stagger } from '../ui/misc';
 import { useTrapsStore, type TrapInput } from '@/store/trapsStore';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
-import { useUsersStore } from '@/store/entityStores';
+import { useTrapTypesStore, useUsersStore } from '@/store/entityStores';
 import type { TrapDevice } from '@/domain/types';
 import { TRAP_STATUS_META } from '@/domain/trapMeta';
 import { dateInputToIso, fmtDate } from '@/lib/date';
@@ -88,13 +88,14 @@ export function TrapsPanel({ customerId, compact = false }: { customerId: string
 
 function TrapForm({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (t: Omit<TrapInput, 'customerId'>) => void }) {
   const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico'));
+  const trapTypes = useTrapTypesStore((s) => s.items.filter((t) => t.isActive !== false));
   const [code, setCode] = useState('');
-  const [type, setType] = useState('Porta-isca');
+  const [type, setType] = useState('');
   const [location, setLocation] = useState('');
   const [installedAt, setInstalledAt] = useState('');
   const [responsibleId, setResponsibleId] = useState('');
   const [touched, setTouched] = useState(false);
-  useEffect(() => { if (open) { setCode(''); setType('Porta-isca'); setLocation(''); setInstalledAt(''); setResponsibleId(technicians[0]?.id ?? ''); setTouched(false); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (open) { setCode(''); setType(trapTypes[0]?.name ?? ''); setLocation(''); setInstalledAt(''); setResponsibleId(technicians[0]?.id ?? ''); setTouched(false); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = () => {
     setTouched(true);
@@ -111,7 +112,7 @@ function TrapForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
       footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!code.trim()}>Adicionar</Button></div>}>
       <div className="space-y-4">
         <Field label="Identificação / numeração" required><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Porta Isca 005" />{touched && !code.trim() && <span className="mt-1 block text-xs text-danger">Informe a identificação.</span>}</Field>
-        <Field label="Tipo"><Select value={type} onChange={(e) => setType(e.target.value)}>{['Porta-isca', 'Luminosa', 'Placa de cola', 'Mecânica', 'Feromônio', 'Ratoeira'].map((o) => <option key={o}>{o}</option>)}</Select></Field>
+        <Field label="Tipo"><Select value={type} onChange={(e) => setType(e.target.value)}>{trapTypes.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}</Select></Field>
         <Field label="Local de instalação"><Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Ex.: Garagem G1, Cozinha, Lixeira externa" /></Field>
         <Field label="Data de instalação"><Input type="date" value={installedAt} onChange={(e) => setInstalledAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
         <Field label="Responsável fixo"><Select value={responsibleId} onChange={(e) => setResponsibleId(e.target.value)}><option value="">—</option>{technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>

@@ -11,9 +11,9 @@
 import { parseISO } from 'date-fns';
 import type { License, Pest, ServiceOrder } from '@/domain/types';
 import { getCustomer, getPest, getProduct, getServiceType, getUser } from '@/application/repository';
-import * as seed from '@/infrastructure/seed/data';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useLicensesStore } from '@/store/entityStores';
+import { getOrgProfile } from '@/store/orgProfileStore';
 import { currentBatch } from './batches';
 import { formatDocument } from './utils';
 import { logoSvgMarkup } from './logoSvg';
@@ -90,9 +90,12 @@ export const SHELL_CSS = `
 `;
 
 export function header(subtitle: string): string {
-  const org = seed.orgProfile;
+  const org = getOrgProfile();
+  const logo = org.logoDataUrl
+    ? `<img src="${org.logoDataUrl}" alt="Logo" style="width:34px;height:34px;object-fit:contain" />`
+    : logoSvgMarkup(34);
   return `<div class="head">
-    <div class="brand"><div class="logo">${logoSvgMarkup(34)}</div><div><h1>${esc(org.name)}</h1><p>${esc(org.legalName)} · CNPJ ${esc(org.cnpj)}</p><p>${esc(org.street)}, ${esc(org.district)} · ${esc(org.city)}/${esc(org.state)} · CEP ${esc(org.cep)}</p></div></div>
+    <div class="brand"><div class="logo">${logo}</div><div><h1>${esc(org.name)}</h1><p>${esc(org.legalName)} · CNPJ ${esc(org.cnpj)}</p><p>${esc(org.street)}, ${esc(org.district)} · ${esc(org.city)}/${esc(org.state)} · CEP ${esc(org.cep)}</p></div></div>
     <div class="title"><div class="s">${esc(subtitle)}</div><div class="t">${esc(org.name)}</div><div class="s">${new Date().toLocaleDateString('pt-BR')}</div></div>
   </div>`;
 }
@@ -145,7 +148,7 @@ export function certificateValidityText(so: ServiceOrder): string {
 /** Assinatura do Responsável Técnico (empresa) — único signatário do Certificado. */
 export function responsibleSignatureLine(): string {
   const s = useSettingsStore.getState();
-  const org = seed.orgProfile;
+  const org = getOrgProfile();
   const img = (src?: string) => (src ? `<img src="${src}" alt="assinatura" style="height:36px;object-fit:contain;margin:0 auto 2px;display:block" />` : '<div style="height:36px"></div>');
   return `<div class="sign" style="grid-template-columns:1fr;max-width:260px;margin:20px auto 0;">
     <div class="line">${img(s.companySignature)}${esc(org.technicalResponsibleName)}<br/>${esc(org.technicalResponsibleRole)} · ${esc(org.technicalResponsibleRegistry)}</div>
@@ -197,7 +200,7 @@ export function address(c: ReturnType<typeof getCustomer>): string {
 /** Certificado Sanitário de Combate a Vetores e Pragas Urbanas (CES). */
 export function printCertificate(so: ServiceOrder): void {
   const c = getCustomer(so.customerId);
-  const org = seed.orgProfile;
+  const org = getOrgProfile();
   const dataExec = fmtDate(so.executionDate ?? so.finishedAt ?? so.startedAt ?? so.createdAt);
   const validade = certificateValidityText(so);
   const pests = osPests(so);
@@ -249,7 +252,7 @@ const SAFETY_MEASURES = [
 /** Laudo técnico detalhado do atendimento (CES completo). */
 export function printLaudo(so: ServiceOrder): void {
   const c = getCustomer(so.customerId);
-  const org = seed.orgProfile;
+  const org = getOrgProfile();
   const techIds = so.technicianIds?.length ? so.technicianIds : [so.technicianId];
   const techName = getUser(techIds[0])?.name ?? '—';
   const helperName = techIds[1] ? getUser(techIds[1])?.name : undefined;

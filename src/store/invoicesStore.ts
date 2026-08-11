@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Invoice } from '@/domain/types';
-import { invoicesSeed, orgProfile } from '@/infrastructure/seed/data';
+import { invoicesSeed } from '@/infrastructure/seed/data';
+import { getOrgProfile } from '@/store/orgProfileStore';
 import { computeTaxes, type TaxConfig } from '@/application/fiscal/tax';
 import { getProvider } from '@/application/fiscal/providers';
 import type { FiscalConfig } from './settingsStore';
@@ -57,13 +58,14 @@ export const useInvoicesStore = create<InvoicesState>((set, get) => ({
   emitFiscal: async (input, cfg, tomador) => {
     const taxes = computeTaxes(input.amount, taxConfigFrom(cfg), tomador.pessoaJuridica);
     const provider = getProvider(cfg.provider);
+    const org = getOrgProfile();
     const result = await provider.emit({
       serviceOrderId: input.serviceOrderId,
       customerId: input.customerId,
       description: input.description,
       amount: input.amount,
       taxes,
-      prestador: { cnpj: orgProfile.cnpj, razaoSocial: orgProfile.legalName, municipioIbge: cfg.municipioIbge, regime: cfg.regime },
+      prestador: { cnpj: org.cnpj, razaoSocial: org.legalName, municipioIbge: cfg.municipioIbge, regime: cfg.regime },
       tomador: { documento: tomador.documento, nome: tomador.nome, pessoaJuridica: tomador.pessoaJuridica },
     }, cfg);
     const nextNumber = get().invoices.reduce((max, i) => Math.max(max, i.number), 1000) + 1;

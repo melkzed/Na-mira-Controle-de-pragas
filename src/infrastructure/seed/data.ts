@@ -18,6 +18,7 @@ import type {
   RecurringPayable,
   StockRequest,
   TreatedArea,
+  TrapType,
   Product,
   ProductCategory,
   ServiceOrder,
@@ -116,6 +117,15 @@ export const treatedAreas: TreatedArea[] = [
   { id: 'ar-dep', orgId: ORG, name: 'Depósito' },
   { id: 'ar-ext', orgId: ORG, name: 'Área externa' },
   { id: 'ar-gar', orgId: ORG, name: 'Garagem' },
+];
+
+export const trapTypes: TrapType[] = [
+  { id: 'tt-porta', orgId: ORG, name: 'Porta-isca' },
+  { id: 'tt-lum', orgId: ORG, name: 'Luminosa' },
+  { id: 'tt-cola', orgId: ORG, name: 'Placa de cola' },
+  { id: 'tt-mec', orgId: ORG, name: 'Mecânica' },
+  { id: 'tt-fer', orgId: ORG, name: 'Feromônio' },
+  { id: 'tt-rato', orgId: ORG, name: 'Ratoeira' },
 ];
 
 export const suppliers: Supplier[] = [
