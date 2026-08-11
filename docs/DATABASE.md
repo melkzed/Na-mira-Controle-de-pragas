@@ -2,13 +2,16 @@
 
 Modelagem PostgreSQL normalizada, multi-tenant e auditável.
 Arquivos: [`db/schema.sql`](../db/schema.sql) (DDL), [`db/rls.sql`](../db/rls.sql)
-(Row Level Security) e [`db/auth_hook.sql`](../db/auth_hook.sql) (claims do JWT).
+(Row Level Security), [`db/auth_hook.sql`](../db/auth_hook.sql) (claims do JWT)
+e [`db/link_admins.sql`](../db/link_admins.sql) (vincula usuários já criados em
+Authentication → Users a uma linha em `public.users`).
 
 > **Ordem de aplicação no Supabase**: `schema.sql` → `rls.sql` → `auth_hook.sql`
 > → registrar o hook em Authentication → Hooks → Custom Access Token
-> (selecionar `public.custom_access_token_hook`). Sem esse último passo no
-> painel, as políticas de RLS negam tudo (fail-closed) — o app não funciona,
-> mas nenhum dado vaza.
+> (selecionar `public.custom_access_token_hook`) → criar os usuários reais em
+> Authentication → Users → `link_admins.sql` (ou `seed.sql`, se for usar dados
+> de demonstração). Sem o hook registrado no painel, as políticas de RLS negam
+> tudo (fail-closed) — o app não funciona, mas nenhum dado vaza.
 
 ## Convenções
 
