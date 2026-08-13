@@ -19,8 +19,17 @@ export interface FiscalConfig {
   environment: 'homologacao' | 'producao';
   /** Código IBGE do município do prestador. */
   municipioIbge: string;
-  /** Item da lista de serviços (LC 116) — dedetização = 14.02. */
+  /** Item da lista de serviços (LC 116, padrão nacional) — ex.: 7.13 (limpeza,
+   *  higiene, desinfecção, controle de pragas e congêneres) ou 14.02, conforme
+   *  a atividade. NÃO é necessariamente igual ao código tributário do
+   *  município — municípios que ainda usam webservice próprio (não migrados
+   *  pro NFS-e Nacional) costumam ter sua própria tabela de códigos internos. */
   itemListaServico: string;
+  /** Código de tributação do MUNICÍPIO (ex.: "código CES" ou equivalente),
+   *  quando o município exige um código próprio além do item LC 116 — comum
+   *  em municípios com webservice próprio. Deixe em branco se o município
+   *  usa só o item LC 116 (a maioria dos que já migraram pro NFS-e Nacional). */
+  codigoTributarioMunicipal: string;
   issRate: number;
   regime: TaxRegime;
   issRetido: boolean;
@@ -35,6 +44,7 @@ const DEFAULT_FISCAL: FiscalConfig = {
   environment: 'homologacao',
   municipioIbge: '3550308', // São Paulo/SP
   itemListaServico: '14.02',
+  codigoTributarioMunicipal: '',
   issRate: DEFAULT_TAX_CONFIG.issRate,
   regime: DEFAULT_TAX_CONFIG.regime,
   issRetido: DEFAULT_TAX_CONFIG.issRetido,
