@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock, Lock, MapPin, Navigation, Sparkles, TriangleAlert } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -31,6 +31,19 @@ export function CampoMapaPage() {
   const todayIso = new Date().toISOString();
   const appts = useMemo(() => releasedAppointmentsForTechnician(techId, todayIso), [techId, todayIso]);
 
+  // Localização atual — usada só para desenhar "você está aqui" no mapa; a
+  // navegação em si (botão "Ir para a próxima parada") não depende dela, o
+  // Google Maps resolve a origem sozinho a partir do GPS do aparelho.
+  const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    if (!('geolocation' in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (p) => setPos({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      () => setPos(null),
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+  }, []);
+
   const { orderedGeo, sim, totalKm, lateCount } = useMemo(() => {
     const withGeo = appts.filter(hasGeo);
     const timed = withGeo.map(toTimed);
@@ -47,16 +60,22 @@ export function CampoMapaPage() {
     };
   }, [appts, optimized]);
 
-  const stops: RouteStop[] = orderedGeo.map((a) => ({
-    id: a.id,
-    label: getCustomer(a.customerId)?.name ?? 'Cliente',
-    lat: a.latitude!,
-    lng: a.longitude!,
-    color: getServiceType(a.serviceTypeId)?.color,
-    done: a.status === 'finalizado',
-    sub: fmtTime(a.scheduledStart),
-  }));
-  const routePoints = orderedGeo.map((a) => ({ lat: a.latitude!, lng: a.longitude! }));
+  const stops: RouteStop[] = [
+    ...(pos ? [{ id: 'me', label: 'Você está aqui', lat: pos.lat, lng: pos.lng, color: 'rgb(37 99 235)' } as RouteStop] : []),
+    ...orderedGeo.map((a) => ({
+      id: a.id,
+      label: getCustomer(a.customerId)?.name ?? 'Cliente',
+      lat: a.latitude!,
+      lng: a.longitude!,
+      color: getServiceType(a.serviceTypeId)?.color,
+      done: a.status === 'finalizado',
+      sub: fmtTime(a.scheduledStart),
+    })),
+  ];
+  // Próxima parada pendente — sempre a primeira ainda não finalizada na ordem
+  // atual, então acompanha o atendimento em tempo real (some sozinha da lista
+  // assim que o técnico conclui a visita, sem precisar tocar nada aqui).
+  const nextStop = orderedGeo.find((a) => a.status !== 'finalizado');
   const canOptimize = orderedGeo.length >= 3;
 
   return (
@@ -68,9 +87,13 @@ export function CampoMapaPage() {
           <p className="text-base font-bold text-foreground">Mapa da rota</p>
           <p className="text-xs text-muted-foreground">{orderedGeo.length} parada(s) · {totalKm.toFixed(1)} km</p>
         </div>
-        {routePoints.length > 0 && (
-          <Button size="sm" leftIcon={<Navigation size={15} />} onClick={() => window.open(googleMapsRoute(routePoints), '_blank', 'noopener')}>
-            Navegar
+        {nextStop && (
+          <Button
+            size="sm"
+            leftIcon={<Navigation size={15} />}
+            onClick={() => window.open(googleMapsRoute([{ lat: nextStop.latitude!, lng: nextStop.longitude! }]), '_blank', 'noopener')}
+          >
+            Ir para {getCustomer(nextStop.customerId)?.name?.split(' ')[0] ?? 'a próxima parada'}
           </Button>
         )}
       </div>

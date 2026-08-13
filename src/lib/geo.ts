@@ -131,8 +131,11 @@ export function optimizeOrder(points: GeoPoint[], startIndex = 0): number[] {
 export function googleMapsRoute(stops: GeoPoint[]): string {
   if (stops.length === 0) return 'https://www.google.com/maps';
   if (stops.length === 1) {
+    // Sem origem: o app/site do Google Maps usa a localização atual do
+    // dispositivo automaticamente — não depende da geolocalização do navegador
+    // (mais confiável que exigir permissão de GPS na própria página).
     const s = stops[0];
-    return `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`;
+    return `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}&travelmode=driving`;
   }
   const dest = stops[stops.length - 1];
   const origin = stops[0];
