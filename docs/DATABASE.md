@@ -13,6 +13,15 @@ Authentication → Users a uma linha em `public.users`).
 > de demonstração). Sem o hook registrado no painel, as políticas de RLS negam
 > tudo (fail-closed) — o app não funciona, mas nenhum dado vaza.
 
+## Fase 2 — dados compartilhados por módulo
+
+Cada módulo migrado de `localStorage` para dados compartilhados de verdade
+(ver `docs/ARCHITECTURE.md` §3.1) ganha um `db/migrate_<modulo>_realtime.sql`
+próprio — roda depois do setup acima, sempre que o módulo entrar em produção.
+Já migrados: **Clientes** (`db/migrate_customers_realtime.sql`) — completa
+colunas do cadastro completo que não existiam na tabela original e habilita
+Realtime na tabela `customers`.
+
 ## Convenções
 
 - **Multi-tenant** por `org_id` em toda tabela de negócio (habilite RLS no Supabase).
