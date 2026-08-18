@@ -65,6 +65,18 @@ Já migrados:
   no app, então a FK "aspiracional" foi removida em vez de recriada), cria
   `stock_requests` e `equipment_requests` (não existiam), habilita Realtime
   nas três. Lembre de rodar `db/rls.sql` de novo depois (tabelas novas).
+- **CRM** (`db/migrate_crm_realtime.sql`) — corrige o tipo de `crm_leads.id`
+  (mesmo motivo dos itens acima) e habilita Realtime. **Mensagens de
+  WhatsApp (`messagesStore.ts`) ficaram de fora de propósito** — é uma
+  simulação (`WhatsMessage`, comentário no próprio arquivo: "para produção,
+  troque send/markDelivered por chamadas à API do WhatsApp"), não dado real
+  que faça sentido sincronizar entre usuários agora.
+- **Financeiro complementar** (`db/migrate_financeiro2_realtime.sql`) —
+  Notas fiscais emitidas (`invoices`: corrige `id`/`number` — igual aos
+  itens acima, mais colunas de retorno do provedor fiscal), Transações
+  bancárias e Fechamento de caixa (`bank_transactions`/`cash_closings`,
+  tabelas novas). Precisa rodar depois de `migrate_entitystores_realtime.sql`
+  (usa `bank_accounts`).
 
 ## Convenções
 

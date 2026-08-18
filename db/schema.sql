@@ -317,13 +317,19 @@ create table vehicles (
 );
 
 create table vehicle_fuel_logs (
-  id          uuid primary key default gen_random_uuid(),
-  vehicle_id  text not null references vehicles(id) on delete cascade,
-  date        date not null default current_date,
-  liters      numeric(10,2),
-  cost        numeric(12,2),
-  odometer_km numeric(12,1),
-  created_at  timestamptz not null default now()
+  id             text primary key default gen_random_uuid()::text,
+  org_id         uuid references organizations(id) on delete cascade,
+  technician_id  uuid references users(id) on delete set null,
+  vehicle_id     text references vehicles(id) on delete cascade,
+  date           date not null default current_date,
+  liters         numeric(10,2),
+  cost           numeric(12,2),      -- legado; ver "amount" (FuelLog.amount)
+  amount         numeric(12,2),
+  odometer_km    numeric(12,1),      -- legado; ver odometer_start/odometer_end
+  odometer_start numeric(12,1),
+  odometer_end   numeric(12,1),
+  notes          text,
+  created_at     timestamptz not null default now()
 );
 
 create table vehicle_maintenance (
@@ -628,11 +634,11 @@ create table fiscal_settings (
 );
 
 create table invoices (
-  id               uuid primary key default gen_random_uuid(),
+  id               text primary key default gen_random_uuid()::text,
   org_id           uuid not null references organizations(id) on delete cascade,
   service_order_id text references service_orders(id) on delete set null,
   customer_id      text references customers(id) on delete set null,
-  number           text,
+  number           bigint,
   series           text,
   amount           numeric(14,2) not null,
   tax_amount       numeric(14,2) default 0,
@@ -673,7 +679,7 @@ create table inspections (
 -- CRM (funil de vendas / relacionamento)
 -- ---------------------------------------------------------------------------
 create table crm_leads (
-  id           uuid primary key default gen_random_uuid(),
+  id           text primary key default gen_random_uuid()::text,
   org_id       uuid not null references organizations(id) on delete cascade,
   name         text not null,
   company      text,
@@ -693,7 +699,7 @@ create index on crm_leads (org_id, stage);
 
 create table crm_activities (
   id         uuid primary key default gen_random_uuid(),
-  lead_id    uuid not null references crm_leads(id) on delete cascade,
+  lead_id    text not null references crm_leads(id) on delete cascade,
   user_id    uuid references users(id) on delete set null,
   kind       text,                 -- ligação, whatsapp, email, reunião, nota
   content    text,

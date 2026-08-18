@@ -5,12 +5,17 @@ import { getOrgProfile } from '@/store/orgProfileStore';
 import { computeTaxes, type TaxConfig } from '@/application/fiscal/tax';
 import { getProvider } from '@/application/fiscal/providers';
 import type { FiscalConfig } from './settingsStore';
+import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
+import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { toast } from '@/store/toastStore';
 
 /**
- * Notas Fiscais de Serviço (NFS-e). `emitFiscal` calcula a tributação e emite
- * pelo provedor configurado (Governo · NFS-e Nacional via backend, ou simulação).
+ * Notas Fiscais de Serviço (NFS-e) — dual-mode (ver docs/ARCHITECTURE.md
+ * §3.1/§3.2). `emitFiscal` calcula a tributação e emite pelo provedor
+ * configurado (Governo · NFS-e Nacional via backend, ou simulação).
  */
 const KEY = 'namira-invoices';
+const TABLE = 'invoices';
 
 export type InvoiceInput = Omit<Invoice, 'id' | 'orgId' | 'number' | 'series' | 'status' | 'issuedAt'>;
 export interface FiscalEmitInput { serviceOrderId?: string; customerId?: string; description: string; amount: number }
@@ -28,6 +33,7 @@ interface InvoicesState {
 }
 
 function load(): Invoice[] {
+  if (supabaseEnabled) return [];
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) return JSON.parse(raw) as Invoice[];
@@ -36,7 +42,27 @@ function load(): Invoice[] {
   }
   return invoicesSeed;
 }
-const save = (v: unknown) => { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch { /* ignora */ } };
+const save = (v: Invoice[]) => {
+  if (supabaseEnabled) return;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(v));
+  } catch {
+    /* ignora */
+  }
+};
+
+function insertRemote(invoice: Invoice) {
+  if (!supabaseEnabled || !supabase) return;
+  supabase
+    .from(TABLE)
+    .insert(toSnakeRow(invoice as unknown as Record<string, unknown>))
+    .then(({ error }) => {
+      if (error) {
+        useInvoicesStore.setState({ invoices: useInvoicesStore.getState().invoices.filter((i) => i.id !== invoice.id) });
+        toast('Não foi possível registrar a nota fiscal — tente novamente.', { tone: 'danger' });
+      }
+    });
+}
 
 export const useInvoicesStore = create<InvoicesState>((set, get) => ({
   invoices: load(),
@@ -52,7 +78,8 @@ export const useInvoicesStore = create<InvoicesState>((set, get) => ({
       ...input,
     };
     const invoices = [invoice, ...get().invoices];
-    save(invoices); set({ invoices });
+    set({ invoices });
+    if (supabaseEnabled) insertRemote(invoice); else save(invoices);
     return invoice;
   },
   emitFiscal: async (input, cfg, tomador) => {
@@ -89,11 +116,58 @@ export const useInvoicesStore = create<InvoicesState>((set, get) => ({
       taxes,
     };
     const invoices = [invoice, ...get().invoices];
-    save(invoices); set({ invoices });
+    set({ invoices });
+    if (supabaseEnabled) insertRemote(invoice); else save(invoices);
     return invoice;
   },
   cancel: (id) => {
-    const invoices = get().invoices.map((i) => (i.id === id ? { ...i, status: 'cancelada' as const } : i));
-    save(invoices); set({ invoices });
+    const prev = get().invoices;
+    const invoices = prev.map((i) => (i.id === id ? { ...i, status: 'cancelada' as const } : i));
+    set({ invoices });
+    if (supabaseEnabled && supabase) {
+      const updated = invoices.find((i) => i.id === id);
+      if (!updated) return;
+      supabase
+        .from(TABLE)
+        .update(toSnakeRow(updated as unknown as Record<string, unknown>))
+        .eq('id', id)
+        .then(({ error }) => {
+          if (error) {
+            set({ invoices: prev });
+            toast('Não foi possível cancelar a nota fiscal — tente novamente.', { tone: 'danger' });
+          }
+        });
+    } else {
+      save(invoices);
+    }
   },
 }));
+
+if (supabaseEnabled && supabase) {
+  supabase
+    .from(TABLE)
+    .select('*')
+    .order('issued_at', { ascending: false })
+    .then(({ data, error }) => {
+      if (!error && data) {
+        useInvoicesStore.setState({ invoices: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<Invoice>(r)) });
+      }
+    });
+
+  supabase
+    .channel(`${TABLE}-sync`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, (payload) => {
+      const state = useInvoicesStore.getState();
+      if (payload.eventType === 'DELETE') {
+        const oldId = (payload.old as { id?: string } | null)?.id;
+        if (oldId) useInvoicesStore.setState({ invoices: state.invoices.filter((i) => i.id !== oldId) });
+        return;
+      }
+      const invoice = fromSnakeRow<Invoice>(payload.new as Record<string, unknown>);
+      const exists = state.invoices.some((i) => i.id === invoice.id);
+      useInvoicesStore.setState({
+        invoices: exists ? state.invoices.map((i) => (i.id === invoice.id ? invoice : i)) : [invoice, ...state.invoices],
+      });
+    })
+    .subscribe();
+}
