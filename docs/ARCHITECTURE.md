@@ -120,6 +120,26 @@ nova para um módulo migrado, já nasça com `id text primary key default
 gen_random_uuid()::text` — não copie o padrão antigo de `schema.sql` sem
 conferir.
 
+### 3.3 Variante singleton — perfil da empresa e configurações
+
+`orgProfileStore` e `settingsStore` não são listas — são **uma linha por
+organização** (mapeiam pra `organizations` e `fiscal_settings`). Padrão:
+- **Leitura**: `select('*').single()` (ou `.maybeSingle()`) sem filtro
+  explícito de `org_id` — a política RLS já restringe a exatamente uma linha
+  visível (a do próprio usuário), então não precisa saber o `org_id` de
+  antemão só pra ler.
+- **Escrita**: aí sim precisa do `org_id` — vem direto de
+  `useAppStore.getState().currentUser?.orgId` (é o id real da organização,
+  vindo do JWT/claims, não o `'org-namira'` de fallback do modo standalone).
+  Se ainda não resolveu (sessão carregando), a escrita local acontece mas a
+  remota é pulada silenciosamente — a próxima carga reconcilia; janela de
+  corrida desprezível na prática (são telas de configuração, não a primeira
+  coisa que carrega).
+- **Realtime**: mesmo canal de sempre, mas o merge substitui o estado
+  inteiro (não é upsert-por-id numa lista) — e filtra pelo `org_id`/`id` do
+  payload pra ignorar eco de outra organização (irrelevante hoje, já que RLS
+  não entregaria de qualquer forma, mas documenta a intenção).
+
 ## 4. Fluxos principais
 
 ### 4.1 Do agendamento à Ordem de Serviço

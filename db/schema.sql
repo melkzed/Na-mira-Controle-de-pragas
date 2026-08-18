@@ -724,12 +724,14 @@ create table notifications (
 create index on notifications (user_id, read_at);
 
 create table audit_logs (
-  id          uuid primary key default gen_random_uuid(),
+  id          text primary key default gen_random_uuid()::text,
   org_id      uuid not null references organizations(id) on delete cascade,
   user_id     uuid references users(id) on delete set null,
+  user_name   text,
   action      text not null,        -- create, update, delete, login...
   entity_type text,
-  entity_id   uuid,
+  entity_id   text,                 -- ids gerados no cliente, formato varia por entidade
+  description text,
   changes     jsonb,
   ip          text,
   created_at  timestamptz not null default now()

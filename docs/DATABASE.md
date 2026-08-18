@@ -85,6 +85,15 @@ Já migrados:
   (`trap_devices`/`trap_inspections`, tabelas novas — `trap_inspections` não
   tem `org_id` próprio, herda o isolamento via `trap_id`).
 
+- **Auditoria, Perfil da empresa, Configurações** (`db/migrate_org_realtime.sql`)
+  — último lote. `auditStore` é insert-only (log de auditoria). `orgProfileStore`
+  e `settingsStore` são **singletons** (uma linha por organização — mapeiam
+  pra `organizations` e `fiscal_settings`, sem lista/CRUD) — padrão novo,
+  ver `docs/ARCHITECTURE.md` §3.3. `fiscal_settings` ganhou todas as colunas
+  do `FiscalConfig` completo (provider, ambiente, retenções…) mais
+  assinaturas eletrônicas e emergência/CIT, que o app sempre persistiu
+  junto na mesma chave.
+
 **Ordem completa de todos os scripts da Fase 2** (rodar do zero, um de cada
 vez, nesta ordem — cada um depende de colunas/tabelas do anterior):
 1. `db/migrate_ids_to_text.sql`
@@ -94,7 +103,11 @@ vez, nesta ordem — cada um depende de colunas/tabelas do anterior):
 5. `db/migrate_crm_realtime.sql`
 6. `db/migrate_financeiro2_realtime.sql` (precisa de `bank_accounts`, criada no passo 2)
 7. `db/migrate_campo_realtime.sql`
-8. `db/rls.sql` de novo (protege todas as tabelas novas — a política é criada por introspecção)
+8. `db/migrate_org_realtime.sql`
+9. `db/rls.sql` de novo (protege todas as tabelas novas — a política é criada por introspecção)
+
+Com isso, **todos os módulos do app estão migrados** — não sobra nenhuma
+store em localStorage-only (exceto `messagesStore`, de propósito — ver acima).
 
 ## Convenções
 
