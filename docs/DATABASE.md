@@ -18,9 +18,17 @@ Authentication → Users a uma linha em `public.users`).
 Cada módulo migrado de `localStorage` para dados compartilhados de verdade
 (ver `docs/ARCHITECTURE.md` §3.1) ganha um `db/migrate_<modulo>_realtime.sql`
 próprio — roda depois do setup acima, sempre que o módulo entrar em produção.
-Já migrados: **Clientes** (`db/migrate_customers_realtime.sql`) — completa
-colunas do cadastro completo que não existiam na tabela original e habilita
-Realtime na tabela `customers`.
+Já migrados:
+- **Clientes** (`db/migrate_customers_realtime.sql`) — completa colunas do
+  cadastro completo que não existiam na tabela original e habilita Realtime
+  na tabela `customers`.
+- **Agenda** (`db/migrate_appointments_realtime.sql`) — completa colunas de
+  execução em campo (`fixed_time`, `technician_notes`, `photos`,
+  `technician_signature`, `products`) e habilita Realtime na tabela
+  `appointments`. Atenção: `photos` grava as fotos como data URL (base64)
+  direto na linha, igual já fazia no `localStorage` — funciona, mas não
+  escala bem; migrar pra Supabase Storage (guardando só a URL do arquivo) é
+  um follow-up conhecido, ainda não feito.
 
 ## Convenções
 

@@ -1,22 +1,28 @@
 import { create } from 'zustand';
-import type { Appointment } from '@/domain/types';
+import type { Appointment, AppointmentProduct, ServiceOrderPhoto } from '@/domain/types';
 import type { AppointmentStatus } from '@/domain/enums';
 import { appointments as seedAppointments } from '@/infrastructure/seed/data';
 import { isDueForConfirmation } from '@/lib/confirmation';
+import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { toast } from '@/store/toastStore';
 import { useAppStore } from './appStore';
 import { useCustomersStore } from './customersStore';
 
 /**
- * Store reativa de Agendamentos (inicializada a partir do seed, persistida em
- * localStorage). Mutações re-renderizam a Agenda. Pronta para trocar por
- * chamadas ao Supabase mantendo a mesma interface.
+ * Store reativa de Agendamentos.
  *
- * Observação: os agendamentos do seed são relativos à data atual; por isso a
- * store NÃO é persistida entre dias (senão a agenda "envelheceria"). Só
- * persiste dentro da sessão do dia.
+ * Modo standalone (sem Supabase): inicializada a partir do seed, persistida
+ * em localStorage só dentro do dia — os horários do seed são relativos a
+ * "hoje", então a cada dia novo ela recarrega do zero (senão a agenda
+ * "envelheceria"). Comportamento inalterado desde antes da Fase 2.
+ *
+ * Modo Supabase: dado real e compartilhado — sem carimbo de dia (não faz
+ * sentido "reiniciar" a agenda de verdade todo dia). Escrita otimista +
+ * Realtime, mesmo padrão de customersStore.ts (ver docs/ARCHITECTURE.md §3.1).
  */
 const STORAGE_KEY = 'namira-appointments';
 const STAMP_KEY = 'namira-appointments-day';
+const TABLE = 'appointments';
 
 export type AppointmentInput = Omit<Appointment, 'id' | 'orgId' | 'products'> &
   Partial<Pick<Appointment, 'products'>>;
@@ -43,6 +49,7 @@ function today(): string {
 }
 
 function load(): Appointment[] {
+  if (supabaseEnabled) return [];
   try {
     if (localStorage.getItem(STAMP_KEY) === today()) {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -55,6 +62,7 @@ function load(): Appointment[] {
 }
 
 function persist(list: Appointment[]) {
+  if (supabaseEnabled) return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
     localStorage.setItem(STAMP_KEY, today());
@@ -67,42 +75,168 @@ function uid(): string {
   return 'a-' + Math.random().toString(36).slice(2, 9);
 }
 
+/** Formato das colunas em public.appointments (snake_case) — ver
+ *  db/schema.sql e db/migrate_appointments_realtime.sql. */
+interface AppointmentRow {
+  id: string;
+  org_id: string;
+  customer_id: string;
+  service_type_id: string | null;
+  technician_id: string | null;
+  team_id: string | null;
+  vehicle_id: string | null;
+  status: string;
+  priority: string;
+  scheduled_start: string;
+  scheduled_end: string;
+  estimated_minutes: number | null;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  fixed_time: boolean;
+  notes: string | null;
+  technician_notes: string | null;
+  photos: ServiceOrderPhoto[] | null;
+  technician_signature: string | null;
+  route_order: number | null;
+  products: AppointmentProduct[] | null;
+  recurrence_id: string | null;
+  recurrence_rule: string | null;
+  confirmed_at: string | null;
+}
+
+function fromRow(row: AppointmentRow): Appointment {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    customerId: row.customer_id,
+    serviceTypeId: row.service_type_id ?? undefined,
+    technicianId: row.technician_id ?? undefined,
+    teamId: row.team_id ?? undefined,
+    vehicleId: row.vehicle_id ?? undefined,
+    status: row.status as AppointmentStatus,
+    priority: row.priority as Appointment['priority'],
+    scheduledStart: row.scheduled_start,
+    scheduledEnd: row.scheduled_end,
+    estimatedMinutes: row.estimated_minutes ?? undefined,
+    address: row.address ?? undefined,
+    latitude: row.latitude ?? undefined,
+    longitude: row.longitude ?? undefined,
+    fixedTime: row.fixed_time,
+    notes: row.notes ?? undefined,
+    technicianNotes: row.technician_notes ?? undefined,
+    photos: row.photos ?? undefined,
+    technicianSignature: row.technician_signature ?? undefined,
+    routeOrder: row.route_order ?? undefined,
+    products: row.products ?? [],
+    recurrenceId: row.recurrence_id ?? undefined,
+    recurrenceRule: row.recurrence_rule ?? undefined,
+    confirmedAt: row.confirmed_at ?? undefined,
+  };
+}
+
+function toRow(a: Appointment): AppointmentRow {
+  return {
+    id: a.id,
+    org_id: a.orgId,
+    customer_id: a.customerId,
+    service_type_id: a.serviceTypeId ?? null,
+    technician_id: a.technicianId ?? null,
+    team_id: a.teamId ?? null,
+    vehicle_id: a.vehicleId ?? null,
+    status: a.status,
+    priority: a.priority,
+    scheduled_start: a.scheduledStart,
+    scheduled_end: a.scheduledEnd,
+    estimated_minutes: a.estimatedMinutes ?? null,
+    address: a.address ?? null,
+    latitude: a.latitude ?? null,
+    longitude: a.longitude ?? null,
+    fixed_time: a.fixedTime ?? false,
+    notes: a.notes ?? null,
+    technician_notes: a.technicianNotes ?? null,
+    photos: a.photos ?? null,
+    technician_signature: a.technicianSignature ?? null,
+    route_order: a.routeOrder ?? null,
+    products: a.products ?? [],
+    recurrence_id: a.recurrenceId ?? null,
+    recurrence_rule: a.recurrenceRule ?? null,
+    confirmed_at: a.confirmedAt ?? null,
+  };
+}
+
+/** Grava no Supabase em segundo plano; desfaz o estado otimista + avisa em
+ *  caso de falha. Usado por update/setStatus/sweepConfirmations. */
+function syncUpdate(id: string, rollbackTo: Appointment[]) {
+  if (!supabaseEnabled || !supabase) return;
+  const updated = useAppointmentsStore.getState().appointments.find((a) => a.id === id);
+  if (!updated) return;
+  supabase.from(TABLE).update(toRow(updated)).eq('id', id).then(({ error }) => {
+    if (error) {
+      useAppointmentsStore.setState({ appointments: rollbackTo });
+      toast('Não foi possível salvar o agendamento — tente novamente.', { tone: 'danger' });
+    }
+  });
+}
+
 export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
   appointments: load(),
   add: (input) => {
     const appt: Appointment = {
       id: uid(),
-      orgId: 'org-namira',
+      orgId: useAppStore.getState().currentUser?.orgId ?? 'org-namira',
       products: input.products ?? [],
       ...input,
     };
     const next = [...get().appointments, appt];
-    persist(next);
     set({ appointments: next });
+    if (supabaseEnabled && supabase) {
+      supabase.from(TABLE).insert(toRow(appt)).then(({ error }) => {
+        if (error) {
+          set({ appointments: get().appointments.filter((a) => a.id !== appt.id) });
+          toast('Não foi possível criar o agendamento — tente novamente.', { tone: 'danger' });
+        }
+      });
+    } else {
+      persist(next);
+    }
     return appt;
   },
   update: (id, patch) => {
-    const next = get().appointments.map((a) => (a.id === id ? { ...a, ...patch } : a));
-    persist(next);
+    const prev = get().appointments;
+    const next = prev.map((a) => (a.id === id ? { ...a, ...patch } : a));
     set({ appointments: next });
+    if (supabaseEnabled) syncUpdate(id, prev); else persist(next);
   },
   setStatus: (id, status) => {
-    const next = get().appointments.map((a) => (a.id === id ? { ...a, status } : a));
-    persist(next);
+    const prev = get().appointments;
+    const next = prev.map((a) => (a.id === id ? { ...a, status } : a));
     set({ appointments: next });
+    if (supabaseEnabled) syncUpdate(id, prev); else persist(next);
   },
   remove: (id) => {
-    const next = get().appointments.filter((a) => a.id !== id);
-    persist(next);
+    const prev = get().appointments;
+    const next = prev.filter((a) => a.id !== id);
     set({ appointments: next });
+    if (supabaseEnabled && supabase) {
+      supabase.from(TABLE).delete().eq('id', id).then(({ error }) => {
+        if (error) {
+          set({ appointments: prev });
+          toast('Não foi possível excluir o agendamento — tente novamente.', { tone: 'danger' });
+        }
+      });
+    } else {
+      persist(next);
+    }
   },
   sweepConfirmations: () => {
-    const due = get().appointments.filter((a) => a.status === 'programada' && isDueForConfirmation(a.scheduledStart, a.recurrenceRule));
+    const prev = get().appointments;
+    const due = prev.filter((a) => a.status === 'programada' && isDueForConfirmation(a.scheduledStart, a.recurrenceRule));
     if (!due.length) return;
     const dueIds = new Set(due.map((a) => a.id));
-    const next = get().appointments.map((a) => (dueIds.has(a.id) ? { ...a, status: 'agendado' as AppointmentStatus } : a));
-    persist(next);
+    const next = prev.map((a) => (dueIds.has(a.id) ? { ...a, status: 'agendado' as AppointmentStatus } : a));
     set({ appointments: next });
+    if (supabaseEnabled) due.forEach((a) => syncUpdate(a.id, prev)); else persist(next);
     due.forEach((a) => {
       const custName = useCustomersStore.getState().customers.find((c) => c.id === a.customerId)?.name ?? 'cliente';
       useAppStore.getState().addNotification({
@@ -117,4 +251,40 @@ export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
 
 // Roda uma vez ao carregar o módulo — mantém as ocorrências recorrentes em
 // dia sem depender de um job em segundo plano (app 100% client-side).
-useAppointmentsStore.getState().sweepConfirmations();
+// No modo Supabase, roda só depois da carga inicial (senão varre a lista
+// vazia antes do fetch chegar).
+if (!supabaseEnabled) {
+  useAppointmentsStore.getState().sweepConfirmations();
+}
+
+if (supabaseEnabled && supabase) {
+  supabase
+    .from(TABLE)
+    .select('*')
+    .order('scheduled_start', { ascending: true })
+    .then(({ data, error }) => {
+      if (!error && data) {
+        useAppointmentsStore.setState({ appointments: (data as AppointmentRow[]).map(fromRow) });
+        useAppointmentsStore.getState().sweepConfirmations();
+      }
+    });
+
+  supabase
+    .channel('appointments-sync')
+    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, (payload) => {
+      const state = useAppointmentsStore.getState();
+      if (payload.eventType === 'DELETE') {
+        const oldId = (payload.old as { id?: string } | null)?.id;
+        if (oldId) useAppointmentsStore.setState({ appointments: state.appointments.filter((a) => a.id !== oldId) });
+        return;
+      }
+      const appt = fromRow(payload.new as AppointmentRow);
+      const exists = state.appointments.some((a) => a.id === appt.id);
+      useAppointmentsStore.setState({
+        appointments: exists
+          ? state.appointments.map((a) => (a.id === appt.id ? appt : a))
+          : [...state.appointments, appt],
+      });
+    })
+    .subscribe();
+}
