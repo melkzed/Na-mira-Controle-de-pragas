@@ -147,12 +147,38 @@ export function googleMapsRoute(stops: GeoPoint[]): string {
   return waypoints ? `${base}&waypoints=${encodeURIComponent(waypoints)}` : base;
 }
 
+/** Link de navegação (Google Maps) até um destino descrito por ENDEREÇO em
+ *  texto — usado quando o cliente ainda não tem latitude/longitude
+ *  cadastradas com precisão. O próprio Google Maps geocodifica o endereço ao
+ *  abrir no celular do técnico; não depende de nenhum serviço de
+ *  geocodificação próprio nem de API paga. */
+export function googleMapsRouteToAddress(address: string): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}&travelmode=driving`;
+}
+
+/** Formata o endereço de um cliente para exibição/uso em links de navegação. */
+export function formatAddress(c: { street?: string; number?: string; district?: string; city?: string; state?: string }): string {
+  return [c.street && `${c.street}, ${c.number ?? 's/n'}`, c.district, c.city && `${c.city}/${c.state ?? ''}`]
+    .filter(Boolean)
+    .join(' — ');
+}
+
 /** Link do Waze para um destino (o Waze não suporta múltiplas paradas por URL). */
 export function wazeLink(point: GeoPoint): string {
   return `https://waze.com/ul?ll=${point.lat},${point.lng}&navigate=yes`;
 }
 
+/** Link do Waze até um destino por endereço em texto (fallback sem coordenadas). */
+export function wazeLinkToAddress(address: string): string {
+  return `https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes`;
+}
+
 /** Link do Apple Maps para um destino. */
 export function appleMapsLink(point: GeoPoint): string {
   return `https://maps.apple.com/?daddr=${point.lat},${point.lng}&dirflg=d`;
+}
+
+/** Link do Apple Maps até um destino por endereço em texto (fallback sem coordenadas). */
+export function appleMapsLinkToAddress(address: string): string {
+  return `https://maps.apple.com/?daddr=${encodeURIComponent(address)}&dirflg=d`;
 }

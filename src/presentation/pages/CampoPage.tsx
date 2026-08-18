@@ -29,7 +29,10 @@ import { X } from 'lucide-react';
 import type { Appointment, PaymentStatus, ServiceOrder, ServiceOrderPhoto, ServiceOrderProduct } from '@/domain/types';
 import { fmtTime } from '@/lib/date';
 import { cn } from '@/lib/utils';
-import { appleMapsLink, googleMapsRoute, wazeLink } from '@/lib/geo';
+import {
+  appleMapsLink, appleMapsLinkToAddress, formatAddress,
+  googleMapsRoute, googleMapsRouteToAddress, wazeLink, wazeLinkToAddress,
+} from '@/lib/geo';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
 import { stockLocations } from '@/infrastructure/seed/data';
 
@@ -260,6 +263,7 @@ function VisitDetailDrawer({ appt, onClose, onNavigate }: { appt: Appointment | 
   const linkedOs = serviceOrderForAppointment(appt.id);
   const planned = appt.products?.length ? appt.products.map((p) => ({ productId: p.productId, qty: p.plannedQty })) : (st?.defaultProducts ?? []);
   const phone = cust?.phone?.replace(/[^\d+]/g, '');
+  const canNavigateTo = appt.latitude != null || !!appt.address || !!(cust && formatAddress(cust));
 
   return (
     <Drawer open={!!appt} onClose={onClose} title={cust?.name ?? 'Visita'} subtitle={`${st?.name ?? ''} · ${fmtTime(appt.scheduledStart)}`}>
@@ -277,7 +281,7 @@ function VisitDetailDrawer({ appt, onClose, onNavigate }: { appt: Appointment | 
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <Button variant="outline" size="sm" leftIcon={<Navigation size={15} />} disabled={appt.latitude == null} onClick={() => onNavigate(appt)}>Navegar</Button>
+          <Button variant="outline" size="sm" leftIcon={<Navigation size={15} />} disabled={!canNavigateTo} onClick={() => onNavigate(appt)}>Navegar</Button>
           <Button variant="outline" size="sm" leftIcon={<PhoneCall size={15} />} disabled={!phone} onClick={() => phone && window.open(`tel:${phone}`)}>Ligar</Button>
         </div>
 
@@ -358,6 +362,10 @@ function NavigateDrawer({ appt, onClose }: { appt: Appointment | null; onClose: 
   if (!appt) return null;
   const cust = getCustomer(appt.customerId);
   const dest = appt.latitude != null && appt.longitude != null ? { lat: appt.latitude, lng: appt.longitude } : null;
+  // Sem coordenadas cadastradas, cai pro endereço em texto — o app de mapas
+  // geocodifica sozinho ao abrir, então a navegação continua funcionando.
+  const addressFallback = appt.address || (cust ? formatAddress(cust) : '');
+  const canNavigate = !!dest || !!addressFallback;
   const stops: RouteStop[] = [
     ...(pos ? [{ id: 'me', label: 'Você está aqui', lat: pos.lat, lng: pos.lng, color: 'rgb(37 99 235)' } as RouteStop] : []),
     ...(dest ? [{ id: 'dest', label: cust?.name ?? 'Destino', lat: dest.lat, lng: dest.lng } as RouteStop] : []),
@@ -381,9 +389,9 @@ function NavigateDrawer({ appt, onClose }: { appt: Appointment | null; onClose: 
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Abrir no aplicativo de mapas</p>
           <div className="grid grid-cols-3 gap-2">
-            <Button variant="outline" size="sm" disabled={!dest} onClick={() => dest && open(googleMapsRoute(pos ? [pos, dest] : [dest]))}>Maps</Button>
-            <Button variant="outline" size="sm" disabled={!dest} onClick={() => dest && open(wazeLink(dest))}>Waze</Button>
-            <Button variant="outline" size="sm" disabled={!dest} onClick={() => dest && open(appleMapsLink(dest))}>Apple</Button>
+            <Button variant="outline" size="sm" disabled={!canNavigate} onClick={() => open(dest ? googleMapsRoute(pos ? [pos, dest] : [dest]) : googleMapsRouteToAddress(addressFallback))}>Maps</Button>
+            <Button variant="outline" size="sm" disabled={!canNavigate} onClick={() => open(dest ? wazeLink(dest) : wazeLinkToAddress(addressFallback))}>Waze</Button>
+            <Button variant="outline" size="sm" disabled={!canNavigate} onClick={() => open(dest ? appleMapsLink(dest) : appleMapsLinkToAddress(addressFallback))}>Apple</Button>
           </div>
         </div>
       </div>
@@ -566,7 +574,7 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
         )}
 
         <div className="grid grid-cols-2 gap-2">
-          <Button variant="outline" size="sm" leftIcon={<Navigation size={15} />} disabled={appt.latitude == null || appt.longitude == null} onClick={onNavigate}>Navegar</Button>
+          <Button variant="outline" size="sm" leftIcon={<Navigation size={15} />} disabled={appt.latitude == null && !appt.address && !(cust && formatAddress(cust))} onClick={onNavigate}>Navegar</Button>
           <Button
             variant="outline" size="sm" leftIcon={<PhoneCall size={15} />}
             disabled={!cust?.phone}
