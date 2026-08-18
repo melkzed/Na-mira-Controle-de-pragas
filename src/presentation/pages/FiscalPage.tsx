@@ -61,7 +61,8 @@ export function FiscalPage() {
             <Row label="CNPJ" value={org.cnpj} />
             <Row label="Regime tributário" value={org.taxRegime} />
             <Row label="Município" value={`${org.city}/${org.state}`} />
-            <Row label="Código de serviço (NFS-e)" value={fiscal.itemListaServico} />
+            <Row label="Item lista de serviços (LC 116)" value={fiscal.itemListaServico} />
+            {fiscal.codigoTributarioMunicipal && <Row label="Código tributário municipal" value={fiscal.codigoTributarioMunicipal} />}
             <Row label="Alíquota ISS" value={`${(fiscal.issRate * 100).toFixed(1)}%`} />
           </CardBody>
         </Card>
@@ -211,7 +212,10 @@ function FiscalConfigPanel() {
             </Field>
           )}
           <Field label="Município (código IBGE)"><Input value={fiscal.municipioIbge} onChange={(e) => setFiscal({ municipioIbge: e.target.value.replace(/\D/g, '') })} placeholder="3550308" /></Field>
-          <Field label="Item lista de serviços (LC 116)"><Input value={fiscal.itemListaServico} onChange={(e) => setFiscal({ itemListaServico: e.target.value })} placeholder="14.02" /></Field>
+          <Field label="Item lista de serviços (LC 116)" hint="Padrão nacional — ex.: 7.13 ou 14.02, conforme a atividade"><Input value={fiscal.itemListaServico} onChange={(e) => setFiscal({ itemListaServico: e.target.value })} placeholder="14.02" /></Field>
+          {fiscal.provider === 'focusnfe' && (
+            <Field label="Código tributário do município (opcional)" hint="Só se o município exigir código próprio além do LC 116 — não presuma que são o mesmo número"><Input value={fiscal.codigoTributarioMunicipal} onChange={(e) => setFiscal({ codigoTributarioMunicipal: e.target.value })} placeholder="Ex.: 1491 (deixe em branco se não souber)" /></Field>
+          )}
           <Field label="Regime tributário"><Select value={fiscal.regime} onChange={(e) => setFiscal({ regime: e.target.value as any })}><option value="simples">Simples Nacional</option><option value="presumido">Lucro Presumido</option><option value="real">Lucro Real</option></Select></Field>
           <Field label="Alíquota de ISS (%)"><Input type="number" step="0.1" value={(fiscal.issRate * 100).toString()} onChange={(e) => setFiscal({ issRate: (Number(e.target.value) || 0) / 100 })} /></Field>
         </div>

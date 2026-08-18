@@ -13,6 +13,102 @@ Authentication → Users a uma linha em `public.users`).
 > de demonstração). Sem o hook registrado no painel, as políticas de RLS negam
 > tudo (fail-closed) — o app não funciona, mas nenhum dado vaza.
 
+## Fase 2 — dados compartilhados por módulo
+
+Cada módulo migrado de `localStorage` para dados compartilhados de verdade
+(ver `docs/ARCHITECTURE.md` §3.1) ganha um `db/migrate_<modulo>_realtime.sql`
+próprio — roda depois do setup acima, sempre que o módulo entrar em produção.
+Já migrados:
+- **Clientes** (`db/migrate_customers_realtime.sql`) — completa colunas do
+  cadastro completo que não existiam na tabela original e habilita Realtime
+  na tabela `customers`.
+- **Agenda** (`db/migrate_appointments_realtime.sql`) — completa colunas de
+  execução em campo (`fixed_time`, `technician_notes`, `photos`,
+  `technician_signature`, `products`) e habilita Realtime na tabela
+  `appointments`. Atenção: `photos` grava as fotos como data URL (base64)
+  direto na linha, igual já fazia no `localStorage` — funciona, mas não
+  escala bem; migrar pra Supabase Storage (guardando só a URL do arquivo) é
+  um follow-up conhecido, ainda não feito.
+- **16 módulos de cadastro simples** (`db/migrate_entitystores_realtime.sql`)
+  — Usuários, Departamentos, Produtos, Financeiro, Equipamentos, Veículos,
+  Serviços, Não-conformidades, Pragas, Áreas tratadas, Tipos de armadilha,
+  Licenças, Contas a pagar recorrentes, Contas bancárias, Cheques,
+  Empréstimos — todos migrados de uma vez, via a fábrica genérica
+  `createEntityStore` (ver `docs/ARCHITECTURE.md` §3.2). Cria as 7 tabelas
+  que ainda não existiam (`departments`, `non_conformities`, `trap_types`,
+  `recurring_payables`, `bank_accounts`, `checks`, `loan_investments`),
+  completa colunas que faltavam em `users`/`products`/`equipment`/`vehicles`/
+  `finance_entries` e habilita Realtime nas 16 tabelas.
+
+  **Rodar nesta ordem exata**, uma vez só, num projeto que já tenha
+  `schema.sql`/`rls.sql` aplicados:
+  1. `db/migrate_ids_to_text.sql` — corrige um bug de tipagem que já afetava
+     Clientes/Agenda: `id` estava `uuid`, mas o app sempre gera o próprio id
+     no cliente (`"c-3f9k2z1"`, não um UUID) — sem isso, criar um registro
+     novo em modo Supabase falhava com "invalid input syntax for type uuid".
+     Ver `docs/ARCHITECTURE.md` §3.2 para o porquê.
+  2. `db/migrate_entitystores_realtime.sql` — cria/completa as tabelas acima.
+  3. `db/rls.sql` de novo — a política `org_isolation` é criada por
+     introspecção (toda tabela com `org_id`), então as 7 tabelas novas só
+     ficam protegidas depois desse re-run. Idempotente.
+- **Ordens de Serviço** (`db/migrate_serviceorders_realtime.sql`) — corrige o
+  tipo do id (mesmo bug do item acima, específico de `service_orders` e de
+  quem referencia `service_orders(id)`: `service_order_products`,
+  `service_order_pests`, `service_order_equipment`, `stock_movements`,
+  `checklist_runs`, `finance_entries`, `commissions`, `invoices`), completa
+  as colunas da OS "avançada" (equipe, pagamento, garantia, recorrência,
+  assinaturas…) que não existiam em `schema.sql`, e habilita Realtime.
+  Rodar depois dos dois scripts acima.
+- **Estoque** (`db/migrate_stock_realtime.sql`) — corrige o tipo de
+  `stock_balances.id`/`location_id` (mesmo motivo dos itens acima;
+  `location_id` nunca teve uma tabela `stock_locations` de verdade por trás
+  no app, então a FK "aspiracional" foi removida em vez de recriada), cria
+  `stock_requests` e `equipment_requests` (não existiam), habilita Realtime
+  nas três. Lembre de rodar `db/rls.sql` de novo depois (tabelas novas).
+- **CRM** (`db/migrate_crm_realtime.sql`) — corrige o tipo de `crm_leads.id`
+  (mesmo motivo dos itens acima) e habilita Realtime. **Mensagens de
+  WhatsApp (`messagesStore.ts`) ficaram de fora de propósito** — é uma
+  simulação (`WhatsMessage`, comentário no próprio arquivo: "para produção,
+  troque send/markDelivered por chamadas à API do WhatsApp"), não dado real
+  que faça sentido sincronizar entre usuários agora.
+- **Financeiro complementar** (`db/migrate_financeiro2_realtime.sql`) —
+  Notas fiscais emitidas (`invoices`: corrige `id`/`number` — igual aos
+  itens acima, mais colunas de retorno do provedor fiscal), Transações
+  bancárias e Fechamento de caixa (`bank_transactions`/`cash_closings`,
+  tabelas novas). Precisa rodar depois de `migrate_entitystores_realtime.sql`
+  (usa `bank_accounts`).
+- **App do Técnico** (`db/migrate_campo_realtime.sql`) — Abastecimento de
+  veículo (`vehicle_fuel_logs`: schema original não tinha `org_id`/
+  `technician_id`, obrigatórios no domínio, nem `odometer_start`/
+  `odometer_end`/`amount`/`notes` — completados direto em `schema.sql`),
+  Ponto (`time_clock_entries`, tabela nova) e Armadilhas/MIP
+  (`trap_devices`/`trap_inspections`, tabelas novas — `trap_inspections` não
+  tem `org_id` próprio, herda o isolamento via `trap_id`).
+
+- **Auditoria, Perfil da empresa, Configurações** (`db/migrate_org_realtime.sql`)
+  — último lote. `auditStore` é insert-only (log de auditoria). `orgProfileStore`
+  e `settingsStore` são **singletons** (uma linha por organização — mapeiam
+  pra `organizations` e `fiscal_settings`, sem lista/CRUD) — padrão novo,
+  ver `docs/ARCHITECTURE.md` §3.3. `fiscal_settings` ganhou todas as colunas
+  do `FiscalConfig` completo (provider, ambiente, retenções…) mais
+  assinaturas eletrônicas e emergência/CIT, que o app sempre persistiu
+  junto na mesma chave.
+
+**Ordem completa de todos os scripts da Fase 2** (rodar do zero, um de cada
+vez, nesta ordem — cada um depende de colunas/tabelas do anterior):
+1. `db/migrate_ids_to_text.sql`
+2. `db/migrate_entitystores_realtime.sql`
+3. `db/migrate_serviceorders_realtime.sql`
+4. `db/migrate_stock_realtime.sql`
+5. `db/migrate_crm_realtime.sql`
+6. `db/migrate_financeiro2_realtime.sql` (precisa de `bank_accounts`, criada no passo 2)
+7. `db/migrate_campo_realtime.sql`
+8. `db/migrate_org_realtime.sql`
+9. `db/rls.sql` de novo (protege todas as tabelas novas — a política é criada por introspecção)
+
+Com isso, **todos os módulos do app estão migrados** — não sobra nenhuma
+store em localStorage-only (exceto `messagesStore`, de propósito — ver acima).
+
 ## Convenções
 
 - **Multi-tenant** por `org_id` em toda tabela de negócio (habilite RLS no Supabase).

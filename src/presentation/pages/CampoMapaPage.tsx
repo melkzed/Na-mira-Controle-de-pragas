@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock, Lock, MapPin, Navigation, Sparkles, TriangleAlert } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -6,7 +6,7 @@ import { Badge } from '../components/ui/Badge';
 import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
 import { releasedAppointmentsForTechnician, getCustomer, getServiceType } from '@/application/repository';
-import { googleMapsRoute, wazeLink } from '@/lib/geo';
+import { googleMapsRoute, googleMapsRouteToAddress, formatAddress } from '@/lib/geo';
 import { fmtMinutes, minutesOfDay, planRoute, simulateRoute, type TimedStop } from '@/lib/route';
 import { fmtTime } from '@/lib/date';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,16 @@ import type { Appointment } from '@/domain/types';
 
 const hasGeo = (a: { latitude?: number; longitude?: number }) => a.latitude != null && a.longitude != null;
 const isLocked = (a: Appointment) => a.status === 'finalizado' || a.status === 'em_atendimento' || a.status === 'em_deslocamento';
+
+/** Link de navegação pro Maps a partir de um agendamento — usa coordenadas
+ *  precisas quando o cliente as tem; senão, cai pro endereço em texto (o
+ *  próprio Google Maps geocodifica ao abrir no celular do técnico). */
+function mapsLinkFor(a: Appointment): string | null {
+  if (hasGeo(a)) return googleMapsRoute([{ lat: a.latitude!, lng: a.longitude! }]);
+  const cust = getCustomer(a.customerId);
+  const addr = cust ? formatAddress(cust) : '';
+  return addr ? googleMapsRouteToAddress(addr) : null;
+}
 
 const toTimed = (a: Appointment): TimedStop => ({
   lat: a.latitude!,
@@ -31,6 +41,19 @@ export function CampoMapaPage() {
   const todayIso = new Date().toISOString();
   const appts = useMemo(() => releasedAppointmentsForTechnician(techId, todayIso), [techId, todayIso]);
 
+  // Localização atual — usada só para desenhar "você está aqui" no mapa; a
+  // navegação em si (botão "Ir para a próxima parada") não depende dela, o
+  // Google Maps resolve a origem sozinho a partir do GPS do aparelho.
+  const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    if (!('geolocation' in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (p) => setPos({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      () => setPos(null),
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+  }, []);
+
   const { orderedGeo, sim, totalKm, lateCount } = useMemo(() => {
     const withGeo = appts.filter(hasGeo);
     const timed = withGeo.map(toTimed);
@@ -47,16 +70,34 @@ export function CampoMapaPage() {
     };
   }, [appts, optimized]);
 
-  const stops: RouteStop[] = orderedGeo.map((a) => ({
-    id: a.id,
-    label: getCustomer(a.customerId)?.name ?? 'Cliente',
-    lat: a.latitude!,
-    lng: a.longitude!,
-    color: getServiceType(a.serviceTypeId)?.color,
-    done: a.status === 'finalizado',
-    sub: fmtTime(a.scheduledStart),
-  }));
-  const routePoints = orderedGeo.map((a) => ({ lat: a.latitude!, lng: a.longitude! }));
+  // Sem coordenadas cadastradas — não entram na otimização por distância
+  // (não dá pra calcular km sem elas), mas continuam visíveis e navegáveis
+  // (o Maps geocodifica o endereço sozinho ao abrir).
+  const noGeo = useMemo(
+    () => appts.filter((a) => !hasGeo(a)).sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart)),
+    [appts],
+  );
+
+  const stops: RouteStop[] = [
+    ...(pos ? [{ id: 'me', label: 'Você está aqui', lat: pos.lat, lng: pos.lng, color: 'rgb(37 99 235)' } as RouteStop] : []),
+    ...orderedGeo.map((a) => ({
+      id: a.id,
+      label: getCustomer(a.customerId)?.name ?? 'Cliente',
+      lat: a.latitude!,
+      lng: a.longitude!,
+      color: getServiceType(a.serviceTypeId)?.color,
+      done: a.status === 'finalizado',
+      sub: fmtTime(a.scheduledStart),
+    })),
+  ];
+  // Próxima parada pendente — a visita mais próxima (por horário) ainda não
+  // finalizada, com ou sem coordenadas cadastradas, então acompanha o
+  // atendimento em tempo real (some sozinha da lista assim que o técnico
+  // conclui a visita, sem precisar tocar nada aqui).
+  const nextStop = [...orderedGeo, ...noGeo]
+    .filter((a) => a.status !== 'finalizado')
+    .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart))[0];
+  const nextStopLink = nextStop ? mapsLinkFor(nextStop) : null;
   const canOptimize = orderedGeo.length >= 3;
 
   return (
@@ -66,11 +107,15 @@ export function CampoMapaPage() {
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
           <p className="text-base font-bold text-foreground">Mapa da rota</p>
-          <p className="text-xs text-muted-foreground">{orderedGeo.length} parada(s) · {totalKm.toFixed(1)} km</p>
+          <p className="text-xs text-muted-foreground">{orderedGeo.length + noGeo.length} parada(s) · {totalKm.toFixed(1)} km</p>
         </div>
-        {routePoints.length > 0 && (
-          <Button size="sm" leftIcon={<Navigation size={15} />} onClick={() => window.open(googleMapsRoute(routePoints), '_blank', 'noopener')}>
-            Navegar
+        {nextStop && nextStopLink && (
+          <Button
+            size="sm"
+            leftIcon={<Navigation size={15} />}
+            onClick={() => window.open(nextStopLink, '_blank', 'noopener')}
+          >
+            Ir para {getCustomer(nextStop.customerId)?.name?.split(' ')[0] ?? 'a próxima parada'}
           </Button>
         )}
       </div>
@@ -118,10 +163,10 @@ export function CampoMapaPage() {
                   <CheckCircle2 size={18} className="shrink-0 text-success" />
                 ) : hasGeo(a) ? (
                   <button
-                    onClick={() => window.open(wazeLink({ lat: a.latitude!, lng: a.longitude! }), '_blank', 'noopener')}
+                    onClick={() => window.open(googleMapsRoute([{ lat: a.latitude!, lng: a.longitude! }]), '_blank', 'noopener')}
                     aria-label={`Navegar até ${cust?.name}`}
                     className="shrink-0 rounded-lg border border-border p-1.5 text-brand transition hover:bg-brand-soft"
-                    title="Navegar (Waze)"
+                    title="Navegar (Google Maps)"
                   >
                     <Navigation size={15} />
                   </button>
@@ -132,6 +177,50 @@ export function CampoMapaPage() {
             </Card>
           );
         })}
+
+        {noGeo.length > 0 && (
+          <>
+            <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+              Sem localização exata cadastrada — o Maps busca pelo endereço
+            </p>
+            {noGeo.map((a) => {
+              const cust = getCustomer(a.customerId);
+              const st = getServiceType(a.serviceTypeId);
+              const link = mapsLinkFor(a);
+              return (
+                <Card key={a.id} className="p-3">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white" style={{ background: st?.color ?? 'rgb(var(--color-brand))' }}>
+                      <MapPin size={14} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-foreground">{cust?.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        <Clock size={11} className="mr-1 inline" />{fmtTime(a.scheduledStart)}
+                        {cust && <> · {formatAddress(cust) || 'endereço não cadastrado'}</>}
+                      </p>
+                    </div>
+                    {a.status === 'finalizado' ? (
+                      <CheckCircle2 size={18} className="shrink-0 text-success" />
+                    ) : link ? (
+                      <button
+                        onClick={() => window.open(link, '_blank', 'noopener')}
+                        aria-label={`Navegar até ${cust?.name}`}
+                        className="shrink-0 rounded-lg border border-border p-1.5 text-brand transition hover:bg-brand-soft"
+                        title="Navegar (Google Maps)"
+                      >
+                        <Navigation size={15} />
+                      </button>
+                    ) : (
+                      <Badge tone="neutral">sem endereço</Badge>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
+          </>
+        )}
+
         {appts.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Nenhuma visita agendada para hoje.</p>}
       </div>
     </div>

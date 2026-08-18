@@ -56,6 +56,31 @@ O payload exato varia por plugin municipal da Focus NFe — o schema montado em
 Confira a [documentação atual da Focus NFe](https://focusnfe.com.br/doc/#nfse-emitir-nota)
 e ajuste os campos ao ativar um município novo.
 
+### Item LC 116 × código tributário do município — não são a mesma coisa
+
+`itemListaServico` é a classificação **nacional** (LC 116, formato `X.XX` —
+ex.: `7.13` para limpeza/desinfecção/controle de pragas, `14.02` para outros
+serviços de manutenção). Municípios que já migraram pro NFS-e Nacional usam
+só esse código. Municípios que **ainda têm webservice próprio** costumam ter
+uma tabela de códigos interna e diferente (ex.: um "código CES" numérico tipo
+`1491`) — não presuma que os dois números são iguais só porque o serviço é o
+mesmo. Por isso `codigoTributarioMunicipal` existe como campo **separado e
+opcional** em `FiscalConfig`: deixe em branco quando o município usa só o LC
+116; preencha só quando a prefeitura/contador confirmar que existe um código
+próprio. Hoje é um valor único por organização — se a empresa emitir nota em
+mais de um município no futuro, isso precisa virar uma tabela (código por
+município), não um campo solto.
+
+### Município de prestação por atendimento (ainda não implementado)
+
+Hoje `municipioIbge` é uma configuração única da organização (assume que toda
+nota é emitida no município da sede). Isso é uma simplificação conhecida: o
+correto seria a nota sair no município onde o serviço foi **prestado**, que
+pode variar por cliente/OS. Como cada cliente já tem `city`/`state`
+cadastrados, o caminho mais provável é derivar o código IBGE a partir do
+cadastro do cliente (precisa de uma tabela cidade→IBGE) em vez de pedir esse
+dado de novo em cada OS. Ainda não entrou em desenvolvimento.
+
 **Emissão assíncrona:** a Focus NFe normalmente responde
 `processando_autorizacao` no POST inicial e autoriza a nota depois. O backend
 de referência faz algumas tentativas curtas de consulta antes de devolver

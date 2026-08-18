@@ -10,7 +10,7 @@ import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { appointmentsForTechnician, getCustomer, getServiceType } from '@/application/repository';
 import { useUsersStore } from '@/store/entityStores';
 import { fmtTime } from '@/lib/date';
-import { appleMapsLink, googleMapsRoute, wazeLink } from '@/lib/geo';
+import { googleMapsRoute } from '@/lib/geo';
 import { AVG_SPEED_KMH, fmtMinutes, minutesOfDay, planRoute, simulateRoute, type TimedStop } from '@/lib/route';
 import type { Appointment } from '@/domain/types';
 
@@ -160,10 +160,8 @@ export function RotasPage() {
           <CardHeader title="Mapa da rota" subtitle={optimized ? 'Melhor trajeto · abrir no navegador de mapas' : 'Coordenadas reais · abrir no navegador de mapas'} />
           <CardBody>
             <RouteMap stops={mapStops} height={288} />
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              <Button variant="outline" size="sm" disabled={routePoints.length === 0} onClick={() => openRoute(googleMapsRoute(routePoints))}>Maps</Button>
-              <Button variant="outline" size="sm" disabled={routePoints.length === 0} onClick={() => openRoute(wazeLink(routePoints[routePoints.length - 1]))}>Waze</Button>
-              <Button variant="outline" size="sm" disabled={routePoints.length === 0} onClick={() => openRoute(appleMapsLink(routePoints[routePoints.length - 1]))}>Apple</Button>
+            <div className="mt-3">
+              <Button variant="outline" size="sm" className="w-full" disabled={routePoints.length === 0} onClick={() => openRoute(googleMapsRoute(routePoints))}>Abrir no Google Maps</Button>
             </div>
           </CardBody>
         </Card>

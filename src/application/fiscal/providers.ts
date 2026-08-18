@@ -135,6 +135,10 @@ export function buildFocusNfePayload(input: EmitInput, cfg: FiscalConfig) {
     servico: {
       discriminacao: input.description,
       item_lista_servico: cfg.itemListaServico.replace('.', ''),
+      // Só inclui quando o município exige um código próprio além do item LC
+      // 116 — não presuma que os dois são iguais (municípios com webservice
+      // próprio costumam ter tabela de códigos interna, ex.: "código CES").
+      ...(cfg.codigoTributarioMunicipal ? { codigo_tributacao_municipio: cfg.codigoTributarioMunicipal } : {}),
       valor_servicos: input.amount,
       iss_retido: t.issRetido,
       aliquota: t.issRate * 100,

@@ -16,6 +16,7 @@ import { useLicensesStore } from '@/store/entityStores';
 import { getOrgProfile } from '@/store/orgProfileStore';
 import { currentBatch } from './batches';
 import { formatDocument } from './utils';
+import { formatAddress } from './geo';
 import { logoSvgMarkup } from './logoSvg';
 import { toast } from '@/store/toastStore';
 
@@ -194,7 +195,7 @@ export function osPests(so: ServiceOrder): (Pest | undefined)[] {
   return so.pestIds.map((id) => getPest(id));
 }
 export function address(c: ReturnType<typeof getCustomer>): string {
-  return c ? [c.street && `${c.street}, ${c.number ?? 's/n'}`, c.district, c.city && `${c.city}/${c.state ?? ''}`].filter(Boolean).join(' — ') : '';
+  return c ? formatAddress(c) : '';
 }
 
 /** Certificado Sanitário de Combate a Vetores e Pragas Urbanas (CES). */

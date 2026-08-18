@@ -131,8 +131,11 @@ export function optimizeOrder(points: GeoPoint[], startIndex = 0): number[] {
 export function googleMapsRoute(stops: GeoPoint[]): string {
   if (stops.length === 0) return 'https://www.google.com/maps';
   if (stops.length === 1) {
+    // Sem origem: o app/site do Google Maps usa a localização atual do
+    // dispositivo automaticamente — não depende da geolocalização do navegador
+    // (mais confiável que exigir permissão de GPS na própria página).
     const s = stops[0];
-    return `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`;
+    return `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}&travelmode=driving`;
   }
   const dest = stops[stops.length - 1];
   const origin = stops[0];
@@ -144,12 +147,18 @@ export function googleMapsRoute(stops: GeoPoint[]): string {
   return waypoints ? `${base}&waypoints=${encodeURIComponent(waypoints)}` : base;
 }
 
-/** Link do Waze para um destino (o Waze não suporta múltiplas paradas por URL). */
-export function wazeLink(point: GeoPoint): string {
-  return `https://waze.com/ul?ll=${point.lat},${point.lng}&navigate=yes`;
+/** Link de navegação (Google Maps) até um destino descrito por ENDEREÇO em
+ *  texto — usado quando o cliente ainda não tem latitude/longitude
+ *  cadastradas com precisão. O próprio Google Maps geocodifica o endereço ao
+ *  abrir no celular do técnico; não depende de nenhum serviço de
+ *  geocodificação próprio nem de API paga. */
+export function googleMapsRouteToAddress(address: string): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}&travelmode=driving`;
 }
 
-/** Link do Apple Maps para um destino. */
-export function appleMapsLink(point: GeoPoint): string {
-  return `https://maps.apple.com/?daddr=${point.lat},${point.lng}&dirflg=d`;
+/** Formata o endereço de um cliente para exibição/uso em links de navegação. */
+export function formatAddress(c: { street?: string; number?: string; district?: string; city?: string; state?: string }): string {
+  return [c.street && `${c.street}, ${c.number ?? 's/n'}`, c.district, c.city && `${c.city}/${c.state ?? ''}`]
+    .filter(Boolean)
+    .join(' — ');
 }

@@ -42,14 +42,103 @@ modelo de permissões e as decisões técnicas da plataforma.
 └───────────────────────────────────────────────────────────┘
 ```
 
-**Regra de ouro:** trocar a fonte de dados (seed → Supabase) exige reimplementar
-apenas `application/repository.ts`. Nenhuma página muda.
+**Regra de ouro (revisada):** a ideia original era trocar a fonte de dados só em
+`application/repository.ts`, mas na prática as telas fazem mutações (`add`/
+`update`/`remove`) direto nas stores Zustand de cada módulo (`repository.ts` só
+tem leituras tipo `getCustomer(id)`). Migrar um módulo pro Supabase de verdade
+significa reescrever a store daquele módulo (ex.: `customersStore.ts`) mantendo
+a mesma interface pública — nenhuma página muda, mas o arquivo que muda é a
+store, não só o repository. Ver §3.1 para o padrão exato.
 
 ## 3. Estado da aplicação
 
 - **Zustand** (`store/appStore.ts`): tema (persistido em `localStorage`), usuário
   atual (para demonstrar RBAC), notificações e paleta de comandos.
 - Estado local de tela via `useState`/`useMemo` (filtros, seleção, drawers).
+
+### 3.1 Padrão de store dual-mode (localStorage ↔ Supabase compartilhado)
+
+Migração em andamento, módulo por módulo — dados reais compartilhados entre
+usuários da organização (não só o login, que já é real desde a Fase 1). Cada
+store convertida segue exatamente o mesmo desenho de `customersStore.ts`
+(primeiro módulo migrado — use como referência ao converter o próximo):
+
+1. **Interface pública não muda.** `add`/`update`/`remove` continuam
+   **síncronos** (mesma assinatura de sempre) — nenhuma página precisa saber
+   se está falando com `localStorage` ou com o Supabase.
+2. **Escrita otimista.** A store atualiza o estado local (e a UI) na hora;
+   a chamada ao Supabase roda em segundo plano (`.then(...)`, sem `await`
+   bloqueando o clique). Se a gravação falhar, desfaz o estado otimista e
+   mostra um toast de erro — não trava a interface esperando rede.
+3. **Realtime para sincronizar entre usuários.** Um canal
+   `supabase.channel('<tabela>-sync').on('postgres_changes', ...)` mantém
+   os outros clientes atualizados ao vivo. O merge é idempotente (upsert por
+   `id` em INSERT/UPDATE, remove por `id` em DELETE) — o eco da própria
+   escrita otimista do usuário não causa duplicata nem pisca.
+4. **Mapeamento linha↔domínio explícito.** `toRow()`/`fromRow()` convertem
+   entre o formato snake_case do Postgres e o tipo do domínio (camelCase).
+   Cada módulo com campos que ainda não existem na tabela precisa de uma
+   migration (`db/migrate_<modulo>_*.sql`) antes — ver `docs/DATABASE.md`.
+5. **Realtime precisa ser habilitado por tabela** (`alter publication
+   supabase_realtime add table ...`) — não é automático só por ter RLS.
+6. **`reset()` (se existir) vira no-op no modo Supabase** — não faz sentido
+   apagar dado real e compartilhado só porque existe um botão de demo.
+
+Limite conhecido: como o sandbox de desenvolvimento não alcança
+`*.supabase.co`, o comportamento em modo Supabase (sincronização entre dois
+usuários, Realtime) não é verificável por aqui — só o modo standalone
+(regressão) é testado automaticamente a cada módulo migrado. O teste do modo
+Supabase precisa acontecer no ambiente publicado, com dois logins reais.
+
+### 3.2 Variante genérica — `createEntityStore` (módulos "chatos")
+
+Os módulos de cadastro simples (sem lógica própria além de CRUD — Usuários,
+Departamentos, Produtos, Financeiro, Equipamentos, Veículos, Serviços,
+Não-conformidades, Pragas, Áreas tratadas, Tipos de armadilha, Licenças,
+Contas a pagar recorrentes, Contas bancárias, Cheques, Empréstimos) não
+ganham um `toRow`/`fromRow` manual cada um — em vez disso, `createEntityStore`
+(`src/store/createEntityStore.ts`) já nasceu dual-mode e genérico, usando
+`src/lib/caseConvert.ts` (camelCase ↔ snake_case automático, só no nível raiz
+do objeto — valores aninhados como `jsonb` passam intactos). Isso exige que a
+tabela Postgres tenha uma coluna para cada campo do domínio, com o nome em
+snake_case equivalente — ver `db/migrate_entitystores_realtime.sql`.
+Um módulo com uma regra especial de verdade (numeração automática como
+`serviceOrdersStore`, carimbo diário como `appointmentsStore`) continua
+ganhando uma store bespoke própria, não a fábrica genérica.
+
+**Convenção de tipo de id — importante:** toda tabela cujo `id` é gerado no
+**cliente** (o padrão em 100% das stores deste app, sempre foi assim desde a
+Fase 1 — necessário pra escrita otimista funcionar) precisa ter a coluna
+`id` como **`text`**, nunca `uuid`. `schema.sql` originalmente definiu essas
+tabelas como `uuid primary key default gen_random_uuid()`, pressupondo que o
+Postgres geraria o id — mas o app nunca deixa isso pro banco, sempre manda um
+id próprio tipo `"c-3f9k2z1"` já na escrita otimista. Isso quebrava (e foi
+corrigido em `db/migrate_ids_to_text.sql`) a inserção de qualquer registro
+novo em modo Supabase. `organizations.id` e `users.id` são a exceção — vêm de
+UUID de verdade (Supabase Auth), então continuam `uuid`. Ao criar uma tabela
+nova para um módulo migrado, já nasça com `id text primary key default
+gen_random_uuid()::text` — não copie o padrão antigo de `schema.sql` sem
+conferir.
+
+### 3.3 Variante singleton — perfil da empresa e configurações
+
+`orgProfileStore` e `settingsStore` não são listas — são **uma linha por
+organização** (mapeiam pra `organizations` e `fiscal_settings`). Padrão:
+- **Leitura**: `select('*').single()` (ou `.maybeSingle()`) sem filtro
+  explícito de `org_id` — a política RLS já restringe a exatamente uma linha
+  visível (a do próprio usuário), então não precisa saber o `org_id` de
+  antemão só pra ler.
+- **Escrita**: aí sim precisa do `org_id` — vem direto de
+  `useAppStore.getState().currentUser?.orgId` (é o id real da organização,
+  vindo do JWT/claims, não o `'org-namira'` de fallback do modo standalone).
+  Se ainda não resolveu (sessão carregando), a escrita local acontece mas a
+  remota é pulada silenciosamente — a próxima carga reconcilia; janela de
+  corrida desprezível na prática (são telas de configuração, não a primeira
+  coisa que carrega).
+- **Realtime**: mesmo canal de sempre, mas o merge substitui o estado
+  inteiro (não é upsert-por-id numa lista) — e filtra pelo `org_id`/`id` do
+  payload pra ignorar eco de outra organização (irrelevante hoje, já que RLS
+  não entregaria de qualquer forma, mas documenta a intenção).
 
 ## 4. Fluxos principais
 
