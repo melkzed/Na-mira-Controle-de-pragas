@@ -230,8 +230,10 @@ create index on product_batches (product_id, expires_at);
 -- Estoque em dois níveis: central + individual (técnico/veículo)
 -- Locais de estoque abstraem central, técnicos e veículos.
 -- ---------------------------------------------------------------------------
+-- id em texto de propósito: o app usa ids fixos e legíveis ("loc-central",
+-- "loc-t1"...), definidos no seed do frontend — ver src/infrastructure/seed/data.ts.
 create table stock_locations (
-  id          uuid primary key default gen_random_uuid(),
+  id          text primary key default gen_random_uuid()::text,
   org_id      uuid not null references organizations(id) on delete cascade,
   kind        stock_location_kind not null,
   name        text not null,
@@ -241,12 +243,10 @@ create table stock_locations (
 );
 
 -- Saldo por (local, produto, lote). Fonte de verdade derivada de movimentos.
--- location_id é texto livre (ex. "loc-central") — o app nunca gerenciou
--- stock_locations como cadastro de verdade, então não há FK aqui.
 create table stock_balances (
   id           text primary key default gen_random_uuid()::text,
   org_id       uuid not null references organizations(id) on delete cascade,
-  location_id  text not null,
+  location_id  text not null references stock_locations(id) on delete cascade,
   product_id   text not null references products(id) on delete cascade,
   batch_id     uuid references product_batches(id) on delete set null,
   quantity     numeric(14,3) not null default 0,
@@ -263,8 +263,8 @@ create table stock_movements (
   product_id       text not null references products(id) on delete restrict,
   batch_id         uuid references product_batches(id) on delete set null,
   quantity         numeric(14,3) not null,
-  from_location_id uuid references stock_locations(id) on delete set null,
-  to_location_id   uuid references stock_locations(id) on delete set null,
+  from_location_id text references stock_locations(id) on delete set null,
+  to_location_id   text references stock_locations(id) on delete set null,
   service_order_id uuid,                     -- FK adicionada abaixo
   performed_by     uuid references users(id) on delete set null,
   reason           text,
