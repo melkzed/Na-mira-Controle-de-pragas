@@ -29,6 +29,42 @@ Já migrados:
   direto na linha, igual já fazia no `localStorage` — funciona, mas não
   escala bem; migrar pra Supabase Storage (guardando só a URL do arquivo) é
   um follow-up conhecido, ainda não feito.
+- **16 módulos de cadastro simples** (`db/migrate_entitystores_realtime.sql`)
+  — Usuários, Departamentos, Produtos, Financeiro, Equipamentos, Veículos,
+  Serviços, Não-conformidades, Pragas, Áreas tratadas, Tipos de armadilha,
+  Licenças, Contas a pagar recorrentes, Contas bancárias, Cheques,
+  Empréstimos — todos migrados de uma vez, via a fábrica genérica
+  `createEntityStore` (ver `docs/ARCHITECTURE.md` §3.2). Cria as 7 tabelas
+  que ainda não existiam (`departments`, `non_conformities`, `trap_types`,
+  `recurring_payables`, `bank_accounts`, `checks`, `loan_investments`),
+  completa colunas que faltavam em `users`/`products`/`equipment`/`vehicles`/
+  `finance_entries` e habilita Realtime nas 16 tabelas.
+
+  **Rodar nesta ordem exata**, uma vez só, num projeto que já tenha
+  `schema.sql`/`rls.sql` aplicados:
+  1. `db/migrate_ids_to_text.sql` — corrige um bug de tipagem que já afetava
+     Clientes/Agenda: `id` estava `uuid`, mas o app sempre gera o próprio id
+     no cliente (`"c-3f9k2z1"`, não um UUID) — sem isso, criar um registro
+     novo em modo Supabase falhava com "invalid input syntax for type uuid".
+     Ver `docs/ARCHITECTURE.md` §3.2 para o porquê.
+  2. `db/migrate_entitystores_realtime.sql` — cria/completa as tabelas acima.
+  3. `db/rls.sql` de novo — a política `org_isolation` é criada por
+     introspecção (toda tabela com `org_id`), então as 7 tabelas novas só
+     ficam protegidas depois desse re-run. Idempotente.
+- **Ordens de Serviço** (`db/migrate_serviceorders_realtime.sql`) — corrige o
+  tipo do id (mesmo bug do item acima, específico de `service_orders` e de
+  quem referencia `service_orders(id)`: `service_order_products`,
+  `service_order_pests`, `service_order_equipment`, `stock_movements`,
+  `checklist_runs`, `finance_entries`, `commissions`, `invoices`), completa
+  as colunas da OS "avançada" (equipe, pagamento, garantia, recorrência,
+  assinaturas…) que não existiam em `schema.sql`, e habilita Realtime.
+  Rodar depois dos dois scripts acima.
+- **Estoque** (`db/migrate_stock_realtime.sql`) — corrige o tipo de
+  `stock_balances.id`/`location_id` (mesmo motivo dos itens acima;
+  `location_id` nunca teve uma tabela `stock_locations` de verdade por trás
+  no app, então a FK "aspiracional" foi removida em vez de recriada), cria
+  `stock_requests` e `equipment_requests` (não existiam), habilita Realtime
+  nas três. Lembre de rodar `db/rls.sql` de novo depois (tabelas novas).
 
 ## Convenções
 

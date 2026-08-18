@@ -90,6 +90,36 @@ usuários, Realtime) não é verificável por aqui — só o modo standalone
 (regressão) é testado automaticamente a cada módulo migrado. O teste do modo
 Supabase precisa acontecer no ambiente publicado, com dois logins reais.
 
+### 3.2 Variante genérica — `createEntityStore` (módulos "chatos")
+
+Os módulos de cadastro simples (sem lógica própria além de CRUD — Usuários,
+Departamentos, Produtos, Financeiro, Equipamentos, Veículos, Serviços,
+Não-conformidades, Pragas, Áreas tratadas, Tipos de armadilha, Licenças,
+Contas a pagar recorrentes, Contas bancárias, Cheques, Empréstimos) não
+ganham um `toRow`/`fromRow` manual cada um — em vez disso, `createEntityStore`
+(`src/store/createEntityStore.ts`) já nasceu dual-mode e genérico, usando
+`src/lib/caseConvert.ts` (camelCase ↔ snake_case automático, só no nível raiz
+do objeto — valores aninhados como `jsonb` passam intactos). Isso exige que a
+tabela Postgres tenha uma coluna para cada campo do domínio, com o nome em
+snake_case equivalente — ver `db/migrate_entitystores_realtime.sql`.
+Um módulo com uma regra especial de verdade (numeração automática como
+`serviceOrdersStore`, carimbo diário como `appointmentsStore`) continua
+ganhando uma store bespoke própria, não a fábrica genérica.
+
+**Convenção de tipo de id — importante:** toda tabela cujo `id` é gerado no
+**cliente** (o padrão em 100% das stores deste app, sempre foi assim desde a
+Fase 1 — necessário pra escrita otimista funcionar) precisa ter a coluna
+`id` como **`text`**, nunca `uuid`. `schema.sql` originalmente definiu essas
+tabelas como `uuid primary key default gen_random_uuid()`, pressupondo que o
+Postgres geraria o id — mas o app nunca deixa isso pro banco, sempre manda um
+id próprio tipo `"c-3f9k2z1"` já na escrita otimista. Isso quebrava (e foi
+corrigido em `db/migrate_ids_to_text.sql`) a inserção de qualquer registro
+novo em modo Supabase. `organizations.id` e `users.id` são a exceção — vêm de
+UUID de verdade (Supabase Auth), então continuam `uuid`. Ao criar uma tabela
+nova para um módulo migrado, já nasça com `id text primary key default
+gen_random_uuid()::text` — não copie o padrão antigo de `schema.sql` sem
+conferir.
+
 ## 4. Fluxos principais
 
 ### 4.1 Do agendamento à Ordem de Serviço

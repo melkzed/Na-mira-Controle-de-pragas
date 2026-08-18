@@ -126,7 +126,7 @@ create table team_members (
 -- Clientes (CRM/Cadastro)
 -- ---------------------------------------------------------------------------
 create table customers (
-  id             uuid primary key default gen_random_uuid(),
+  id             text primary key default gen_random_uuid()::text,
   org_id         uuid not null references organizations(id) on delete cascade,
   type           customer_type not null default 'pf',
   name           text not null,
@@ -186,12 +186,12 @@ create table product_categories (
 );
 
 create table products (
-  id                 uuid primary key default gen_random_uuid(),
+  id                 text primary key default gen_random_uuid()::text,
   org_id             uuid not null references organizations(id) on delete cascade,
   name               text not null,
-  category_id        uuid references product_categories(id) on delete set null,
+  category_id        text,           -- rótulo livre; sem cadastro de categorias no app hoje
   manufacturer       text,
-  supplier_id        uuid references suppliers(id) on delete set null,
+  supplier_id        text,           -- rótulo livre; sem cadastro de fornecedores no app hoje
   registration_code  text,           -- Registro no MS/Anvisa/IBAMA
   active_ingredient  text,           -- princípio ativo
   application_type   text,           -- pulverização, isca, gel, atomização...
@@ -216,7 +216,7 @@ create index on products (org_id, is_active);
 create table product_batches (
   id             uuid primary key default gen_random_uuid(),
   org_id         uuid not null references organizations(id) on delete cascade,
-  product_id     uuid not null references products(id) on delete cascade,
+  product_id     text not null references products(id) on delete cascade,
   batch_code     text,
   expires_at     date,
   supplier_id    uuid references suppliers(id) on delete set null,
@@ -236,16 +236,18 @@ create table stock_locations (
   kind        stock_location_kind not null,
   name        text not null,
   owner_id    uuid references users(id) on delete set null,   -- técnico dono
-  vehicle_id  uuid,                                            -- FK adicionada abaixo
+  vehicle_id  text,                                            -- FK adicionada abaixo
   created_at  timestamptz not null default now()
 );
 
 -- Saldo por (local, produto, lote). Fonte de verdade derivada de movimentos.
+-- location_id é texto livre (ex. "loc-central") — o app nunca gerenciou
+-- stock_locations como cadastro de verdade, então não há FK aqui.
 create table stock_balances (
-  id           uuid primary key default gen_random_uuid(),
+  id           text primary key default gen_random_uuid()::text,
   org_id       uuid not null references organizations(id) on delete cascade,
-  location_id  uuid not null references stock_locations(id) on delete cascade,
-  product_id   uuid not null references products(id) on delete cascade,
+  location_id  text not null,
+  product_id   text not null references products(id) on delete cascade,
   batch_id     uuid references product_batches(id) on delete set null,
   quantity     numeric(14,3) not null default 0,
   updated_at   timestamptz not null default now(),
@@ -258,7 +260,7 @@ create table stock_movements (
   id               uuid primary key default gen_random_uuid(),
   org_id           uuid not null references organizations(id) on delete cascade,
   type             stock_movement_type not null,
-  product_id       uuid not null references products(id) on delete restrict,
+  product_id       text not null references products(id) on delete restrict,
   batch_id         uuid references product_batches(id) on delete set null,
   quantity         numeric(14,3) not null,
   from_location_id uuid references stock_locations(id) on delete set null,
@@ -276,7 +278,7 @@ create index on stock_movements (service_order_id);
 -- Equipamentos e veículos
 -- ---------------------------------------------------------------------------
 create table equipment (
-  id             uuid primary key default gen_random_uuid(),
+  id             text primary key default gen_random_uuid()::text,
   org_id         uuid not null references organizations(id) on delete cascade,
   name           text not null,
   code           text,               -- código interno
@@ -293,7 +295,7 @@ create table equipment (
 
 create table equipment_maintenance (
   id            uuid primary key default gen_random_uuid(),
-  equipment_id  uuid not null references equipment(id) on delete cascade,
+  equipment_id  text not null references equipment(id) on delete cascade,
   performed_at  date not null default current_date,
   description   text,
   cost          numeric(12,2),
@@ -301,7 +303,7 @@ create table equipment_maintenance (
 );
 
 create table vehicles (
-  id             uuid primary key default gen_random_uuid(),
+  id             text primary key default gen_random_uuid()::text,
   org_id         uuid not null references organizations(id) on delete cascade,
   plate          text not null,
   model          text,
@@ -316,7 +318,7 @@ create table vehicles (
 
 create table vehicle_fuel_logs (
   id          uuid primary key default gen_random_uuid(),
-  vehicle_id  uuid not null references vehicles(id) on delete cascade,
+  vehicle_id  text not null references vehicles(id) on delete cascade,
   date        date not null default current_date,
   liters      numeric(10,2),
   cost        numeric(12,2),
@@ -326,7 +328,7 @@ create table vehicle_fuel_logs (
 
 create table vehicle_maintenance (
   id          uuid primary key default gen_random_uuid(),
-  vehicle_id  uuid not null references vehicles(id) on delete cascade,
+  vehicle_id  text not null references vehicles(id) on delete cascade,
   date        date not null default current_date,
   description text,
   cost        numeric(12,2),
@@ -343,7 +345,7 @@ alter table stock_locations
 -- Catálogo de serviços e pragas
 -- ---------------------------------------------------------------------------
 create table service_types (
-  id             uuid primary key default gen_random_uuid(),
+  id             text primary key default gen_random_uuid()::text,
   org_id         uuid not null references organizations(id) on delete cascade,
   name           text not null,     -- Dedetização, Desratização, Sanitização...
   default_duration_min int default 60,
@@ -358,7 +360,7 @@ create table service_types (
 );
 
 create table pests (
-  id      uuid primary key default gen_random_uuid(),
+  id      text primary key default gen_random_uuid()::text,
   org_id  uuid not null references organizations(id) on delete cascade,
   name    text not null,             -- baratas, ratos, cupins, formigas...
   category    text,                  -- rasteira, voadora, roedor, cupim...
@@ -372,7 +374,7 @@ create table pests (
 -- Áreas tratadas (catálogo operacional) — cadastro predefinido usado na OS
 -- para marcar quantidade por área (ex.: 2 Cozinha, 1 Depósito).
 create table treated_areas (
-  id         uuid primary key default gen_random_uuid(),
+  id         text primary key default gen_random_uuid()::text,
   org_id     uuid not null references organizations(id) on delete cascade,
   name       text not null,
   notes      text,
@@ -383,13 +385,13 @@ create table treated_areas (
 -- Agendamentos (módulo principal)
 -- ---------------------------------------------------------------------------
 create table appointments (
-  id                uuid primary key default gen_random_uuid(),
+  id                text primary key default gen_random_uuid()::text,
   org_id            uuid not null references organizations(id) on delete cascade,
-  customer_id       uuid not null references customers(id) on delete restrict,
-  service_type_id   uuid references service_types(id) on delete set null,
+  customer_id       text not null references customers(id) on delete restrict,
+  service_type_id   text references service_types(id) on delete set null,
   technician_id     uuid references users(id) on delete set null,
   team_id           uuid references teams(id) on delete set null,
-  vehicle_id        uuid references vehicles(id) on delete set null,
+  vehicle_id        text references vehicles(id) on delete set null,
   status            appointment_status not null default 'agendado',
   priority          appointment_priority not null default 'normal',
   scheduled_start   timestamptz not null,
@@ -426,8 +428,8 @@ create index on appointments (recurrence_id);
 -- Produtos previstos para o atendimento
 create table appointment_products (
   id             uuid primary key default gen_random_uuid(),
-  appointment_id uuid not null references appointments(id) on delete cascade,
-  product_id     uuid not null references products(id) on delete restrict,
+  appointment_id text not null references appointments(id) on delete cascade,
+  product_id     text not null references products(id) on delete restrict,
   planned_qty    numeric(14,3) not null default 0
 );
 
@@ -472,13 +474,13 @@ alter table appointments
 -- Ordens de Serviço
 -- ---------------------------------------------------------------------------
 create table service_orders (
-  id               uuid primary key default gen_random_uuid(),
+  id               text primary key default gen_random_uuid()::text,
   org_id           uuid not null references organizations(id) on delete cascade,
   number           bigint,                -- numeração sequencial por org
-  appointment_id   uuid references appointments(id) on delete set null,
-  customer_id      uuid not null references customers(id) on delete restrict,
+  appointment_id   text references appointments(id) on delete set null,
+  customer_id      text not null references customers(id) on delete restrict,
   technician_id    uuid references users(id) on delete set null,
-  service_type_id  uuid references service_types(id) on delete set null,
+  service_type_id  text references service_types(id) on delete set null,
   status           service_order_status not null default 'rascunho',
   address          text,
   area_treated     text,
@@ -496,7 +498,7 @@ create table service_orders (
   service_value           numeric(12,2),
   service_value_confirmed boolean not null default false,
   -- OS associada (ex.: retorno/garantia de um atendimento anterior).
-  associated_order_id     uuid references service_orders(id) on delete set null,
+  associated_order_id     text references service_orders(id) on delete set null,
   -- Plano de recorrência multi-fase: { enabled, frequency?, phases?: [{ id,
   -- frequency, occurrences }], recurrenceGroupId? } — cada fase soma sua
   -- periodicidade à data anterior; plano com fim definido, não repetição
@@ -513,8 +515,8 @@ create index on service_orders (associated_order_id);
 
 create table service_order_products (
   id               uuid primary key default gen_random_uuid(),
-  service_order_id uuid not null references service_orders(id) on delete cascade,
-  product_id       uuid not null references products(id) on delete restrict,
+  service_order_id text not null references service_orders(id) on delete cascade,
+  product_id       text not null references products(id) on delete restrict,
   batch_id         uuid references product_batches(id) on delete set null,
   used_qty         numeric(14,3) not null default 0,
   unit             text,
@@ -522,14 +524,14 @@ create table service_order_products (
 );
 
 create table service_order_pests (
-  service_order_id uuid not null references service_orders(id) on delete cascade,
-  pest_id          uuid not null references pests(id) on delete cascade,
+  service_order_id text not null references service_orders(id) on delete cascade,
+  pest_id          text not null references pests(id) on delete cascade,
   primary key (service_order_id, pest_id)
 );
 
 create table service_order_equipment (
-  service_order_id uuid not null references service_orders(id) on delete cascade,
-  equipment_id     uuid not null references equipment(id) on delete cascade,
+  service_order_id text not null references service_orders(id) on delete cascade,
+  equipment_id     text not null references equipment(id) on delete cascade,
   primary key (service_order_id, equipment_id)
 );
 
@@ -553,8 +555,8 @@ create table checklist_templates (
 create table checklist_runs (
   id               uuid primary key default gen_random_uuid(),
   org_id           uuid not null references organizations(id) on delete cascade,
-  appointment_id   uuid references appointments(id) on delete cascade,
-  service_order_id uuid references service_orders(id) on delete cascade,
+  appointment_id   text references appointments(id) on delete cascade,
+  service_order_id text references service_orders(id) on delete cascade,
   template_id      uuid references checklist_templates(id) on delete set null,
   phase            text not null,
   results          jsonb not null default '[]'::jsonb, -- [{label, checked, note}]
@@ -582,14 +584,14 @@ create table finance_categories (
 );
 
 create table finance_entries (
-  id               uuid primary key default gen_random_uuid(),
+  id               text primary key default gen_random_uuid()::text,
   org_id           uuid not null references organizations(id) on delete cascade,
   type             finance_entry_type not null,
   status           finance_entry_status not null default 'pendente',
   category_id      uuid references finance_categories(id) on delete set null,
   account_id       uuid references finance_accounts(id) on delete set null,
-  customer_id      uuid references customers(id) on delete set null,
-  service_order_id uuid references service_orders(id) on delete set null,
+  customer_id      text references customers(id) on delete set null,
+  service_order_id text references service_orders(id) on delete set null,
   description      text not null,
   amount           numeric(14,2) not null,
   due_date         date,
@@ -604,7 +606,7 @@ create table commissions (
   id               uuid primary key default gen_random_uuid(),
   org_id           uuid not null references organizations(id) on delete cascade,
   user_id          uuid not null references users(id) on delete cascade,
-  service_order_id uuid references service_orders(id) on delete set null,
+  service_order_id text references service_orders(id) on delete set null,
   amount           numeric(14,2) not null,
   rate             numeric(6,3),
   status           finance_entry_status not null default 'pendente',
@@ -628,8 +630,8 @@ create table fiscal_settings (
 create table invoices (
   id               uuid primary key default gen_random_uuid(),
   org_id           uuid not null references organizations(id) on delete cascade,
-  service_order_id uuid references service_orders(id) on delete set null,
-  customer_id      uuid references customers(id) on delete set null,
+  service_order_id text references service_orders(id) on delete set null,
+  customer_id      text references customers(id) on delete set null,
   number           text,
   series           text,
   amount           numeric(14,2) not null,
@@ -642,7 +644,7 @@ create table invoices (
 );
 
 create table licenses (
-  id            uuid primary key default gen_random_uuid(),
+  id            text primary key default gen_random_uuid()::text,
   org_id        uuid not null references organizations(id) on delete cascade,
   name          text not null,       -- Alvará sanitário, licença ambiental...
   issuer        text,                -- órgão emissor
@@ -681,7 +683,7 @@ create table crm_leads (
   stage        crm_stage not null default 'novo_contato',
   estimated_value numeric(14,2),
   owner_id     uuid references users(id) on delete set null,
-  customer_id  uuid references customers(id) on delete set null, -- ao converter
+  customer_id  text references customers(id) on delete set null, -- ao converter
   next_action_at timestamptz,
   notes        text,
   created_at   timestamptz not null default now(),
