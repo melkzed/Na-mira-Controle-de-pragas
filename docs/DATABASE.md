@@ -77,6 +77,24 @@ Já migrados:
   bancárias e Fechamento de caixa (`bank_transactions`/`cash_closings`,
   tabelas novas). Precisa rodar depois de `migrate_entitystores_realtime.sql`
   (usa `bank_accounts`).
+- **App do Técnico** (`db/migrate_campo_realtime.sql`) — Abastecimento de
+  veículo (`vehicle_fuel_logs`: schema original não tinha `org_id`/
+  `technician_id`, obrigatórios no domínio, nem `odometer_start`/
+  `odometer_end`/`amount`/`notes` — completados direto em `schema.sql`),
+  Ponto (`time_clock_entries`, tabela nova) e Armadilhas/MIP
+  (`trap_devices`/`trap_inspections`, tabelas novas — `trap_inspections` não
+  tem `org_id` próprio, herda o isolamento via `trap_id`).
+
+**Ordem completa de todos os scripts da Fase 2** (rodar do zero, um de cada
+vez, nesta ordem — cada um depende de colunas/tabelas do anterior):
+1. `db/migrate_ids_to_text.sql`
+2. `db/migrate_entitystores_realtime.sql`
+3. `db/migrate_serviceorders_realtime.sql`
+4. `db/migrate_stock_realtime.sql`
+5. `db/migrate_crm_realtime.sql`
+6. `db/migrate_financeiro2_realtime.sql` (precisa de `bank_accounts`, criada no passo 2)
+7. `db/migrate_campo_realtime.sql`
+8. `db/rls.sql` de novo (protege todas as tabelas novas — a política é criada por introspecção)
 
 ## Convenções
 
