@@ -25,7 +25,7 @@ alter table public.stock_movements   drop constraint if exists stock_movements_p
 alter table public.equipment_maintenance drop constraint if exists equipment_maintenance_equipment_id_fkey;
 alter table public.vehicle_fuel_logs drop constraint if exists vehicle_fuel_logs_vehicle_id_fkey;
 alter table public.vehicle_maintenance drop constraint if exists vehicle_maintenance_vehicle_id_fkey;
-alter table public.stock_locations   drop constraint if exists stock_locations_vehicle_id_fkey;
+alter table public.stock_locations   drop constraint if exists stock_locations_vehicle_fk;
 alter table public.appointments      drop constraint if exists appointments_customer_id_fkey;
 alter table public.appointments      drop constraint if exists appointments_service_type_id_fkey;
 alter table public.appointments      drop constraint if exists appointments_vehicle_id_fkey;
@@ -105,7 +105,7 @@ alter table public.stock_movements   add constraint stock_movements_product_id_f
 alter table public.equipment_maintenance add constraint equipment_maintenance_equipment_id_fkey foreign key (equipment_id) references public.equipment(id) on delete cascade;
 alter table public.vehicle_fuel_logs add constraint vehicle_fuel_logs_vehicle_id_fkey foreign key (vehicle_id) references public.vehicles(id) on delete cascade;
 alter table public.vehicle_maintenance add constraint vehicle_maintenance_vehicle_id_fkey foreign key (vehicle_id) references public.vehicles(id) on delete cascade;
-alter table public.stock_locations   add constraint stock_locations_vehicle_id_fkey foreign key (vehicle_id) references public.vehicles(id) on delete set null;
+alter table public.stock_locations   add constraint stock_locations_vehicle_fk foreign key (vehicle_id) references public.vehicles(id) on delete set null;
 alter table public.appointments      add constraint appointments_customer_id_fkey foreign key (customer_id) references public.customers(id) on delete restrict;
 alter table public.appointments      add constraint appointments_service_type_id_fkey foreign key (service_type_id) references public.service_types(id) on delete set null;
 alter table public.appointments      add constraint appointments_vehicle_id_fkey foreign key (vehicle_id) references public.vehicles(id) on delete set null;
