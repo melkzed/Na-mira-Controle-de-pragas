@@ -162,23 +162,3 @@ export function formatAddress(c: { street?: string; number?: string; district?: 
     .filter(Boolean)
     .join(' — ');
 }
-
-/** Link do Waze para um destino (o Waze não suporta múltiplas paradas por URL). */
-export function wazeLink(point: GeoPoint): string {
-  return `https://waze.com/ul?ll=${point.lat},${point.lng}&navigate=yes`;
-}
-
-/** Link do Waze até um destino por endereço em texto (fallback sem coordenadas). */
-export function wazeLinkToAddress(address: string): string {
-  return `https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes`;
-}
-
-/** Link do Apple Maps para um destino. */
-export function appleMapsLink(point: GeoPoint): string {
-  return `https://maps.apple.com/?daddr=${point.lat},${point.lng}&dirflg=d`;
-}
-
-/** Link do Apple Maps até um destino por endereço em texto (fallback sem coordenadas). */
-export function appleMapsLinkToAddress(address: string): string {
-  return `https://maps.apple.com/?daddr=${encodeURIComponent(address)}&dirflg=d`;
-}

@@ -29,10 +29,7 @@ import { X } from 'lucide-react';
 import type { Appointment, PaymentStatus, ServiceOrder, ServiceOrderPhoto, ServiceOrderProduct } from '@/domain/types';
 import { fmtTime } from '@/lib/date';
 import { cn } from '@/lib/utils';
-import {
-  appleMapsLink, appleMapsLinkToAddress, formatAddress,
-  googleMapsRoute, googleMapsRouteToAddress, wazeLink, wazeLinkToAddress,
-} from '@/lib/geo';
+import { formatAddress, googleMapsRoute, googleMapsRouteToAddress } from '@/lib/geo';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
 import { stockLocations } from '@/infrastructure/seed/data';
 
@@ -386,14 +383,13 @@ function NavigateDrawer({ appt, onClose }: { appt: Appointment | null; onClose: 
           <span className="text-foreground">{appt.address ?? '—'}</span>
         </div>
 
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Abrir no aplicativo de mapas</p>
-          <div className="grid grid-cols-3 gap-2">
-            <Button variant="outline" size="sm" disabled={!canNavigate} onClick={() => open(dest ? googleMapsRoute(pos ? [pos, dest] : [dest]) : googleMapsRouteToAddress(addressFallback))}>Maps</Button>
-            <Button variant="outline" size="sm" disabled={!canNavigate} onClick={() => open(dest ? wazeLink(dest) : wazeLinkToAddress(addressFallback))}>Waze</Button>
-            <Button variant="outline" size="sm" disabled={!canNavigate} onClick={() => open(dest ? appleMapsLink(dest) : appleMapsLinkToAddress(addressFallback))}>Apple</Button>
-          </div>
-        </div>
+        <Button
+          variant="outline" size="sm" className="w-full"
+          disabled={!canNavigate}
+          onClick={() => open(dest ? googleMapsRoute(pos ? [pos, dest] : [dest]) : googleMapsRouteToAddress(addressFallback))}
+        >
+          Abrir no Google Maps
+        </Button>
       </div>
     </Drawer>
   );

@@ -6,7 +6,7 @@ import { Badge } from '../components/ui/Badge';
 import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
 import { releasedAppointmentsForTechnician, getCustomer, getServiceType } from '@/application/repository';
-import { googleMapsRoute, googleMapsRouteToAddress, formatAddress, wazeLink } from '@/lib/geo';
+import { googleMapsRoute, googleMapsRouteToAddress, formatAddress } from '@/lib/geo';
 import { fmtMinutes, minutesOfDay, planRoute, simulateRoute, type TimedStop } from '@/lib/route';
 import { fmtTime } from '@/lib/date';
 import { cn } from '@/lib/utils';
@@ -163,10 +163,10 @@ export function CampoMapaPage() {
                   <CheckCircle2 size={18} className="shrink-0 text-success" />
                 ) : hasGeo(a) ? (
                   <button
-                    onClick={() => window.open(wazeLink({ lat: a.latitude!, lng: a.longitude! }), '_blank', 'noopener')}
+                    onClick={() => window.open(googleMapsRoute([{ lat: a.latitude!, lng: a.longitude! }]), '_blank', 'noopener')}
                     aria-label={`Navegar até ${cust?.name}`}
                     className="shrink-0 rounded-lg border border-border p-1.5 text-brand transition hover:bg-brand-soft"
-                    title="Navegar (Waze)"
+                    title="Navegar (Google Maps)"
                   >
                     <Navigation size={15} />
                   </button>
