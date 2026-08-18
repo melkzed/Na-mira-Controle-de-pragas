@@ -104,6 +104,7 @@ begin
   ]
   loop
     execute format('drop policy if exists org_isolation on public.%I;', t);
+    execute format('drop policy if exists staff_only on public.%I;', t);
     execute format($p$
       create policy staff_only on public.%1$I
         for all
