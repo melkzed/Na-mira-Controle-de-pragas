@@ -15,7 +15,15 @@ export async function lookupCep(rawCep: string): Promise<CepData> {
   const cep = rawCep.replace(/\D/g, '');
   if (cep.length !== 8) throw new Error('CEP inválido.');
 
-  const res = await fetch(`https://brasilapi.com.br/api/cep/v2/${cep}`);
+  // Falha de rede (offline, DNS, bloqueio) rejeita com o "Failed to fetch" do
+  // próprio navegador — em inglês e sem contexto. Traduz aqui, senão o texto
+  // cru aparece para o usuário embaixo do campo de CEP.
+  let res: Response;
+  try {
+    res = await fetch(`https://brasilapi.com.br/api/cep/v2/${cep}`);
+  } catch {
+    throw new Error('Sem conexão para consultar o CEP — preencha o endereço manualmente.');
+  }
   if (!res.ok) {
     throw new Error(res.status === 404 ? 'CEP não encontrado.' : 'Falha ao consultar o CEP.');
   }
