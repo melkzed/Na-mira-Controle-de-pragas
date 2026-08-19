@@ -17,6 +17,7 @@ import { PAYMENT_METHODS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/d
 import { computeRecurrenceOccurrences, recurrenceSummaryLabel, totalOccurrences } from '@/lib/recurrence';
 import { isDueForConfirmation } from '@/lib/confirmation';
 import { combineDateTimeInputToIso, dateInputToIso, fmtDate, parseDateInput, toDateInputValue } from '@/lib/date';
+import { osStatusToAppointmentStatus } from '@/lib/misc';
 import { downloadCsv } from '@/lib/export';
 import { printServiceOrder } from '@/lib/printOrder';
 import { printCertificate, printLaudo, certificateValidityText, address } from '@/lib/printDocuments';
@@ -716,7 +717,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     };
 
     const returnIso = returnAt ? new Date(returnAt).toISOString() : undefined;
-    const apptStatus: AppointmentStatus = status === 'concluida' ? 'finalizado' : status === 'em_andamento' ? 'em_atendimento' : status === 'cancelada' ? 'cancelado' : 'confirmado';
+    const apptStatus: AppointmentStatus = osStatusToAppointmentStatus(status);
     const custName = getCustomer(customerId)?.name ?? '';
 
     if (initial) {
