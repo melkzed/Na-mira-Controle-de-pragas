@@ -29,7 +29,12 @@ export type AppointmentInput = Omit<Appointment, 'id' | 'orgId' | 'products'> &
 
 interface AppointmentsState {
   appointments: Appointment[];
-  add: (input: AppointmentInput) => Appointment;
+  /** Assíncrona de propósito (mesma razão de serviceOrdersStore.add — ver
+   *  docs/ARCHITECTURE.md §3.1): quem cria um agendamento e em seguida
+   *  grava algo que referencia esse id por FK (ex.: service_orders.
+   *  appointment_id) precisa aguardar a confirmação remota antes. No modo
+   *  standalone resolve na mesma tick, sem mudança de comportamento. */
+  add: (input: AppointmentInput) => Promise<Appointment>;
   update: (id: string, patch: Partial<Appointment>) => void;
   setStatus: (id: string, status: AppointmentStatus) => void;
   remove: (id: string) => void;
@@ -181,7 +186,7 @@ function syncUpdate(id: string, rollbackTo: Appointment[]) {
 
 export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
   appointments: load(),
-  add: (input) => {
+  add: async (input) => {
     const appt: Appointment = {
       id: uid(),
       orgId: useAppStore.getState().currentUser?.orgId ?? 'org-namira',
@@ -191,12 +196,12 @@ export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
     const next = [...get().appointments, appt];
     set({ appointments: next });
     if (supabaseEnabled && supabase) {
-      supabase.from(TABLE).insert(toRow(appt)).then(({ error }) => {
-        if (error) {
-          set({ appointments: get().appointments.filter((a) => a.id !== appt.id) });
-          toast('Não foi possível criar o agendamento — tente novamente.', { tone: 'danger' });
-        }
-      });
+      const { error } = await supabase.from(TABLE).insert(toRow(appt));
+      if (error) {
+        set({ appointments: get().appointments.filter((a) => a.id !== appt.id) });
+        toast('Não foi possível criar o agendamento — tente novamente.', { tone: 'danger' });
+        throw error;
+      }
     } else {
       persist(next);
     }

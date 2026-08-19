@@ -635,7 +635,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
         products: products.map((p) => ({ productId: p.productId, plannedQty: p.qty })),
         recurrenceId: groupId,
         recurrenceRule,
-      });
+      }).catch(() => {});
     });
     return { recurrenceGroupId: groupId, nextVisitDate: occurrences[0].date };
   };
@@ -788,19 +788,29 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       const durationMin = duration ? Number(duration) : (svc?.defaultDurationMin ?? 60);
       const startIso = execDate ? dateInputToIso(execDate) : now;
       const endIso = new Date(new Date(startIso).getTime() + durationMin * 60000).toISOString();
-      const newAppt = addAppointment({
-        customerId,
-        serviceTypeId: serviceTypeIds[0],
-        technicianId: technicianIds[0],
-        status: apptStatus,
-        priority: 'normal',
-        scheduledStart: startIso,
-        scheduledEnd: endIso,
-        estimatedMinutes: durationMin,
-        address: address(cust),
-        products: products.map((p) => ({ productId: p.productId, plannedQty: p.qty })),
-      });
-      updateOs(so.id, { appointmentId: newAppt.id });
+      // Aguarda a confirmação remota do agendamento antes de vincular seu id
+      // à OS — mesmo motivo do `await add(input)` acima: sem isso, o UPDATE
+      // de service_orders.appointment_id podia chegar ao Postgres apontando
+      // pra um agendamento que ainda não existia (ou nunca chegou a existir,
+      // se o insert falhasse), violando a FK.
+      try {
+        const newAppt = await addAppointment({
+          customerId,
+          serviceTypeId: serviceTypeIds[0],
+          technicianId: technicianIds[0],
+          status: apptStatus,
+          priority: 'normal',
+          scheduledStart: startIso,
+          scheduledEnd: endIso,
+          estimatedMinutes: durationMin,
+          address: address(cust),
+          products: products.map((p) => ({ productId: p.productId, plannedQty: p.qty })),
+        });
+        updateOs(so.id, { appointmentId: newAppt.id });
+      } catch {
+        // addAppointment já mostrou o toast de erro — a OS continua criada,
+        // só sem o agendamento vinculado à Agenda.
+      }
     }
 
     // Alimenta o Financeiro automaticamente: toda OS com valor vira um lançamento

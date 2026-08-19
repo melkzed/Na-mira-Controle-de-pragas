@@ -92,6 +92,9 @@ export function AppointmentForm({
       else if (recurrence === 'quinzenal') startDate.setDate(startDate.getDate() + i * 14);
       else if (recurrence === 'mensal') startDate.setMonth(startDate.getMonth() + i);
       const endDate = new Date(startDate.getTime() + duration * 60000);
+      // add() é assíncrona (aguarda confirmação remota em modo Supabase) —
+      // aqui não há nada dependente a criar em seguida, então dispara sem
+      // aguardar; a store já mostra o toast de erro sozinha.
       add({
         customerId,
         serviceTypeId,
@@ -110,7 +113,7 @@ export function AppointmentForm({
         products,
         recurrenceId,
         recurrenceRule: recurrence !== 'none' ? recurrence : undefined,
-      });
+      }).catch(() => {});
     }
     logChange('criação', 'agendamento', recurrence !== 'none' ? `${total} visitas recorrentes (${recurrence}) · ${cust?.name ?? ''}` : `Visita agendada · ${cust?.name ?? ''}`);
     onSaved();
