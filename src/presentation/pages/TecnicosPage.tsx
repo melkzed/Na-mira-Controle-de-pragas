@@ -17,7 +17,7 @@ import { useStockRequestsStore } from '@/store/stockRequestsStore';
 import { useStockStore } from '@/store/stockStore';
 import { useAppStore } from '@/store/appStore';
 import { toast } from '@/store/toastStore';
-import { uid } from '@/store/createEntityStore';
+import { supabaseEnabled } from '@/lib/supabaseClient';
 import { getProduct, appointmentsHistoryForTechnician, getCustomer, getServiceType, serviceOrdersForTechnician } from '@/application/repository';
 import { isEquipmentOverdue } from './EquipamentosPage';
 import { EQUIPMENT_STATUS_META as statusMeta } from '@/domain/equipmentMeta';
@@ -205,8 +205,16 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
       update(editing.id, { name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, isActive, fieldAppAccess });
       toast('Técnico atualizado.', { tone: 'success' });
     } else {
-      add({ id: uid('u'), orgId: 'org-namira', name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, role: 'tecnico', isActive, fieldAppAccess });
-      toast('Técnico cadastrado. Login com a senha demo (namira123).', { tone: 'success' });
+      // users.id é uuid de verdade (vínculo com Supabase Auth) — nunca o
+      // formato curto "u-xxx" que as demais entidades usam, senão o insert
+      // falha em modo Supabase ("invalid input syntax for type uuid").
+      add({ id: crypto.randomUUID(), orgId: 'org-namira', name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, role: 'tecnico', isActive, fieldAppAccess });
+      toast(
+        supabaseEnabled
+          ? 'Técnico cadastrado. Para ele conseguir entrar de verdade, crie o login em Authentication → Users no Supabase e vincule pelo e-mail.'
+          : 'Técnico cadastrado. Login com a senha demo (namira123).',
+        { tone: 'success' },
+      );
     }
     onClose();
   };
