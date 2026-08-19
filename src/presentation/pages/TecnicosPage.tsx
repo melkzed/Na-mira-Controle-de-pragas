@@ -17,7 +17,7 @@ import { useStockRequestsStore } from '@/store/stockRequestsStore';
 import { useStockStore } from '@/store/stockStore';
 import { useAppStore } from '@/store/appStore';
 import { toast } from '@/store/toastStore';
-import { supabaseEnabled } from '@/lib/supabaseClient';
+import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { getProduct, appointmentsHistoryForTechnician, getCustomer, getServiceType, serviceOrdersForTechnician } from '@/application/repository';
 import { isEquipmentOverdue } from './EquipamentosPage';
 import { EQUIPMENT_STATUS_META as statusMeta } from '@/domain/equipmentMeta';
@@ -184,13 +184,13 @@ function PendingRequestsPanel() {
 function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: User | null; onClose: () => void }) {
   const add = useUsersStore((s) => s.add);
   const update = useUsersStore((s) => s.update);
-  const currentUser = useAppStore((s) => s.currentUser);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [fieldAppAccess, setFieldAppAccess] = useState(true);
   const [touched, setTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Recarrega os campos sempre que o drawer abre (novo cadastro ou edição).
   useEffect(() => {
@@ -199,30 +199,42 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
     setIsActive(editing?.isActive ?? true); setFieldAppAccess(editing?.fieldAppAccess ?? true); setTouched(false);
   }, [open, editing]);
 
-  const submit = () => {
+  const submit = async () => {
     setTouched(true);
     if (!name.trim() || !email.trim()) return;
     if (editing) {
       update(editing.id, { name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, isActive, fieldAppAccess });
       toast('Técnico atualizado.', { tone: 'success' });
-    } else {
-      // users.id é uuid de verdade (vínculo com Supabase Auth) — nunca o
-      // formato curto "u-xxx" que as demais entidades usam, senão o insert
-      // falha em modo Supabase ("invalid input syntax for type uuid"). Em
-      // modo Supabase, orgId precisa ser o org_id real (RLS rejeita
-      // qualquer outro valor); em modo standalone cai no fallback fixo.
-      if (supabaseEnabled && !currentUser?.orgId) {
-        toast('A organização ainda não foi carregada. Tente novamente.', { tone: 'danger' });
+      onClose();
+      return;
+    }
+    if (supabaseEnabled && supabase) {
+      // Login de verdade: a função convida por e-mail via Supabase Auth (o
+      // próprio Supabase manda o e-mail com o link pra pessoa escolher a
+      // senha) e já grava public.users vinculado — nada de id/org_id
+      // improvisado no cliente aqui (ver docs/ARCHITECTURE.md §3.4).
+      setSaving(true);
+      const { data, error } = await supabase.functions.invoke('convidar-tecnico', {
+        body: {
+          name: name.trim(),
+          email: email.trim(),
+          phone: phone.trim() || undefined,
+          fieldAppAccess,
+          redirectTo: `${window.location.origin}/definir-senha`,
+        },
+      });
+      setSaving(false);
+      if (error || data?.error) {
+        toast(data?.error ?? 'Não foi possível convidar o técnico — tente novamente.', { tone: 'danger' });
         return;
       }
-      add({ id: crypto.randomUUID(), orgId: currentUser?.orgId ?? 'org-namira', name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, role: 'tecnico', isActive, fieldAppAccess });
-      toast(
-        supabaseEnabled
-          ? 'Técnico cadastrado. Para ele conseguir entrar de verdade, crie o login em Authentication → Users no Supabase e vincule pelo e-mail.'
-          : 'Técnico cadastrado. Login com a senha demo (namira123).',
-        { tone: 'success' },
-      );
+      toast('Convite enviado! O técnico recebe um e-mail para escolher a própria senha.', { tone: 'success' });
+      onClose();
+      return;
     }
+    // Modo standalone: sem Supabase Auth de verdade, só o cadastro local.
+    add({ id: crypto.randomUUID(), orgId: 'org-namira', name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, role: 'tecnico', isActive, fieldAppAccess });
+    toast('Técnico cadastrado. Login com a senha demo (namira123).', { tone: 'success' });
     onClose();
   };
 
@@ -232,7 +244,7 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
       onClose={onClose}
       title={editing ? 'Editar técnico' : 'Novo técnico'}
       subtitle="Cadastro completo da equipe de campo"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>{editing ? 'Salvar' : 'Cadastrar'}</Button></div>}
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button><Button onClick={submit} disabled={saving} leftIcon={<Check size={15} />}>{saving ? 'Enviando…' : editing ? 'Salvar' : 'Cadastrar'}</Button></div>}
     >
       <div className="space-y-4">
         <Field label="Nome completo" required><Input value={name} onChange={(e) => setName(e.target.value)} />{touched && !name.trim() && <span className="mt-1 block text-xs text-danger">Informe o nome.</span>}</Field>
@@ -246,7 +258,13 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
           <input type="checkbox" checked={fieldAppAccess} onChange={(e) => setFieldAppAccess(e.target.checked)} className="h-4 w-4 rounded border-border" id="tec-acesso" />
           <label htmlFor="tec-acesso" className="text-sm text-foreground">Permitir acesso ao aplicativo de campo</label>
         </div>
-        <p className="text-xs text-muted-foreground">Senha de acesso: demonstração (namira123), a mesma dos demais usuários de exemplo.</p>
+        {!editing && (
+          <p className="text-xs text-muted-foreground">
+            {supabaseEnabled
+              ? 'Ao cadastrar, o técnico recebe um e-mail para escolher a própria senha e acessar o sistema.'
+              : 'Senha de acesso: demonstração (namira123), a mesma dos demais usuários de exemplo.'}
+          </p>
+        )}
       </div>
     </Drawer>
   );

@@ -140,6 +140,35 @@ organização** (mapeiam pra `organizations` e `fiscal_settings`). Padrão:
   payload pra ignorar eco de outra organização (irrelevante hoje, já que RLS
   não entregaria de qualquer forma, mas documenta a intenção).
 
+### 3.4 Convite de novo funcionário (login real)
+
+Diferente dos módulos de cadastro comuns, "Novo técnico" (`TecnicosPage.tsx`)
+não insere em `public.users` direto do navegador quando `supabaseEnabled` —
+criar um LOGIN de verdade (não só uma linha de cadastro) exige a Service Role
+Key do Supabase, que nunca pode ficar no cliente. O fluxo passa pela Edge
+Function `supabase/functions/convidar-tecnico`:
+
+1. O navegador chama `supabase.functions.invoke('convidar-tecnico', {...})`,
+   passando o JWT do usuário logado (automático).
+2. A função confirma que quem está chamando é `admin`/`supervisor` da própria
+   organização (consulta `public.users` pelo `auth_user_id` do token).
+3. Com a service role, chama `auth.admin.inviteUserByEmail` — o próprio
+   Supabase Auth manda o e-mail de convite (usa o SMTP já configurado no
+   projeto), com um link para a pessoa **escolher a própria senha** no
+   primeiro acesso. Nenhuma senha trafega em texto puro em lugar nenhum.
+4. A função já grava a linha em `public.users` com `auth_user_id` vinculado
+   ao usuário recém-convidado — não precisa mais do passo manual
+   (Authentication → Users + `db/link_admins.sql`) por novo funcionário.
+
+O link do convite aponta para `/definir-senha` (`DefinirSenhaPage.tsx`), que
+resolve a sessão a partir da URL (hash `#access_token=...` do fluxo implícito
+ou `?code=...` do PKCE — o cliente Supabase deste app usa
+`detectSessionInUrl: false`, então essa página é o único lugar que faz esse
+parsing manualmente) e chama `supabase.auth.updateUser({ password })`.
+
+Em modo standalone (sem Supabase), o cadastro continua 100% local, como
+sempre foi — a Edge Function só existe/roda em modo Supabase.
+
 ## 4. Fluxos principais
 
 ### 4.1 Do agendamento à Ordem de Serviço
