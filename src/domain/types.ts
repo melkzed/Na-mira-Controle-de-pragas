@@ -524,6 +524,13 @@ export interface ServiceOrder {
   recurrence?: OsRecurrence;
   /** Data do serviço (execução). */
   executionDate?: string;
+  /** Horário do serviço (`HH:MM`) — combinado com executionDate ao gerar o
+   *  agendamento vinculado (Appointment.scheduledStart), para que a OS
+   *  apareça na hora certa na Agenda e entre como visita de hora marcada
+   *  (fixedTime) na roteirização/app do técnico. Sem horário, a OS ainda
+   *  pode ser criada, mas o agendamento cai em meia-noite e a roteirização
+   *  não consegue posicioná-la corretamente no dia. */
+  executionTime?: string;
   /** Data de vencimento do pagamento. */
   dueDate?: string;
   /** Validade do serviço executado (proteção contra as pragas tratadas). */
