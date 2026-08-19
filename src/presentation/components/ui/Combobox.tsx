@@ -82,7 +82,21 @@ export function Combobox({
         className="flex w-full items-center justify-between gap-2 rounded-lg border border-input bg-surface px-3 py-2 text-left text-sm text-foreground transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-ring/40"
       >
         <span className={cn('truncate', !selected && 'text-muted-foreground/70')}>{selected ? selected.label : placeholder}</span>
-        <ChevronDown size={15} className="shrink-0 text-muted-foreground" />
+        <span className="flex shrink-0 items-center gap-1">
+          {selected && (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label="Limpar seleção"
+              onClick={(e) => { e.stopPropagation(); onChange(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onChange(''); } }}
+              className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <X size={13} />
+            </span>
+          )}
+          <ChevronDown size={15} className="text-muted-foreground" />
+        </span>
       </button>
       {open && (
         <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 overflow-hidden rounded-xl border border-border bg-surface shadow-elevated">
