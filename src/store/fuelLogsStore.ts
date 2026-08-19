@@ -3,6 +3,7 @@ import type { FuelLog } from '@/domain/types';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
+import { currentOrgId } from './appStore';
 
 /** Controle de combustível × quilometragem do técnico (dual-mode — ver
  *  docs/ARCHITECTURE.md §3.1/§3.2). */
@@ -40,7 +41,7 @@ interface FuelLogsState {
 export const useFuelLogsStore = create<FuelLogsState>((set, get) => ({
   logs: load(),
   add: (input) => {
-    const log: FuelLog = { id: uid(), orgId: 'org-namira', ...input };
+    const log: FuelLog = { id: uid(), orgId: currentOrgId(), ...input };
     const next = [log, ...get().logs];
     set({ logs: next });
     if (supabaseEnabled && supabase) {

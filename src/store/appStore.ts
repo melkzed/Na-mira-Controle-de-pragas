@@ -107,3 +107,10 @@ if (supabaseEnabled && supabase) {
     }
   });
 }
+
+/** Org do usuário logado — use ao montar qualquer registro novo (nunca
+ *  hardcode 'org-namira' direto: em modo Supabase isso não é um id de
+ *  organização válido, e a política de RLS rejeita a escrita). */
+export function currentOrgId(): string {
+  return useAppStore.getState().currentUser?.orgId ?? 'org-namira';
+}

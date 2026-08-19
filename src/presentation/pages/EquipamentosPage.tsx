@@ -9,6 +9,7 @@ import { Table, type Column } from '../components/ui/Table';
 import { getUser } from '@/application/repository';
 import { useEquipmentStore, useUsersStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
+import { currentOrgId } from '@/store/appStore';
 import type { Equipment } from '@/domain/types';
 import type { EquipmentStatus } from '@/domain/enums';
 import { EQUIPMENT_STATUS_META } from '@/domain/equipmentMeta';
@@ -140,7 +141,7 @@ function EquipmentForm({ open, onClose, onSave }: { open: boolean; onClose: () =
   const submit = () => {
     setTouched(true);
     if (!name.trim()) return;
-    onSave({ id: uid('eq'), orgId: 'org-namira', name: name.trim(), code: code.trim() || undefined, assetNumber: assetNumber.trim() || undefined, kind, status, assignedTo: assignedTo || undefined });
+    onSave({ id: uid('eq'), orgId: currentOrgId(), name: name.trim(), code: code.trim() || undefined, assetNumber: assetNumber.trim() || undefined, kind, status, assignedTo: assignedTo || undefined });
   };
 
   return (

@@ -3,6 +3,7 @@ import type { EquipmentRequest } from '@/domain/types';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
+import { currentOrgId } from './appStore';
 import { uid } from './createEntityStore';
 
 /** Solicitações de ferramentas/equipamentos feitas pelo técnico no app de
@@ -58,7 +59,7 @@ export const useEquipmentRequestsStore = create<EquipmentRequestsState>((set, ge
   requests: load(),
   add: (input) => {
     const req: EquipmentRequest = {
-      id: uid('eqreq'), orgId: 'org-namira', status: 'pendente', createdAt: new Date().toISOString(), ...input,
+      id: uid('eqreq'), orgId: currentOrgId(), status: 'pendente', createdAt: new Date().toISOString(), ...input,
     };
     const requests = [req, ...get().requests];
     set({ requests });

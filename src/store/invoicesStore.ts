@@ -8,6 +8,7 @@ import type { FiscalConfig } from './settingsStore';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
+import { currentOrgId } from './appStore';
 
 /**
  * Notas Fiscais de Serviço (NFS-e) — dual-mode (ver docs/ARCHITECTURE.md
@@ -70,7 +71,7 @@ export const useInvoicesStore = create<InvoicesState>((set, get) => ({
     const nextNumber = get().invoices.reduce((max, i) => Math.max(max, i.number), 1000) + 1;
     const invoice: Invoice = {
       id: 'inv-' + Math.random().toString(36).slice(2, 9),
-      orgId: 'org-namira',
+      orgId: currentOrgId(),
       number: nextNumber,
       series: 'RPS-1',
       status: 'emitida',
@@ -98,7 +99,7 @@ export const useInvoicesStore = create<InvoicesState>((set, get) => ({
     const nextNumber = get().invoices.reduce((max, i) => Math.max(max, i.number), 1000) + 1;
     const invoice: Invoice = {
       id: 'inv-' + Math.random().toString(36).slice(2, 9),
-      orgId: 'org-namira',
+      orgId: currentOrgId(),
       number: nextNumber,
       series: '00001',
       serviceOrderId: input.serviceOrderId,

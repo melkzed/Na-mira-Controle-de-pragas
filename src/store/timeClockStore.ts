@@ -3,6 +3,7 @@ import type { TimeClockEntry, TimeClockType } from '@/domain/types';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
+import { currentOrgId } from './appStore';
 
 /** Controle de ponto (entrada/saída) do técnico — "Meu Ponto" no app de
  *  campo (dual-mode — ver docs/ARCHITECTURE.md §3.1/§3.2). */
@@ -37,7 +38,7 @@ interface TimeClockState {
 export const useTimeClockStore = create<TimeClockState>((set, get) => ({
   entries: load(),
   clock: (technicianId, type) => {
-    const entry: TimeClockEntry = { id: uid(), orgId: 'org-namira', technicianId, type, timestamp: new Date().toISOString() };
+    const entry: TimeClockEntry = { id: uid(), orgId: currentOrgId(), technicianId, type, timestamp: new Date().toISOString() };
     const next = [entry, ...get().entries];
     set({ entries: next });
     if (supabaseEnabled && supabase) {

@@ -10,6 +10,7 @@ import { Field, Input, Select } from '../components/ui/Field';
 import { getUser } from '@/application/repository';
 import { useVehiclesStore, useUsersStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
+import { currentOrgId } from '@/store/appStore';
 import { toast } from '@/store/toastStore';
 import type { Vehicle } from '@/domain/types';
 import { formatNumber } from '@/lib/utils';
@@ -76,7 +77,7 @@ export function VeiculosPage() {
         onClose={() => setFormOpen(false)}
         onSave={(v) => {
           if (editing) update(editing.id, v);
-          else add({ id: uid('veh'), orgId: 'org-namira', isActive: true, ...v });
+          else add({ id: uid('veh'), orgId: currentOrgId(), isActive: true, ...v });
           setFormOpen(false);
         }}
       />

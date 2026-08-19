@@ -4,6 +4,7 @@ import { serviceOrders as seed } from '@/infrastructure/seed/data';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
+import { currentOrgId } from './appStore';
 
 /**
  * Ordens de serviço (dual-mode — ver docs/ARCHITECTURE.md §3.1/§3.2).
@@ -48,7 +49,7 @@ export const useServiceOrdersStore = create<ServiceOrdersState>((set, get) => ({
     const nextNumber = get().orders.reduce((max, o) => Math.max(max, o.number), 1000) + 1;
     const order: ServiceOrder = {
       id: uid(),
-      orgId: 'org-namira',
+      orgId: currentOrgId(),
       number: nextNumber,
       createdAt: input.createdAt ?? new Date().toISOString(),
       ...input,

@@ -38,6 +38,7 @@ import { formatCurrency } from '@/lib/utils';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { Award, FileCode, FileText, Receipt } from 'lucide-react';
 import { uid } from '@/store/createEntityStore';
+import { currentOrgId } from '@/store/appStore';
 
 const OS_STATUS_LABEL: Record<ServiceOrderStatus, string> = {
   rascunho: 'Rascunho', em_andamento: 'Em andamento', concluida: 'Concluída', cancelada: 'Cancelada',
@@ -469,19 +470,19 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
 
   /** Cadastro rápido — evita sair da O.S. para incluir serviço/praga/área novos. */
   const quickAddServiceType = (name: string) => {
-    const st: ServiceType = { id: uid('st'), orgId: 'org-namira', name, defaultDurationMin: 60, defaultPrice: 0, color: '#0ea5e9' };
+    const st: ServiceType = { id: uid('st'), orgId: currentOrgId(), name, defaultDurationMin: 60, defaultPrice: 0, color: '#0ea5e9' };
     addServiceType(st);
     setServiceTypeIds((arr) => [...arr, st.id]);
     toast(`Serviço "${name}" cadastrado.`, { tone: 'success' });
   };
   const quickAddPest = (name: string) => {
-    const p: Pest = { id: uid('pest'), orgId: 'org-namira', name };
+    const p: Pest = { id: uid('pest'), orgId: currentOrgId(), name };
     addPest(p);
     setPestIds((arr) => [...arr, p.id]);
     toast(`Praga "${name}" cadastrada.`, { tone: 'success' });
   };
   const quickAddArea = (name: string) => {
-    const a: TreatedArea = { id: uid('area'), orgId: 'org-namira', name };
+    const a: TreatedArea = { id: uid('area'), orgId: currentOrgId(), name };
     addArea(a);
     setAreaQty((m) => ({ ...m, [a.id]: 1 }));
     toast(`Área "${name}" cadastrada.`, { tone: 'success' });
@@ -722,7 +723,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
           paidAt: paymentStatus === 'pago' ? (input.paymentDate ?? now) : undefined,
         };
         if (existingFe) updateFinanceEntry(existingFe.id, feData);
-        else addFinanceEntry({ id: uid('fe'), orgId: 'org-namira', type: 'receita', customerId, serviceOrderId: initial.id, createdAt: now, ...feData });
+        else addFinanceEntry({ id: uid('fe'), orgId: currentOrgId(), type: 'receita', customerId, serviceOrderId: initial.id, createdAt: now, ...feData });
       }
 
       logChange('edição', 'ordem de serviço', changes.length ? `OS #${initial.number} · ${changes.join('; ')}` : `OS #${initial.number} · dados atualizados`, initial.id);
@@ -766,7 +767,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     // de receita — pendente (Serviços a Receber) ou já pago, conforme informado.
     if (so.serviceValue) {
       addFinanceEntry({
-        id: uid('fe'), orgId: 'org-namira', type: 'receita',
+        id: uid('fe'), orgId: currentOrgId(), type: 'receita',
         status: paymentStatus === 'pago' ? 'pago' : 'pendente',
         description: `OS #${so.number} · ${custName}${paymentMethod ? ` · ${paymentMethod}` : ''}`,
         amount: so.serviceValue,
