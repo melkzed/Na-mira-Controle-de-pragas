@@ -9,7 +9,7 @@
  * Client-side, sem dependências.
  */
 import { parseISO } from 'date-fns';
-import type { License, Pest, ServiceOrder } from '@/domain/types';
+import type { License, Pest, Product, ServiceOrder } from '@/domain/types';
 import { getCustomer, getPest, getProduct, getServiceType, getUser } from '@/application/repository';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useLicensesStore } from '@/store/entityStores';
@@ -84,7 +84,8 @@ export const SHELL_CSS = `
   .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; }
   .sign { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 20px; align-items: end; }
   .sign2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 26px; align-items: end; }
-  .sign .line, .sign2 .line { border-top: 1px solid #94a3b8; padding-top: 3px; text-align: center; font-size: 9px; color: #64748b; }
+  .sign .line, .sign2 .line { text-align: center; font-size: 9px; color: #64748b; }
+  .sign .line .signlabel, .sign2 .line .signlabel { display: block; border-top: 1px solid #94a3b8; padding-top: 3px; margin-top: 2px; }
   .execline { margin-top: 8px; font-size: 10.5px; }
   .page2 { page-break-before: always; padding-top: 20px; }
   @media print { body { padding: 0; margin: 0; } @page { margin: 6mm; } }
@@ -152,7 +153,7 @@ export function responsibleSignatureLine(): string {
   const org = getOrgProfile();
   const img = (src?: string) => (src ? `<img src="${src}" alt="assinatura" style="height:36px;object-fit:contain;margin:0 auto 2px;display:block" />` : '<div style="height:36px"></div>');
   return `<div class="sign" style="grid-template-columns:1fr;max-width:260px;margin:20px auto 0;">
-    <div class="line">${img(s.companySignature)}${esc(org.technicalResponsibleName)}<br/>${esc(org.technicalResponsibleRole)} · ${esc(org.technicalResponsibleRegistry)}</div>
+    <div class="line">${img(s.companySignature)}<span class="signlabel">${esc(org.technicalResponsibleName)}<br/>${esc(org.technicalResponsibleRole)} · ${esc(org.technicalResponsibleRegistry)}</span></div>
   </div>`;
 }
 
@@ -165,8 +166,8 @@ export function clientTechSignatures(so: ServiceOrder): string {
   const techNames = (so.technicianIds?.length ? so.technicianIds : [so.technicianId]).map((id) => getUser(id)?.name).filter(Boolean).join(', ') || '—';
   const c = getCustomer(so.customerId);
   return `<div class="sign2">
-    <div class="line">${img(so.customerSignature)}${esc(c?.name ?? 'Cliente')}${c?.document ? `<br/>${esc(formatDocument(c.document))}` : ''}<br/>Assinatura Cliente</div>
-    <div class="line">${img(techSig)}${esc(techNames)}<br/>Técnico de Execução</div>
+    <div class="line">${img(so.customerSignature)}<span class="signlabel">${esc(c?.name ?? 'Cliente')}${c?.document ? `<br/>${esc(formatDocument(c.document))}` : ''}<br/>Assinatura Cliente</span></div>
+    <div class="line">${img(techSig)}<span class="signlabel">${esc(techNames)}<br/>Técnico de Execução</span></div>
   </div>`;
 }
 
@@ -186,6 +187,15 @@ export function openPrint(title: string, body: string): void {
   const w = window.open('', '_blank', `width=${width},height=${height},left=${left},top=${top}`);
   if (!w) { toast('Permita pop-ups para gerar o documento.', { tone: 'warning' }); return; }
   w.document.open(); w.document.write(html); w.document.close();
+}
+
+/** Como o produto é identificado no Laudo/Certificado — nome comercial ou
+ *  princípio ativo, conforme configurado no cadastro (Product.reportLabel).
+ *  Sem preferência definida ou sem princípio ativo cadastrado, cai no nome. */
+export function productReportLabel(prod?: Product): string {
+  if (!prod) return '—';
+  if (prod.reportLabel === 'nome') return prod.name;
+  return prod.activeIngredient || prod.name;
 }
 
 export function serviceNames(so: ServiceOrder): string {
@@ -208,7 +218,7 @@ export function printCertificate(so: ServiceOrder): void {
 
   const productRows = so.products.map((p) => {
     const prod = getProduct(p.productId);
-    return `<tr><td>${esc(prod?.name)}</td><td>${esc(prod?.chemicalGroup ?? '—')}</td><td>${esc(prod?.registrationCode ?? '—')}</td><td class="r">${esc(p.usedQty)} ${esc(prod?.unit ?? '')}</td><td>${esc(prod?.dosage ?? '—')}</td></tr>`;
+    return `<tr><td>${esc(productReportLabel(prod))}</td><td>${esc(prod?.chemicalGroup ?? '—')}</td><td>${esc(prod?.registrationCode ?? '—')}</td><td class="r">${esc(p.usedQty)} ${esc(prod?.unit ?? '')}</td><td>${esc(prod?.dosage ?? '—')}</td></tr>`;
   }).join('');
 
   const body = `${header('Certificado Sanitário')}
@@ -266,14 +276,14 @@ export function printLaudo(so: ServiceOrder): void {
     const batch = currentBatch(prod);
     return `<tr>
       <td>${esc(prod?.chemicalGroup ?? '—')}</td>
-      <td>${esc(prod?.name)}</td>
+      <td>${esc(productReportLabel(prod))}</td>
       <td>${esc(prod?.activeIngredient ?? '—')}</td>
       <td>${esc(batch?.code ?? '—')}</td>
       <td>${esc(batch?.expiresAt ? fmtDate(batch.expiresAt) : '—')}</td>
       <td>${esc(prod?.registrationCode ?? '—')}</td>
       <td>${esc(prod?.applicationType ?? '—')}</td>
       <td class="r">${esc(p.usedQty)} ${esc(prod?.unit ?? '')}</td>
-      <td>${esc(prod?.antidote ?? '—')}</td>
+      <td>${esc([prod?.antidote, prod?.treatment].filter(Boolean).join(' · ') || '—')}</td>
     </tr>`;
   }).join('');
 

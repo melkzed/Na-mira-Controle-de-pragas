@@ -79,6 +79,7 @@ interface CustomerRow {
   longitude: number | null;
   property_type: string | null;
   area_m2: number | null;
+  room_count: number | null;
   notes: string | null;
   permanent_notes: string | null;
   monitoring_contracted: boolean;
@@ -118,6 +119,7 @@ function fromRow(row: CustomerRow): Customer {
     longitude: row.longitude ?? undefined,
     propertyType: row.property_type ?? undefined,
     areaM2: row.area_m2 ?? undefined,
+    roomCount: row.room_count ?? undefined,
     notes: row.notes ?? undefined,
     permanentNotes: row.permanent_notes ?? undefined,
     monitoringContracted: row.monitoring_contracted,
@@ -158,6 +160,7 @@ function toRow(c: Customer): CustomerRow {
     longitude: c.longitude ?? null,
     property_type: c.propertyType ?? null,
     area_m2: c.areaM2 ?? null,
+    room_count: c.roomCount ?? null,
     notes: c.notes ?? null,
     permanent_notes: c.permanentNotes ?? null,
     monitoring_contracted: c.monitoringContracted ?? false,

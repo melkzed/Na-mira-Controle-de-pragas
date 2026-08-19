@@ -121,6 +121,10 @@ foram criados):
 - `db/migrate_serviceorders_time.sql` — adiciona `service_orders.execution_time`
   (horário do serviço, `HH:MM`) — sem ele o agendamento vinculado à OS caía
   sempre em meia-noite, e a roteirização não conseguia posicionar a visita.
+- `db/migrate_feedback_cliente.sql` — `products.report_label` (nome comercial
+  vs. princípio ativo nos laudos), `customers.room_count` (quantidade de
+  cômodos) e `recurring_payables.start_date` (primeiro vencimento com
+  dia/mês/ano, antes só existia o dia).
 
 ## Convenções
 

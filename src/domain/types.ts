@@ -92,6 +92,9 @@ export interface Customer {
   longitude?: number;
   propertyType?: string;
   areaM2?: number;
+  /** Quantidade de cômodos do imóvel — usado no dimensionamento do serviço
+   *  (cadastro completo de pessoa física). */
+  roomCount?: number;
   notes?: string;
   /** Observações permanentes do contrato — aparecem na OS, agenda e app do técnico. */
   permanentNotes?: string;
@@ -256,8 +259,17 @@ export interface Product {
   activeIngredient?: string;
   /** Grupo químico (ex.: Piretróide, Neonicotinóide, Hidroxicumarina…) — laudos técnicos. */
   chemicalGroup?: string;
-  /** Antídoto/conduta em caso de intoxicação — laudos técnicos. */
+  /** Antídoto em caso de intoxicação — laudos técnicos. */
   antidote?: string;
+  /** Conduta/tratamento em caso de intoxicação (ex.: "Sintomático",
+   *  "Vitamina K1") — complementa o antídoto nos laudos. */
+  treatment?: string;
+  /** Diluente do produto (ex.: Água, Gel, Pronto para Uso). */
+  diluent?: string;
+  /** Como este produto é identificado no Laudo/Certificado: nome comercial ou
+   *  princípio ativo. Sem valor definido (produtos antigos), o app trata como
+   *  'principio_ativo' — preferência padrão da empresa. */
+  reportLabel?: 'nome' | 'principio_ativo';
   applicationType?: string;
   dosage?: string;
   unit: string;
@@ -741,8 +753,11 @@ export interface RecurringPayable {
   amount: number;
   /** Frequência (mensal, bimestral, trimestral, semestral, anual). */
   frequency: RecurrenceFreq;
-  /** Dia de vencimento (1–28). */
+  /** Dia de vencimento (1–28) — derivado de startDate ao cadastrar. */
   dueDay: number;
+  /** Data do primeiro vencimento (dia/mês/ano) — âncora usada para calcular
+   *  as próximas ocorrências. Contas antigas sem essa data usam createdAt. */
+  startDate?: string;
   active: boolean;
   createdAt: string;
 }
