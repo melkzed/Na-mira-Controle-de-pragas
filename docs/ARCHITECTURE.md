@@ -169,6 +169,35 @@ parsing manualmente) e chama `supabase.auth.updateUser({ password })`.
 Em modo standalone (sem Supabase), o cadastro continua 100% local, como
 sempre foi — a Edge Function só existe/roda em modo Supabase.
 
+### 3.5 Estoque combinado entre técnicos de uma OS
+
+Quando uma OS tem mais de um técnico (`ServiceOrder.technicianIds`), o
+estoque de ambos conta como um só **naquela OS** — um técnico pode levar um
+produto/equipamento pro outro usar. Implementado em `CampoPage.tsx`:
+
+- `pooledBalance(technicianIds, productId)` soma o saldo de todos os
+  técnicos da OS (via seus locais de estoque, `stockLocations` no seed).
+- `AppliedProducts` (tela "Produtos aplicados" no app de campo) mostra
+  "Disponível no estoque: N" por produto usando esse saldo combinado — não
+  bloqueia usar mais do que isso (pode ter sido um erro de comunicação entre
+  o técnico e o almoxarifado), só avisa visualmente.
+- Ao salvar/finalizar, `reconcileTechStock` dá baixa primeiro no estoque de
+  quem está com o app aberto agora, completa pelo estoque dos outros
+  técnicos da OS se faltar, e marca `ServiceOrderProduct.outOfStock = true`
+  quando mesmo o total combinado não cobria a quantidade usada — a OS mostra
+  esse aviso em `OrdensPage.tsx` (Produtos utilizados).
+- Solicitar reposição de produto que falta continua o fluxo já existente
+  (`stockRequestsStore` + aprovação do gestor em `/tecnicos`) — o aviso de
+  "fora do estoque" é para quando o técnico usa sem ter solicitado antes.
+
+Limitação conhecida (não resolvida agora): o local de estoque de cada
+técnico (`stockLocations`) ainda vem só do seed do frontend, não é um
+cadastro de verdade — um técnico convidado pela tela (ver §3.4) não ganha um
+local automaticamente. `pooledBalance` trata isso como saldo zero (não
+quebra), mas o técnico realmente não tem onde guardar estoque próprio até
+alguém criar a linha manualmente (mesmo apontamento de
+`db/migrate_stock_realtime.sql`).
+
 ## 4. Fluxos principais
 
 ### 4.1 Do agendamento à Ordem de Serviço

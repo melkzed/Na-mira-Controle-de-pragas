@@ -43,21 +43,75 @@ interface FieldSaveData {
   paymentStatus: PaymentStatus;
 }
 
-/** Ajusta o estoque do técnico pela diferença entre o que estava registrado
- *  na OS e o que foi salvo agora — evita dar baixa em dobro ao editar depois
- *  de finalizar (só a diferença é consumida ou devolvida). */
-function reconcileTechStock(techId: string, previous: ServiceOrderProduct[] | undefined, next: AppliedProductRow[]) {
-  const loc = stockLocations.find((l) => l.kind === 'tecnico' && l.ownerId === techId);
-  if (!loc) return;
+/** Local de estoque de um técnico (cadastro fixo do seed — ver
+ *  src/infrastructure/seed/data.ts → stockLocations). */
+function techStockLocationId(techId: string): string | undefined {
+  return stockLocations.find((l) => l.kind === 'tecnico' && l.ownerId === techId)?.id;
+}
+
+/** Saldo combinado de um produto somando o estoque de todos os técnicos
+ *  informados — quando a OS tem mais de um técnico, o estoque de ambos
+ *  conta como um só naquela OS (um pode levar equipamento/produto pro
+ *  outro usar). */
+function pooledBalance(technicianIds: string[], productId: string): number {
+  const { balanceOf } = useStockStore.getState();
+  return technicianIds.reduce((sum, id) => {
+    const loc = techStockLocationId(id);
+    return loc ? sum + balanceOf(loc, productId) : sum;
+  }, 0);
+}
+
+/** Ajusta o estoque dos técnicos da OS pela diferença entre o que estava
+ *  registrado e o que foi salvo agora — evita dar baixa em dobro ao editar
+ *  depois de finalizar (só a diferença é consumida ou devolvida). A baixa
+ *  sai primeiro do estoque de quem está finalizando agora; faltando, completa
+ *  pelo estoque dos outros técnicos da OS (estoque combinado — ver
+ *  pooledBalance). Se mesmo assim faltar, consome o que der e sinaliza
+ *  `outOfStock` no produto (não bloqueia o atendimento: pode ter sido um
+ *  erro de comunicação entre o técnico e o almoxarifado). Devolução (diff
+ *  negativo) sempre volta pro estoque de quem está editando agora.
+ *  Retorna o conjunto de productIds que ficaram marcados fora do estoque. */
+function reconcileTechStock(
+  technicianIds: string[],
+  currentTechId: string,
+  previous: ServiceOrderProduct[] | undefined,
+  next: AppliedProductRow[],
+): Set<string> {
   const store = useStockStore.getState();
+  const currentLoc = techStockLocationId(currentTechId);
+  const otherIds = technicianIds.filter((id) => id !== currentTechId);
   const prevMap = new Map((previous ?? []).map((p) => [p.productId, p.usedQty]));
   const nextMap = new Map(next.filter((p) => p.used).map((p) => [p.productId, p.qty]));
   const ids = new Set([...prevMap.keys(), ...nextMap.keys()]);
+  const outOfStock = new Set<string>();
+
   ids.forEach((id) => {
     const diff = (nextMap.get(id) ?? 0) - (prevMap.get(id) ?? 0);
-    if (diff > 0) store.consume(loc.id, id, diff);
-    else if (diff < 0) store.entry(loc.id, id, -diff);
+    if (diff === 0) return;
+    if (diff < 0) {
+      if (currentLoc) store.entry(currentLoc, id, -diff);
+      return;
+    }
+    const available = pooledBalance(technicianIds, id);
+    if (diff > available) outOfStock.add(id);
+
+    let remaining = diff;
+    if (currentLoc) {
+      const fromCurrent = Math.min(remaining, store.balanceOf(currentLoc, id));
+      if (fromCurrent > 0) { store.consume(currentLoc, id, fromCurrent); remaining -= fromCurrent; }
+    }
+    for (const otherId of otherIds) {
+      if (remaining <= 0) break;
+      const loc = techStockLocationId(otherId);
+      if (!loc) continue;
+      const fromOther = Math.min(remaining, store.balanceOf(loc, id));
+      if (fromOther > 0) { store.consume(loc, id, fromOther); remaining -= fromOther; }
+    }
+    // Se ainda sobrou (ninguém tinha o suficiente), a diferença não vira
+    // saldo negativo em lugar nenhum — só fica registrada via outOfStock.
   });
+
+  return outOfStock;
 }
 
 /** Produtos aplicados padrão da visita — parte do que já foi registrado na OS
@@ -106,7 +160,8 @@ export function CampoPage() {
   };
 
   /** Finaliza o atendimento: grava assinatura, produtos aplicados e pagamento
-   *  na OS, dá baixa no estoque do técnico e registra o histórico da OS. */
+   *  na OS, dá baixa no estoque combinado dos técnicos da OS (ver
+   *  reconcileTechStock) e registra o histórico da OS. */
   const handleFinish = ({ signature, products, paymentStatus }: FieldSaveData) => {
     if (!active) return;
     const so = serviceOrderForAppointment(active.id);
@@ -114,14 +169,16 @@ export function CampoPage() {
     updateAppt(active.id, { technicianSignature: signature });
     setStatus(active.id, 'finalizado');
     if (so) {
+      const technicianIds = so.technicianIds?.length ? so.technicianIds : [so.technicianId ?? techId];
+      const outOfStock = reconcileTechStock(technicianIds, techId, so.products, products);
       updateOs(so.id, {
         status: 'concluida',
         finishedAt: now,
-        products: products.filter((p) => p.used).map((p) => ({ productId: p.productId, usedQty: p.qty })),
+        products: products.filter((p) => p.used).map((p) => ({ productId: p.productId, usedQty: p.qty, outOfStock: outOfStock.has(p.productId) || undefined })),
         paymentStatus,
         paymentDate: paymentStatus === 'pago' ? now : so.paymentDate,
       });
-      reconcileTechStock(techId, so.products, products);
+      if (outOfStock.size) toast('Alguns produtos foram usados além do estoque disponível — sinalizado na OS.', { tone: 'warning' });
       logChange('conclusão', 'ordem de serviço', `OS #${so.number} finalizada em campo por ${techName} em ${new Date(now).toLocaleString('pt-BR')}`, so.id);
     }
     const next = appts.find((a) => a.id !== active.id && a.status !== 'finalizado');
@@ -136,12 +193,14 @@ export function CampoPage() {
     const so = serviceOrderForAppointment(active.id);
     if (!so) return;
     const now = new Date().toISOString();
+    const technicianIds = so.technicianIds?.length ? so.technicianIds : [so.technicianId ?? techId];
+    const outOfStock = reconcileTechStock(technicianIds, techId, so.products, products);
     updateOs(so.id, {
-      products: products.filter((p) => p.used).map((p) => ({ productId: p.productId, usedQty: p.qty })),
+      products: products.filter((p) => p.used).map((p) => ({ productId: p.productId, usedQty: p.qty, outOfStock: outOfStock.has(p.productId) || undefined })),
       paymentStatus,
       paymentDate: paymentStatus === 'pago' ? (so.paymentDate ?? now) : so.paymentDate,
     });
-    reconcileTechStock(techId, so.products, products);
+    if (outOfStock.size) toast('Alguns produtos foram usados além do estoque disponível — sinalizado na OS.', { tone: 'warning' });
     logChange('alteração', 'ordem de serviço', `OS #${so.number} corrigida em campo por ${techName} em ${new Date(now).toLocaleString('pt-BR')}`, so.id);
     toast('Alterações salvas no sistema.', { tone: 'success' });
   };
@@ -420,14 +479,21 @@ function Info2({ label, value }: { label: string; value: string }) {
 
 /** Produtos aplicados na visita: parte dos produtos padrão do serviço; o técnico
  *  marca os que realmente usou, ajusta a quantidade, remove ou adiciona outro.
- *  Controlado pelo pai — persistido na OS e no estoque só ao salvar/finalizar. */
-function AppliedProducts({ value, onChange, disabled }: {
+ *  Controlado pelo pai — persistido na OS e no estoque só ao salvar/finalizar.
+ *  `technicianIds` mostra quanto tem disponível no estoque combinado de todos
+ *  os técnicos da OS (não bloqueia usar mais do que isso — só avisa; a OS
+ *  fica marcada como "fora do estoque" ao salvar). */
+function AppliedProducts({ value, onChange, disabled, technicianIds }: {
   value: AppliedProductRow[];
   onChange: (rows: AppliedProductRow[]) => void;
   disabled?: boolean;
+  technicianIds: string[];
 }) {
   const allProducts = useProductsStore((s) => s.items);
+  useStockStore((s) => s.balances); // re-renderiza quando o estoque muda (pooledBalance lê getState() por baixo)
   const [adding, setAdding] = useState('');
+
+  const available = (productId: string) => pooledBalance(technicianIds, productId);
 
   const toggle = (id: string) => onChange(value.map((x) => (x.productId === id ? { ...x, used: !x.used } : x)));
   const setQty = (id: string, qty: number) => onChange(value.map((x) => (x.productId === id ? { ...x, qty } : x)));
@@ -441,15 +507,26 @@ function AppliedProducts({ value, onChange, disabled }: {
         {value.length === 0 && <p className="text-sm text-muted-foreground">Nenhum produto padrão para este serviço.</p>}
         {value.map((row) => {
           const prod = getProduct(row.productId);
+          const avail = available(row.productId);
+          const short = row.used && row.qty > avail;
           return (
-            <div key={row.productId} className="flex items-center gap-2 rounded-lg border border-border/60 p-2">
-              <button disabled={disabled} onClick={() => toggle(row.productId)} className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition', row.used ? 'border-brand bg-brand text-brand-foreground' : 'border-border')}>
-                {row.used && <CheckCircle2 size={13} />}
-              </button>
-              <span className={cn('flex-1 truncate text-sm', row.used ? 'text-foreground' : 'text-muted-foreground line-through')}>{prod?.name ?? row.productId}</span>
-              <input type="number" min={0} step="0.5" value={row.qty} onChange={(e) => setQty(row.productId, Number(e.target.value) || 0)} disabled={disabled || !row.used} className="h-7 w-14 rounded border border-input bg-surface px-1.5 text-right text-sm disabled:opacity-50" />
-              <span className="w-6 text-xs text-muted-foreground">{prod?.unit}</span>
-              <button disabled={disabled} onClick={() => removeRow(row.productId)} className="text-muted-foreground hover:text-danger disabled:opacity-40" title="Remover"><X size={15} /></button>
+            <div key={row.productId} className={cn('rounded-lg border p-2', short ? 'border-warning/50 bg-warning-soft/20' : 'border-border/60')}>
+              <div className="flex items-center gap-2">
+                <button disabled={disabled} onClick={() => toggle(row.productId)} className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition', row.used ? 'border-brand bg-brand text-brand-foreground' : 'border-border')}>
+                  {row.used && <CheckCircle2 size={13} />}
+                </button>
+                <span className={cn('flex-1 truncate text-sm', row.used ? 'text-foreground' : 'text-muted-foreground line-through')}>{prod?.name ?? row.productId}</span>
+                <input type="number" min={0} step="0.5" value={row.qty} onChange={(e) => setQty(row.productId, Number(e.target.value) || 0)} disabled={disabled || !row.used} className="h-7 w-14 rounded border border-input bg-surface px-1.5 text-right text-sm disabled:opacity-50" />
+                <span className="w-6 text-xs text-muted-foreground">{prod?.unit}</span>
+                <button disabled={disabled} onClick={() => removeRow(row.productId)} className="text-muted-foreground hover:text-danger disabled:opacity-40" title="Remover"><X size={15} /></button>
+              </div>
+              <p className={cn('mt-1 pl-7 text-xs', short ? 'text-warning' : 'text-muted-foreground')}>
+                {short ? (
+                  <><TriangleAlert size={11} className="mr-1 inline" />Disponível no estoque: {avail} {prod?.unit} — vai ficar sinalizado na OS</>
+                ) : (
+                  <>Disponível no estoque: {avail} {prod?.unit}</>
+                )}
+              </p>
             </div>
           );
         })}
@@ -594,7 +671,12 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
         </div>
 
         {/* Produtos aplicados (padrão do serviço; técnico confirma o que usou) */}
-        <AppliedProducts value={productRows} onChange={setProductRows} disabled={locked} />
+        <AppliedProducts
+          value={productRows}
+          onChange={setProductRows}
+          disabled={locked}
+          technicianIds={linkedOs?.technicianIds?.length ? linkedOs.technicianIds : [linkedOs?.technicianId ?? techId]}
+        />
 
         {/* Fotos de antes/depois — só liberadas após iniciar; servem de check
          *  de que o atendimento realmente está sendo feito. */}

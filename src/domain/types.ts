@@ -465,6 +465,11 @@ export interface ServiceOrderProduct {
   productId: string;
   usedQty: number;
   unitCost?: number;
+  /** true quando a quantidade usada excedeu o estoque combinado dos
+   *  técnicos da OS no momento do registro — sinaliza pro gestor que houve
+   *  uso "fora do estoque" (erro de comunicação entre técnico e almoxarifado,
+   *  não bloqueia o atendimento). */
+  outOfStock?: boolean;
 }
 
 export interface ServiceOrder {

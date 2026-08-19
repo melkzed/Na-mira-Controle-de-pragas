@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Check, Download, Pencil, Plus, Trash2, Zap } from 'lucide-react';
+import { Check, Download, Pencil, Plus, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -34,7 +34,7 @@ import { Combobox, MultiCombobox } from '../components/ui/Combobox';
 import { useSettingsStore } from '@/store/settingsStore';
 import { computeTaxes } from '@/application/fiscal/tax';
 import { providerLabel } from '@/application/fiscal/providers';
-import { formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { Award, FileCode, FileText, Receipt } from 'lucide-react';
 import { uid } from '@/store/createEntityStore';
@@ -239,10 +239,11 @@ export function OrdensPage() {
                     const prod = getProduct(p.productId);
                     const batch = currentBatch(prod);
                     return (
-                      <div key={p.productId} className="flex items-center justify-between rounded-lg border border-border p-2.5">
+                      <div key={p.productId} className={cn('flex items-center justify-between rounded-lg border p-2.5', p.outOfStock ? 'border-warning/50 bg-warning-soft/20' : 'border-border')}>
                         <div>
                           <span className="text-sm text-foreground">{prod?.name}</span>
                           {batch && <p className="text-xs text-muted-foreground">Lote {batch.code}{batch.expiresAt ? ` · val. ${fmtDate(batch.expiresAt)}` : ''}</p>}
+                          {p.outOfStock && <p className="text-xs text-warning"><TriangleAlert size={11} className="mr-1 inline" />Usado além do estoque do(s) técnico(s)</p>}
                         </div>
                         <Badge tone="brand">{p.usedQty} {prod?.unit}</Badge>
                       </div>
