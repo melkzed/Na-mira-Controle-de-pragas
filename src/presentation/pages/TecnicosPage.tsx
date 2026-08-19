@@ -184,6 +184,7 @@ function PendingRequestsPanel() {
 function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: User | null; onClose: () => void }) {
   const add = useUsersStore((s) => s.add);
   const update = useUsersStore((s) => s.update);
+  const currentUser = useAppStore((s) => s.currentUser);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -207,8 +208,14 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
     } else {
       // users.id é uuid de verdade (vínculo com Supabase Auth) — nunca o
       // formato curto "u-xxx" que as demais entidades usam, senão o insert
-      // falha em modo Supabase ("invalid input syntax for type uuid").
-      add({ id: crypto.randomUUID(), orgId: 'org-namira', name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, role: 'tecnico', isActive, fieldAppAccess });
+      // falha em modo Supabase ("invalid input syntax for type uuid"). Em
+      // modo Supabase, orgId precisa ser o org_id real (RLS rejeita
+      // qualquer outro valor); em modo standalone cai no fallback fixo.
+      if (supabaseEnabled && !currentUser?.orgId) {
+        toast('A organização ainda não foi carregada. Tente novamente.', { tone: 'danger' });
+        return;
+      }
+      add({ id: crypto.randomUUID(), orgId: currentUser?.orgId ?? 'org-namira', name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, role: 'tecnico', isActive, fieldAppAccess });
       toast(
         supabaseEnabled
           ? 'Técnico cadastrado. Para ele conseguir entrar de verdade, crie o login em Authentication → Users no Supabase e vincule pelo e-mail.'
