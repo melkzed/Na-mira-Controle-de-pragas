@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { useAppStore } from './appStore';
+import { currentOrgId, useAppStore } from './appStore';
 import { auditSeed } from '@/infrastructure/seed/data';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
@@ -8,6 +8,7 @@ import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
  *  docs/ARCHITECTURE.md §3.1/§3.2) — só insere, nunca edita/remove. */
 export interface AuditEntry {
   id: string;
+  orgId: string;
   userId?: string;
   userName?: string;
   action: string; // criação, alteração, exclusão, confirmação, reagendamento, inspeção...
@@ -23,7 +24,7 @@ const CAP = 300;
 
 interface AuditState {
   entries: AuditEntry[];
-  log: (e: Omit<AuditEntry, 'id' | 'createdAt' | 'userId' | 'userName'>) => void;
+  log: (e: Omit<AuditEntry, 'id' | 'orgId' | 'createdAt' | 'userId' | 'userName'>) => void;
 }
 
 function load(): AuditEntry[] {
@@ -43,6 +44,7 @@ export const useAuditStore = create<AuditState>((set, get) => ({
     const user = useAppStore.getState().currentUser;
     const entry: AuditEntry = {
       id: 'aud-' + Math.random().toString(36).slice(2, 9),
+      orgId: currentOrgId(),
       createdAt: new Date().toISOString(),
       userId: user?.id,
       userName: user?.name,

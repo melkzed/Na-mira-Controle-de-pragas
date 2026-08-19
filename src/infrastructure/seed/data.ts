@@ -378,11 +378,11 @@ export const invoicesSeed: Invoice[] = [
 
 // ── Histórico / auditoria (exemplos iniciais) ───────────────────────────────
 export const auditSeed = [
-  { id: 'aud-s1', userId: 'u-sup', userName: 'Rafael Nunes', action: 'confirmação', entityType: 'agendamento', description: 'Visita confirmada · Padaria Pão Quente', createdAt: daysFromNow(0) },
-  { id: 'aud-s2', userId: 'u-t3', userName: 'Paula Freitas', action: 'inspeção', entityType: 'armadilha', description: 'Inspeção registrada · Porta Isca 005 (consumo)', createdAt: daysFromNow(-2) },
-  { id: 'aud-s3', userId: 'u-admin', userName: 'Marina Duarte', action: 'reagendamento', entityType: 'agendamento', description: 'Visita reagendada · Helena Martins', createdAt: daysFromNow(-1) },
-  { id: 'aud-s4', userId: 'u-fin', userName: 'Camila Reis', action: 'criação', entityType: 'financeiro', description: 'Lançamento criado · Contrato mensal Villa Verde', createdAt: daysFromNow(-2) },
-  { id: 'aud-s5', userId: 'u-t3', userName: 'Paula Freitas', action: 'criação', entityType: 'não conformidade', description: 'Não conformidade registrada · Fresta (Villa Verde)', createdAt: daysFromNow(-2) },
+  { id: 'aud-s1', orgId: ORG, userId: 'u-sup', userName: 'Rafael Nunes', action: 'confirmação', entityType: 'agendamento', description: 'Visita confirmada · Padaria Pão Quente', createdAt: daysFromNow(0) },
+  { id: 'aud-s2', orgId: ORG, userId: 'u-t3', userName: 'Paula Freitas', action: 'inspeção', entityType: 'armadilha', description: 'Inspeção registrada · Porta Isca 005 (consumo)', createdAt: daysFromNow(-2) },
+  { id: 'aud-s3', orgId: ORG, userId: 'u-admin', userName: 'Marina Duarte', action: 'reagendamento', entityType: 'agendamento', description: 'Visita reagendada · Helena Martins', createdAt: daysFromNow(-1) },
+  { id: 'aud-s4', orgId: ORG, userId: 'u-fin', userName: 'Camila Reis', action: 'criação', entityType: 'financeiro', description: 'Lançamento criado · Contrato mensal Villa Verde', createdAt: daysFromNow(-2) },
+  { id: 'aud-s5', orgId: ORG, userId: 'u-t3', userName: 'Paula Freitas', action: 'criação', entityType: 'não conformidade', description: 'Não conformidade registrada · Fresta (Villa Verde)', createdAt: daysFromNow(-2) },
 ];
 
 export const orgProfile = {

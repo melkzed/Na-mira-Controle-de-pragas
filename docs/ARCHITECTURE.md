@@ -90,6 +90,20 @@ usuários, Realtime) não é verificável por aqui — só o modo standalone
 (regressão) é testado automaticamente a cada módulo migrado. O teste do modo
 Supabase precisa acontecer no ambiente publicado, com dois logins reais.
 
+**Exceção deliberada à regra 1 — `serviceOrdersStore.add`:** essa store é a
+única cujo `add` é `async` (retorna `Promise<ServiceOrder>`) em vez de
+síncrono. Motivo: `OrdensPage.tsx` cria, logo após a OS, registros
+dependentes que referenciam `service_orders.id` por FK (`finance_entries`,
+e indiretamente `service_orders.appointment_id` via `updateOs`). Com escrita
+puramente otimista/fire-and-forget, esses inserts dependentes podiam chegar
+ao Postgres antes do INSERT da OS ter sido confirmado, violando a FK (erro
+`23503 finance_entries_service_order_id_fkey`, visto em produção). Por isso
+`add` só resolve depois que o INSERT remoto é confirmado (no modo Supabase;
+no modo standalone resolve na mesma tick, sem mudança de comportamento) —
+`OrdensPage.tsx` faz `await add(input)` antes de criar os dependentes. Novas
+stores com essa mesma forma (dependente com FK para uma entidade recém-criada
+na mesma ação) devem seguir o mesmo padrão em vez de assumir `add` síncrono.
+
 ### 3.2 Variante genérica — `createEntityStore` (módulos "chatos")
 
 Os módulos de cadastro simples (sem lógica própria além de CRUD — Usuários,

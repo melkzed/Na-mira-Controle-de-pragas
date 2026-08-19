@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Check, Download, Pencil, Plus, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { Check, Download, Pencil, Plus, Trash2, TriangleAlert, X, Zap } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -25,7 +25,7 @@ import { useInvoicesStore } from '@/store/invoicesStore';
 import { useServiceOrdersStore, type ServiceOrderInput } from '@/store/serviceOrdersStore';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useCustomersStore } from '@/store/customersStore';
-import { usePestsStore, useAreasStore, useEquipmentStore, useFinanceStore, useServiceTypesStore, useUsersStore, useLicensesStore } from '@/store/entityStores';
+import { usePestsStore, useAreasStore, useEquipmentStore, useFinanceStore, useServiceTypesStore, useUsersStore, useLicensesStore, useProductsStore } from '@/store/entityStores';
 import { logChange, useAuditStore, type AuditEntry } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
 import { SignaturePad } from '../components/SignaturePad';
@@ -68,6 +68,7 @@ export function OrdensPage() {
   const [formOpen, setFormOpen] = useState(false);
   const editFormRef = useRef<OsFormHandle>(null);
   const createFormRef = useRef<OsFormHandle>(null);
+  const [saving, setSaving] = useState(false);
   const [params, setParams] = useSearchParams();
   const pendingConfirmations = useAppointmentsStore((s) => s.appointments.filter((a) => a.status === 'agendado').length);
 
@@ -148,11 +149,11 @@ export function OrdensPage() {
         title="Nova Ordem de Serviço"
         subtitle="Preenchimento rápido — serviços, pragas e áreas em toques"
         centered
-        footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setFormOpen(false)}>Cancelar</Button><Button onClick={() => createFormRef.current?.submit()} leftIcon={<Check size={15} />}>Criar OS</Button></div>}
+        footer={<div className="flex justify-end gap-2"><Button variant="outline" disabled={saving} onClick={() => setFormOpen(false)}>Cancelar</Button><Button disabled={saving} onClick={() => createFormRef.current?.submit()} leftIcon={<Check size={15} />}>{saving ? 'Criando…' : 'Criar OS'}</Button></div>}
       >
         {formOpen && (
           <div className="mx-auto max-w-4xl">
-            <OsFormBody ref={createFormRef} initial={null} onSaved={(so) => { setFormOpen(false); setSelected(so); setEditMode(false); }} />
+            <OsFormBody ref={createFormRef} initial={null} onSaved={(so) => { setFormOpen(false); setSelected(so); setEditMode(false); }} onSavingChange={setSaving} />
           </div>
         )}
       </Drawer>
@@ -167,8 +168,8 @@ export function OrdensPage() {
         centered
         footer={editMode ? (
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setEditMode(false)}>Cancelar</Button>
-            <Button onClick={() => editFormRef.current?.submit()} leftIcon={<Check size={15} />}>Salvar alterações</Button>
+            <Button variant="outline" disabled={saving} onClick={() => setEditMode(false)}>Cancelar</Button>
+            <Button disabled={saving} onClick={() => editFormRef.current?.submit()} leftIcon={<Check size={15} />}>{saving ? 'Salvando…' : 'Salvar alterações'}</Button>
           </div>
         ) : (
           <div className="flex flex-wrap justify-between gap-2">
@@ -183,7 +184,7 @@ export function OrdensPage() {
       >
         {selected && editMode && (
           <div className="mx-auto max-w-4xl">
-            <OsFormBody ref={editFormRef} initial={selected} onSaved={(so) => { setSelected(so); setEditMode(false); }} />
+            <OsFormBody ref={editFormRef} initial={selected} onSaved={(so) => { setSelected(so); setEditMode(false); }} onSavingChange={setSaving} />
           </div>
         )}
         {selected && !editMode && (
@@ -275,8 +276,8 @@ export function OrdensPage() {
  *  automática de produtos. Sem Drawer/rodapé próprios: quem o usa decide
  *  onde exibi-lo (painel novo ao criar, ou o próprio painel de detalhe já
  *  aberto, transformado in-place, ao editar) e aciona o envio via `ref`. */
-const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSaved: (so: ServiceOrder) => void }>(
-  function OsFormBody({ initial, onSaved }, ref) {
+const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSaved: (so: ServiceOrder) => void; onSavingChange?: (saving: boolean) => void }>(
+  function OsFormBody({ initial, onSaved, onSavingChange }, ref) {
   const add = useServiceOrdersStore((s) => s.add);
   const updateOs = useServiceOrdersStore((s) => s.update);
   const allOrders = useServiceOrdersStore((s) => s.orders);
@@ -296,6 +297,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   const addArea = useAreasStore((s) => s.add);
   const equipment = useEquipmentStore((s) => s.items);
   const checkoutEquipment = useEquipmentStore((s) => s.update);
+  const allProducts = useProductsStore((s) => s.items);
   const allStaffUsers = useUsersStore((s) => s.items);
   const technicianUsers = allStaffUsers.filter((u) => u.role === 'tecnico' && u.isActive);
   const sellers = allStaffUsers.filter((u) => u.role !== 'tecnico');
@@ -334,8 +336,12 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   const [certValidityDate, setCertValidityDate] = useState('');
   const [certValidityTouched, setCertValidityTouched] = useState(false);
   const [equipmentIds, setEquipmentIds] = useState<string[]>([]);
+  const [products, setProducts] = useState<{ productId: string; qty: number }[]>([]);
   const [returnAt, setReturnAt] = useState('');
   const [touched, setTouched] = useState(false);
+  // Ref (não state) de propósito: precisa bloquear duplo-clique síncrono
+  // (antes do primeiro re-render), o que um useState não garante.
+  const submittingRef = useRef(false);
   const [filledFrom, setFilledFrom] = useState<number | null>(null);
   const [validityTouched, setValidityTouched] = useState(false);
   /** Texto livre de "áreas tratadas" de OS antigas (anteriores ao seletor por
@@ -410,6 +416,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       setCertValidityDate(toInput(initial.certificateValidityDate));
       setCertValidityTouched(true);
       setEquipmentIds(initial.equipmentIds ?? []);
+      setProducts((initial.products ?? []).map((p) => ({ productId: p.productId, qty: p.usedQty })));
       setReturnAt('');
       setTouched(false);
       setFilledFrom(null);
@@ -425,7 +432,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
     setRecEnabled(false); setRecPhases([]); setExecDate(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
     setCertValidityDate(''); setCertValidityTouched(false);
-    setEquipmentIds([]); setReturnAt(''); setTouched(false); setFilledFrom(null);
+    setEquipmentIds([]); setProducts([]); setReturnAt(''); setTouched(false); setFilledFrom(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -561,6 +568,19 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     return [...map.entries()].map(([productId, qty]) => ({ productId, qty }));
   }, [serviceTypeIds, serviceTypes]);
 
+  // Produtos sugeridos entram automaticamente (união dos padrões dos serviços
+  // selecionados), mas o usuário pode ajustar quantidade, remover ou adicionar
+  // outro — não sobrescreve o que já foi editado manualmente, só acrescenta
+  // sugestões novas que ainda não estão na lista.
+  useEffect(() => {
+    if (!suggestedProducts.length) return;
+    setProducts((prev) => {
+      const existingIds = new Set(prev.map((p) => p.productId));
+      const additions = suggestedProducts.filter((p) => !existingIds.has(p.productId));
+      return additions.length ? [...prev, ...additions.map((p) => ({ productId: p.productId, qty: p.qty }))] : prev;
+    });
+  }, [suggestedProducts]);
+
   // Preço padrão somado dos serviços selecionados — origem explícita da sugestão
   // de valor; o usuário sempre pode sobrescrever no campo "Valor do Serviço".
   const suggestedServiceValue = useMemo(
@@ -612,7 +632,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
         scheduledEnd: endIso,
         estimatedMinutes: durationMin,
         address: address(custObj),
-        products: suggestedProducts.map((p) => ({ productId: p.productId, plannedQty: p.qty })),
+        products: products.map((p) => ({ productId: p.productId, plannedQty: p.qty })),
         recurrenceId: groupId,
         recurrenceRule,
       });
@@ -620,9 +640,17 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     return { recurrenceGroupId: groupId, nextVisitDate: occurrences[0].date };
   };
 
-  const submit = () => {
+  const submit = async () => {
+    if (submittingRef.current) return;
     setTouched(true);
-    if (!customerId) return;
+    const missing: string[] = [];
+    if (!customerId) missing.push('Cliente');
+    if (!serviceTypeIds.length) missing.push('Serviços executados');
+    if (!technicianIds.length) missing.push('Equipe — técnicos');
+    if (missing.length) {
+      toast(`Preencha os campos obrigatórios: ${missing.join(', ')}.`, { tone: 'warning' });
+      return;
+    }
     const prevEquipmentIds = initial?.equipmentIds ?? [];
     const addedEquipmentIds = equipmentIds.filter((id) => !prevEquipmentIds.includes(id));
     const removedEquipmentIds = prevEquipmentIds.filter((id) => !equipmentIds.includes(id));
@@ -634,6 +662,9 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       toast('Confirme o valor do serviço (✓ Confirmar valor) antes de continuar.', { tone: 'warning' });
       return;
     }
+    submittingRef.current = true;
+    onSavingChange?.(true);
+    try {
     const now = new Date().toISOString();
     const recPlan = syncRecurrencePlan();
     const input: ServiceOrderInput = {
@@ -655,7 +686,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       finishedAt: status === 'concluida' ? (initial?.finishedAt ?? now) : undefined,
       pestIds,
       pestValidity: pestIds.length ? pestIds.map((id) => ({ pestId: id, validityDate: pestValidity[id] ? dateInputToIso(pestValidity[id]) : undefined })) : undefined,
-      products: suggestedProducts.map((p) => ({ productId: p.productId, usedQty: p.qty })),
+      products: products.map((p) => ({ productId: p.productId, usedQty: p.qty })),
       paymentMethod: paymentMethod || undefined,
       serviceValue: serviceValue ? Number(serviceValue) : undefined,
       serviceValueConfirmed: serviceValue ? valueConfirmed : undefined,
@@ -734,7 +765,15 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     }
 
     // ---- Criação: nova OS ----
-    const so = add(input);
+    // Aguarda a confirmação remota antes de criar os registros dependentes
+    // (agendamento, financeiro) — evita a corrida em que eles chegam ao
+    // Postgres antes da OS existir, violando a FK (ver serviceOrdersStore.add).
+    let so: ServiceOrder;
+    try {
+      so = await add(input);
+    } catch {
+      return;
+    }
     equipmentIds.forEach((id) => checkoutEquipment(id, {
       status: 'em_uso', checkedOutAt: now, checkedOutTo: technicianIds[0], checkedOutOsId: so.id, expectedReturnAt: returnIso,
     }));
@@ -759,7 +798,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
         scheduledEnd: endIso,
         estimatedMinutes: durationMin,
         address: address(cust),
-        products: suggestedProducts.map((p) => ({ productId: p.productId, plannedQty: p.qty })),
+        products: products.map((p) => ({ productId: p.productId, plannedQty: p.qty })),
       });
       updateOs(so.id, { appointmentId: newAppt.id });
     }
@@ -782,6 +821,10 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     logChange('criação', 'ordem de serviço', `OS #${so.number} · ${custName}`, so.id);
     toast(`OS #${so.number} criada e adicionada à Agenda.`, { tone: 'success' });
     onSaved(so);
+    } finally {
+      submittingRef.current = false;
+      onSavingChange?.(false);
+    }
   };
 
   useImperativeHandle(ref, () => ({ submit }));
@@ -824,11 +867,12 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
           </div>
         )}
 
-        <Field label="Serviços executados" hint="Toque para adicionar vários serviços à mesma OS">
+        <Field label="Serviços executados" required hint="Toque para adicionar vários serviços à mesma OS">
           <div className="flex flex-wrap items-center gap-1.5">
             {selectableServiceTypes.map((s) => <Chip key={s.id} active={serviceTypeIds.includes(s.id)} onClick={() => toggle(setServiceTypeIds, s.id)}>{s.name}</Chip>)}
             <QuickAddChip label="serviço" onAdd={quickAddServiceType} />
           </div>
+          {touched && !serviceTypeIds.length && <span className="mt-1 block text-xs text-danger">Selecione ao menos um serviço.</span>}
         </Field>
 
         <Field label="Pragas combatidas" hint="Cada praga pode ter validade própria, independente da validade geral do serviço">
@@ -872,12 +916,35 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
           </div>
         </Field>
 
-        {suggestedProducts.length > 0 && (
-          <div className="rounded-xl border border-border bg-muted/30 p-3">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Produtos sugeridos (dos serviços)</p>
-            <div className="flex flex-wrap gap-1.5">
-              {suggestedProducts.map((p) => <span key={p.productId} className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs">{getProduct(p.productId)?.name ?? p.productId} · {p.qty} {getProduct(p.productId)?.unit}</span>)}
-            </div>
+        <Field label="Produtos previstos" hint="Sugeridos automaticamente pelos serviços selecionados — ajuste a quantidade, remova ou adicione outro">
+          <MultiCombobox
+            values={products.map((p) => p.productId)}
+            onChange={(ids) => setProducts((prev) => {
+              const kept = prev.filter((p) => ids.includes(p.productId));
+              const addedIds = ids.filter((id) => !prev.some((p) => p.productId === id));
+              return [...kept, ...addedIds.map((id) => ({ productId: id, qty: 1 }))];
+            })}
+            placeholder="Buscar produto…"
+            options={allProducts.map((p) => ({ value: p.id, label: p.name, sub: p.unit }))}
+          />
+        </Field>
+        {products.length > 0 && (
+          <div className="space-y-1.5">
+            {products.map((row) => {
+              const prod = getProduct(row.productId);
+              return (
+                <div key={row.productId} className="flex items-center gap-2 rounded-lg border border-border/60 p-2">
+                  <span className="flex-1 truncate text-sm text-foreground">{prod?.name ?? row.productId}</span>
+                  <input
+                    type="number" min={0} step="0.5" value={row.qty}
+                    onChange={(e) => setProducts((prev) => prev.map((p) => (p.productId === row.productId ? { ...p, qty: Number(e.target.value) || 0 } : p)))}
+                    className="h-8 w-16 rounded border border-input bg-surface px-1.5 text-right text-sm"
+                  />
+                  <span className="w-6 text-xs text-muted-foreground">{prod?.unit}</span>
+                  <button type="button" onClick={() => setProducts((prev) => prev.filter((p) => p.productId !== row.productId))} className="text-muted-foreground hover:text-danger" title="Remover"><X size={15} /></button>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -986,10 +1053,11 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
           <Field label="Duração (min)"><Input type="number" min={0} value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="—" /></Field>
         </div>
 
-        <Field label="Equipe — técnicos" hint="Selecione um ou mais técnicos">
+        <Field label="Equipe — técnicos" required hint="Selecione um ou mais técnicos">
           <div className="flex flex-wrap gap-1.5">
             {technicianUsers.map((t) => <Chip key={t.id} active={technicianIds.includes(t.id)} onClick={() => toggle(setTechnicianIds, t.id)}>{t.name.split(' ')[0]}</Chip>)}
           </div>
+          {touched && !technicianIds.length && <span className="mt-1 block text-xs text-danger">Selecione ao menos um técnico.</span>}
         </Field>
         <Field label="Vendedor responsável"><Select value={sellerId} onChange={(e) => setSellerId(e.target.value)}><option value="">—</option>{sellers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></Field>
 

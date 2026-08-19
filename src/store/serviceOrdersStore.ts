@@ -39,13 +39,19 @@ export type ServiceOrderInput = Omit<ServiceOrder, 'id' | 'orgId' | 'number' | '
 
 interface ServiceOrdersState {
   orders: ServiceOrder[];
-  add: (input: ServiceOrderInput) => ServiceOrder;
+  /** Assíncrona de propósito: no modo Supabase só resolve depois que a
+   *  inserção remota é confirmada, para que quem chama possa aguardar antes
+   *  de criar registros dependentes (financeiro, agendamento…) — sem isso,
+   *  a escrita otimista + fire-and-forget deixa uma corrida em que o
+   *  dependente chega ao Postgres antes da OS existir, violando a FK
+   *  (ex.: finance_entries_service_order_id_fkey). */
+  add: (input: ServiceOrderInput) => Promise<ServiceOrder>;
   update: (id: string, patch: Partial<ServiceOrder>) => void;
 }
 
 export const useServiceOrdersStore = create<ServiceOrdersState>((set, get) => ({
   orders: load(),
-  add: (input) => {
+  add: async (input) => {
     const nextNumber = get().orders.reduce((max, o) => Math.max(max, o.number), 1000) + 1;
     const order: ServiceOrder = {
       id: uid(),
@@ -57,15 +63,12 @@ export const useServiceOrdersStore = create<ServiceOrdersState>((set, get) => ({
     const next = [order, ...get().orders];
     set({ orders: next });
     if (supabaseEnabled && supabase) {
-      supabase
-        .from(TABLE)
-        .insert(toSnakeRow(order as unknown as Record<string, unknown>))
-        .then(({ error }) => {
-          if (error) {
-            set({ orders: get().orders.filter((o) => o.id !== order.id) });
-            toast('Não foi possível criar a ordem de serviço — tente novamente.', { tone: 'danger' });
-          }
-        });
+      const { error } = await supabase.from(TABLE).insert(toSnakeRow(order as unknown as Record<string, unknown>));
+      if (error) {
+        set({ orders: get().orders.filter((o) => o.id !== order.id) });
+        toast('Não foi possível criar a ordem de serviço — tente novamente.', { tone: 'danger' });
+        throw error;
+      }
     } else {
       save(next);
     }
