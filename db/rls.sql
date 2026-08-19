@@ -8,15 +8,15 @@
 
 -- Helpers que leem os claims do token autenticado.
 create or replace function auth_org_id() returns uuid
-  language sql stable as $$ select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'org_id','')::uuid $$;
+  language sql stable set search_path = '' as $$ select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'org_id','')::uuid $$;
 
 -- Lê "app_role" (papel da aplicação), não "role" — esse último é reservado
 -- pelo PostgREST para a role do Postgres da conexão (ver db/auth_hook.sql).
 create or replace function auth_role() returns text
-  language sql stable as $$ select current_setting('request.jwt.claims', true)::jsonb ->> 'app_role' $$;
+  language sql stable set search_path = '' as $$ select current_setting('request.jwt.claims', true)::jsonb ->> 'app_role' $$;
 
 create or replace function auth_user_id() returns uuid
-  language sql stable as $$ select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'user_id','')::uuid $$;
+  language sql stable set search_path = '' as $$ select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'user_id','')::uuid $$;
 
 -- ---------------------------------------------------------------------------
 -- 1) Habilita RLS e cria a política de ISOLAMENTO POR ORGANIZAÇÃO em todas as
@@ -228,6 +228,16 @@ create policy crm_activities_org on public.crm_activities
   for all
   using (lead_id in (select id from public.crm_leads where org_id = auth_org_id()))
   with check (lead_id in (select id from public.crm_leads where org_id = auth_org_id()));
+
+-- trap_inspections: sem org_id própria (db/migrate_campo_realtime.sql) —
+-- isolamento via trap_id → trap_devices.org_id, mesmo padrão acima.
+alter table public.trap_inspections enable row level security;
+alter table public.trap_inspections force row level security;
+drop policy if exists trap_inspections_org on public.trap_inspections;
+create policy trap_inspections_org on public.trap_inspections
+  for all
+  using (trap_id in (select id from public.trap_devices where org_id = auth_org_id()))
+  with check (trap_id in (select id from public.trap_devices where org_id = auth_org_id()));
 
 -- ============================================================================
 -- Observações:
