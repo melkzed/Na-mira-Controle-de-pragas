@@ -14,6 +14,7 @@ import { useLicensesStore } from '@/store/entityStores';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useOrgProfileStore } from '@/store/orgProfileStore';
 import { uid } from '@/store/createEntityStore';
+import { currentOrgId } from '@/store/appStore';
 import { toast } from '@/store/toastStore';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { Download, FileCode } from 'lucide-react';
@@ -123,7 +124,7 @@ function LicenseForm({ open, onClose, onSave }: { open: boolean; onClose: () => 
     if (!name.trim()) return;
     const status = expiresAt && dateInputToIso(expiresAt) < new Date().toISOString() ? 'vencida' : 'ativa';
     onSave({
-      id: uid('lic'), orgId: 'org-namira', name: name.trim(), issuer: issuer.trim() || undefined, number: number.trim() || undefined,
+      id: uid('lic'), orgId: currentOrgId(), name: name.trim(), issuer: issuer.trim() || undefined, number: number.trim() || undefined,
       responsibleId: responsibleId || undefined, issuedAt: issuedAt ? dateInputToIso(issuedAt) : undefined,
       expiresAt: expiresAt ? dateInputToIso(expiresAt) : undefined, status,
     });

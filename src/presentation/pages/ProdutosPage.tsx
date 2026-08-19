@@ -10,6 +10,7 @@ import * as seed from '@/infrastructure/seed/data';
 import { centralBalance } from '@/application/repository';
 import { useProductsStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
+import { currentOrgId } from '@/store/appStore';
 import type { Batch, Product } from '@/domain/types';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { downloadCsv } from '@/lib/export';
@@ -171,7 +172,7 @@ function ProductForm({ open, initial, onClose, onSave }: { open: boolean; initia
     }
     const product: Product = {
       id: initial?.id ?? uid('prod'),
-      orgId: 'org-namira',
+      orgId: currentOrgId(),
       name: f.name.trim(),
       categoryId: f.categoryId,
       manufacturer: f.manufacturer?.trim() || undefined,

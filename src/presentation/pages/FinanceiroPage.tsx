@@ -17,6 +17,7 @@ import { useFinanceStore, useRecurringPayablesStore, useBankAccountsStore, useCh
 import { useBankTransactionsStore, accountBalance, TRANSACTION_SIGN } from '@/store/bankTransactionsStore';
 import { useCashClosingStore } from '@/store/cashClosingStore';
 import { uid } from '@/store/createEntityStore';
+import { currentOrgId } from '@/store/appStore';
 import { toast } from '@/store/toastStore';
 import { Drawer } from '../components/ui/Drawer';
 import { Field, Input, Select } from '../components/ui/Field';
@@ -72,7 +73,7 @@ function generateRecurring(count = 3): number {
       const monthKey = toDateStr(date).slice(0, 7);
       const dup = finance.items.some((e) => e.recurringId === p.id && (e.dueDate ?? '').slice(0, 7) === monthKey);
       if (!dup) {
-        finance.add({ id: uid('fe'), orgId: 'org-namira', type: 'despesa', status: date < today ? 'atrasado' : 'pendente', description: p.description, amount: p.amount, dueDate: toDateStr(date), recurringId: p.id, approvalStatus: 'pendente', createdAt: new Date().toISOString() });
+        finance.add({ id: uid('fe'), orgId: currentOrgId(), type: 'despesa', status: date < today ? 'atrasado' : 'pendente', description: p.description, amount: p.amount, dueDate: toDateStr(date), recurringId: p.id, approvalStatus: 'pendente', createdAt: new Date().toISOString() });
         created += 1;
       }
     });
@@ -343,7 +344,7 @@ function PaymentDialog({ entries, onClose }: { entries: FinanceEntry[] | null; o
     }
     if (method === 'cheque') {
       addCheck({
-        id: uid('chk'), orgId: 'org-namira', number: checkNumber.trim() || `CHQ-${Date.now().toString().slice(-6)}`,
+        id: uid('chk'), orgId: currentOrgId(), number: checkNumber.trim() || `CHQ-${Date.now().toString().slice(-6)}`,
         bank: account?.bank ?? 'Banco', amount: total, issueDate: today, status: 'emitido', financeEntryId: entries[0].id,
       });
     }
@@ -429,7 +430,7 @@ function RecurringForm({ open, onClose, onSave }: { open: boolean; onClose: () =
   const submit = () => {
     setTouched(true);
     if (!valid) return;
-    onSave({ id: uid('rp'), orgId: 'org-namira', description: description.trim(), category: category.trim() || undefined, amount: Number(amount), frequency, dueDay: Math.min(Math.max(Number(dueDay) || 1, 1), 28), active: true, createdAt: new Date().toISOString() });
+    onSave({ id: uid('rp'), orgId: currentOrgId(), description: description.trim(), category: category.trim() || undefined, amount: Number(amount), frequency, dueDay: Math.min(Math.max(Number(dueDay) || 1, 1), 28), active: true, createdAt: new Date().toISOString() });
   };
 
   return (
@@ -467,7 +468,7 @@ function FinanceForm({ open, defaultType, onClose, onSave }: { open: boolean; de
     setTouched(true);
     if (!valid) return;
     onSave({
-      id: uid('fe'), orgId: 'org-namira', type, status,
+      id: uid('fe'), orgId: currentOrgId(), type, status,
       description: description.trim(), amount: Number(amount),
       discount: discount ? Number(discount) : undefined,
       dueDate: dueDate || undefined,
@@ -589,7 +590,7 @@ function BankAccountForm({ open, onClose, onSave }: { open: boolean; onClose: ()
   const submit = () => {
     setTouched(true);
     if (!valid) return;
-    onSave({ id: uid('bank'), orgId: 'org-namira', bank: bank.trim(), agency: agency.trim() || undefined, account: account.trim(), alias: alias.trim() || undefined, openingBalance: Number(openingBalance) || 0, isActive: true });
+    onSave({ id: uid('bank'), orgId: currentOrgId(), bank: bank.trim(), agency: agency.trim() || undefined, account: account.trim(), alias: alias.trim() || undefined, openingBalance: Number(openingBalance) || 0, isActive: true });
   };
 
   return (
@@ -756,7 +757,7 @@ function CheckForm({ open, onClose, onSave }: { open: boolean; onClose: () => vo
   const submit = () => {
     setTouched(true);
     if (!valid) return;
-    onSave({ id: uid('chk'), orgId: 'org-namira', number: number.trim(), bank: bank.trim(), payee: payee.trim() || undefined, amount: Number(amount), issueDate, status: 'emitido' });
+    onSave({ id: uid('chk'), orgId: currentOrgId(), number: number.trim(), bank: bank.trim(), payee: payee.trim() || undefined, amount: Number(amount), issueDate, status: 'emitido' });
   };
 
   return (
@@ -832,7 +833,7 @@ function LoanForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
     setTouched(true);
     if (!valid) return;
     const p = Number(principal);
-    onSave({ id: uid('loan'), orgId: 'org-namira', kind, description: description.trim(), principal: p, rate: rate ? Number(rate) : undefined, startDate, dueDate: dueDate || undefined, theoreticalBalance: p, realBalance: p, active: true });
+    onSave({ id: uid('loan'), orgId: currentOrgId(), kind, description: description.trim(), principal: p, rate: rate ? Number(rate) : undefined, startDate, dueDate: dueDate || undefined, theoreticalBalance: p, realBalance: p, active: true });
   };
 
   return (

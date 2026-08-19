@@ -12,6 +12,7 @@ import { useAreasStore, useDepartmentsStore, usePestsStore, useProductsStore, us
 import { useSettingsStore } from '@/store/settingsStore';
 import { useOrgProfileStore } from '@/store/orgProfileStore';
 import { uid } from '@/store/createEntityStore';
+import { currentOrgId } from '@/store/appStore';
 import { toast } from '@/store/toastStore';
 import { cn, daysUntil, formatCurrency } from '@/lib/utils';
 import { maskDocument, maskCep, maskPhone } from '@/lib/validation';
@@ -163,7 +164,7 @@ function SanitaryLicensePanel() {
     if (license) {
       update(license.id, { number: number.trim() || undefined, expiresAt: expiresAt ? dateInputToIso(expiresAt) : undefined, status });
     } else {
-      add({ id: uid('lic'), orgId: 'org-namira', name: 'Alvará Sanitário', number: number.trim() || undefined, expiresAt: expiresAt ? dateInputToIso(expiresAt) : undefined, status });
+      add({ id: uid('lic'), orgId: currentOrgId(), name: 'Alvará Sanitário', number: number.trim() || undefined, expiresAt: expiresAt ? dateInputToIso(expiresAt) : undefined, status });
     }
     toast('Licença sanitária atualizada.', { tone: 'success' });
   };
@@ -243,7 +244,7 @@ function DepartmentsPanel({ departments, onAdd, onUpdate, onRemove }: {
   const [name, setName] = useState('');
   const create = () => {
     if (!name.trim()) return;
-    onAdd({ id: uid('dept'), orgId: 'org-namira', name: name.trim(), modules: ['dashboard'] });
+    onAdd({ id: uid('dept'), orgId: currentOrgId(), name: name.trim(), modules: ['dashboard'] });
     setName('');
   };
   const toggleModule = (dept: Department, mod: PermissionModule) => {
@@ -439,7 +440,7 @@ function PestsPanel() {
 
   const create = () => {
     if (!name.trim()) return;
-    add({ id: uid('p'), orgId: 'org-namira', name: name.trim(), category: category.trim() || undefined, defaultWarrantyDays: warranty ? Number(warranty) : undefined, defaultValidityDays: validity ? Number(validity) : undefined, isActive: true });
+    add({ id: uid('p'), orgId: currentOrgId(), name: name.trim(), category: category.trim() || undefined, defaultWarrantyDays: warranty ? Number(warranty) : undefined, defaultValidityDays: validity ? Number(validity) : undefined, isActive: true });
     toast('Praga cadastrada.', { tone: 'success' });
     setName(''); setCategory(''); setWarranty(''); setValidity('');
   };
@@ -501,7 +502,7 @@ function AreasPanel() {
 
   const create = () => {
     if (!name.trim()) return;
-    add({ id: uid('ar'), orgId: 'org-namira', name: name.trim(), isActive: true });
+    add({ id: uid('ar'), orgId: currentOrgId(), name: name.trim(), isActive: true });
     setName('');
   };
 
@@ -542,7 +543,7 @@ function TrapTypesPanel() {
 
   const create = () => {
     if (!name.trim()) return;
-    add({ id: uid('tt'), orgId: 'org-namira', name: name.trim(), isActive: true });
+    add({ id: uid('tt'), orgId: currentOrgId(), name: name.trim(), isActive: true });
     setName('');
   };
 
@@ -588,7 +589,7 @@ function ServicesPanel() {
 
   const create = () => {
     if (!name.trim()) return;
-    add({ id: uid('st'), orgId: 'org-namira', name: name.trim(), defaultDurationMin: 60, defaultPrice: price ? Number(price) : 0, color: '#0ea5e9', isActive: true });
+    add({ id: uid('st'), orgId: currentOrgId(), name: name.trim(), defaultDurationMin: 60, defaultPrice: price ? Number(price) : 0, color: '#0ea5e9', isActive: true });
     toast('Serviço cadastrado.', { tone: 'success' });
     setName(''); setPrice('');
   };

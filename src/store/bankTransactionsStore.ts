@@ -3,6 +3,7 @@ import type { BankTransaction } from '@/domain/types';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
+import { currentOrgId } from './appStore';
 import { uid } from './createEntityStore';
 
 /**
@@ -56,7 +57,7 @@ const save = (v: BankTransaction[]) => {
 export const useBankTransactionsStore = create<BankTransactionsState>((set, get) => ({
   transactions: load(),
   add: (input) => {
-    const t: BankTransaction = { id: uid('btx'), orgId: 'org-namira', reconciled: false, ...input };
+    const t: BankTransaction = { id: uid('btx'), orgId: currentOrgId(), reconciled: false, ...input };
     const transactions = [t, ...get().transactions];
     set({ transactions });
     if (supabaseEnabled && supabase) {

@@ -5,6 +5,7 @@ import { crmLeads as seedLeads } from '@/infrastructure/seed/data';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
+import { currentOrgId } from './appStore';
 
 /** Store reativa de leads do CRM (dual-mode — ver docs/ARCHITECTURE.md §3.1/§3.2). */
 const STORAGE_KEY = 'namira-leads';
@@ -59,7 +60,7 @@ function syncUpdate(id: string, rollback: CrmLead[]) {
 export const useLeadsStore = create<LeadsState>((set, get) => ({
   leads: load(),
   add: (input) => {
-    const lead: CrmLead = { id: uid(), orgId: 'org-namira', createdAt: new Date().toISOString(), ...input };
+    const lead: CrmLead = { id: uid(), orgId: currentOrgId(), createdAt: new Date().toISOString(), ...input };
     const next = [lead, ...get().leads];
     set({ leads: next });
     if (supabaseEnabled && supabase) {

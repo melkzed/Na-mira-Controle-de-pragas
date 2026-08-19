@@ -4,6 +4,7 @@ import { stockRequests as seed } from '@/infrastructure/seed/data';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
+import { currentOrgId } from './appStore';
 
 /** Solicitações de reposição de estoque (dual-mode — ver
  *  docs/ARCHITECTURE.md §3.1/§3.2). */
@@ -58,7 +59,7 @@ interface StockRequestsState {
 export const useStockRequestsStore = create<StockRequestsState>((set, get) => ({
   requests: load(),
   add: (input) => {
-    const req: StockRequest = { id: uid(), orgId: 'org-namira', status: 'pendente', createdAt: new Date().toISOString(), ...input };
+    const req: StockRequest = { id: uid(), orgId: currentOrgId(), status: 'pendente', createdAt: new Date().toISOString(), ...input };
     const next = [req, ...get().requests];
     set({ requests: next });
     if (supabaseEnabled && supabase) {

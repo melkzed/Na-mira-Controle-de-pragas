@@ -3,6 +3,7 @@ import type { CashClosing } from '@/domain/types';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
+import { currentOrgId } from './appStore';
 import { uid } from './createEntityStore';
 
 /** Fechamento diário de caixa (dual-mode — ver docs/ARCHITECTURE.md
@@ -39,7 +40,7 @@ const save = (v: CashClosing[]) => {
 export const useCashClosingStore = create<CashClosingState>((set, get) => ({
   closings: load(),
   close: (input) => {
-    const rec: CashClosing = { id: uid('cc'), orgId: 'org-namira', closedAt: new Date().toISOString(), ...input };
+    const rec: CashClosing = { id: uid('cc'), orgId: currentOrgId(), closedAt: new Date().toISOString(), ...input };
     const closings = [rec, ...get().closings];
     set({ closings });
     if (supabaseEnabled && supabase) {

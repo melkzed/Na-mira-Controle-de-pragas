@@ -4,6 +4,7 @@ import { trapDevices as seedTraps, trapInspections as seedInspections } from '@/
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
+import { currentOrgId } from './appStore';
 
 /** Store reativa do módulo de monitoramento de armadilhas (dual-mode — ver
  *  docs/ARCHITECTURE.md §3.1/§3.2). */
@@ -65,7 +66,7 @@ export const useTrapsStore = create<TrapsState>((set, get) => ({
   traps: load(TRAPS_KEY, seedTraps),
   inspections: load(INSP_KEY, seedInspections),
   addTrap: (input) => {
-    const trap: TrapDevice = { id: uid('trap'), orgId: 'org-namira', createdAt: new Date().toISOString(), status: input.status ?? 'ativa', ...input };
+    const trap: TrapDevice = { id: uid('trap'), orgId: currentOrgId(), createdAt: new Date().toISOString(), status: input.status ?? 'ativa', ...input };
     const next = [...get().traps, trap];
     set({ traps: next });
     if (supabaseEnabled && supabase) {
