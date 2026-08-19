@@ -17,7 +17,6 @@ import { useStockRequestsStore } from '@/store/stockRequestsStore';
 import { useStockStore } from '@/store/stockStore';
 import { useAppStore } from '@/store/appStore';
 import { toast } from '@/store/toastStore';
-import { uid } from '@/store/createEntityStore';
 import { getProduct, appointmentsHistoryForTechnician, getCustomer, getServiceType, serviceOrdersForTechnician } from '@/application/repository';
 import { isEquipmentOverdue } from './EquipamentosPage';
 import { EQUIPMENT_STATUS_META as statusMeta } from '@/domain/equipmentMeta';
@@ -184,6 +183,7 @@ function PendingRequestsPanel() {
 function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: User | null; onClose: () => void }) {
   const add = useUsersStore((s) => s.add);
   const update = useUsersStore((s) => s.update);
+  const currentUser = useAppStore((s) => s.currentUser);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -205,7 +205,11 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
       update(editing.id, { name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, isActive, fieldAppAccess });
       toast('Técnico atualizado.', { tone: 'success' });
     } else {
-      add({ id: uid('u'), orgId: 'org-namira', name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, role: 'tecnico', isActive, fieldAppAccess });
+      if (!currentUser?.orgId) {
+        toast('A organização ainda não foi carregada. Tente novamente.', { tone: 'danger' });
+        return;
+      }
+      add({ id: crypto.randomUUID(), orgId: currentUser.orgId, name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, role: 'tecnico', isActive, fieldAppAccess });
       toast('Técnico cadastrado. Login com a senha demo (namira123).', { tone: 'success' });
     }
     onClose();
