@@ -5,6 +5,7 @@ import { FieldLayout } from './presentation/components/layout/FieldLayout';
 import { RequireAuth } from './presentation/components/auth/RequireAuth';
 import { RouteError } from './presentation/components/RouteError';
 import { LoginPage } from './presentation/pages/LoginPage';
+import { DefinirSenhaPage } from './presentation/pages/DefinirSenhaPage';
 
 // Code splitting: cada tela vira um chunk carregado sob demanda.
 const named = <K extends string>(loader: () => Promise<Record<K, React.ComponentType>>, key: K) =>
@@ -39,6 +40,7 @@ const NotFoundPage = named(() => import('./presentation/pages/NotFoundPage'), 'N
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage />, errorElement: <RouteError /> },
+  { path: '/definir-senha', element: <DefinirSenhaPage />, errorElement: <RouteError /> },
 
   {
     path: '/campo',

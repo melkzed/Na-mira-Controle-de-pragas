@@ -45,7 +45,10 @@ export function createEntityStore<T extends { id: string }>(storageKey: string, 
       /* cota excedida — ignora */
     }
   };
-  const failToast = () => toast('Não foi possível salvar — tente novamente.', { tone: 'danger' });
+  const failToast = (error?: { message?: string; code?: string }) => {
+    if (error) console.error(`[${table}] Supabase error`, error.code, error.message);
+    toast('Não foi possível salvar — verifique a configuração do banco e tente novamente.', { tone: 'danger' });
+  };
 
   const useStore = create<EntityStore<T>>((set, get) => ({
     items: load(),
@@ -59,7 +62,7 @@ export function createEntityStore<T extends { id: string }>(storageKey: string, 
           .then(({ error }) => {
             if (error) {
               set({ items: get().items.filter((it) => it.id !== item.id) });
-              failToast();
+              failToast(error);
             }
           });
       } else {
@@ -80,7 +83,7 @@ export function createEntityStore<T extends { id: string }>(storageKey: string, 
           .then(({ error }) => {
             if (error) {
               set({ items: prev });
-              failToast();
+              failToast(error);
             }
           });
       } else {
@@ -99,7 +102,7 @@ export function createEntityStore<T extends { id: string }>(storageKey: string, 
           .then(({ error }) => {
             if (error) {
               set({ items: prev });
-              toast('Não foi possível excluir — tente novamente.', { tone: 'danger' });
+              failToast(error);
             }
           });
       } else {

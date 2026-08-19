@@ -12,6 +12,13 @@ Authentication → Users a uma linha em `public.users`).
 > Authentication → Users → `link_admins.sql` (ou `seed.sql`, se for usar dados
 > de demonstração). Sem o hook registrado no painel, as políticas de RLS negam
 > tudo (fail-closed) — o app não funciona, mas nenhum dado vaza.
+>
+> Depois disso, faça o deploy de `supabase/functions/convidar-tecnico`
+> (`supabase functions deploy convidar-tecnico`) — é o que permite cadastrar
+> novos funcionários **direto pela tela** "Novo técnico" com login de verdade
+> (a pessoa recebe um e-mail do próprio Supabase pra escolher a senha), sem
+> precisar mais criar manualmente em Authentication → Users + `link_admins.sql`
+> pra cada novo funcionário. Ver docs/ARCHITECTURE.md §3.4.
 
 ## Fase 2 — dados compartilhados por módulo
 
