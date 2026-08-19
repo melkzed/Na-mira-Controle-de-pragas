@@ -16,7 +16,7 @@ import type { AppointmentStatus, RecurrenceFreq, ServiceOrderStatus, WarrantyTyp
 import { PAYMENT_METHODS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
 import { computeRecurrenceOccurrences, recurrenceSummaryLabel, totalOccurrences } from '@/lib/recurrence';
 import { isDueForConfirmation } from '@/lib/confirmation';
-import { dateInputToIso, fmtDate, parseDateInput, toDateInputValue } from '@/lib/date';
+import { combineDateTimeInputToIso, dateInputToIso, fmtDate, parseDateInput, toDateInputValue } from '@/lib/date';
 import { downloadCsv } from '@/lib/export';
 import { printServiceOrder } from '@/lib/printOrder';
 import { printCertificate, printLaudo, certificateValidityText, address } from '@/lib/printDocuments';
@@ -205,6 +205,7 @@ export function OrdensPage() {
                   <Info label="Técnico(s)" value={(selected.technicianIds?.length ? selected.technicianIds : [selected.technicianId]).map((id) => getUser(id)?.name?.split(' ')[0]).filter(Boolean).join(', ') || '—'} />
                   <Info label="Vendedor" value={selected.sellerId ? getUser(selected.sellerId)?.name ?? '—' : '—'} />
                   <Info label="Data do Serviço" value={selected.executionDate ? fmtDate(selected.executionDate) : (selected.startedAt ? fmtDate(selected.startedAt) : '—')} />
+                  <Info label="Horário do Serviço" value={selected.executionTime ?? '—'} />
                   <Info label="Vencimento do Pagamento" value={selected.dueDate ? fmtDate(selected.dueDate) : '—'} />
                   <Info label="Validade do Serviço" value={selected.validityDate ? fmtDate(selected.validityDate) : '—'} />
                   <Info label="Validade do Certificado" value={certificateValidityText(selected)} />
@@ -331,6 +332,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   const [recEnabled, setRecEnabled] = useState(false);
   const [recPhases, setRecPhases] = useState<RecurrencePhase[]>([]);
   const [execDate, setExecDate] = useState('');
+  const [execTime, setExecTime] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [validityDate, setValidityDate] = useState('');
   const [certValidityDate, setCertValidityDate] = useState('');
@@ -410,6 +412,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       setRecEnabled(initial.recurrence?.enabled ?? false);
       setRecPhases(initial.recurrence?.phases?.length ? initial.recurrence.phases : (initial.recurrence?.frequency ? [{ id: uid('ph'), frequency: initial.recurrence.frequency, occurrences: 1 }] : []));
       setExecDate(toInput(initial.executionDate));
+      setExecTime(initial.executionTime ?? '');
       setDueDate(toInput(initial.dueDate));
       setValidityDate(toInput(initial.validityDate));
       setValidityTouched(true);
@@ -430,7 +433,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     setSellerId(''); setStatus('em_andamento'); setAreaQty({}); setLegacyAreaText(''); setPestIds([]); setPestValidity({}); setDuration(''); setProcedures(''); setTechnicianMessage('');
     setPaymentMethod(''); setServiceValue(''); setServiceValueTouched(false); setValueConfirmed(false); setAssociatedOrderId(''); setPaymentStatus('pendente'); setPaymentDate('');
     setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
-    setRecEnabled(false); setRecPhases([]); setExecDate(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
+    setRecEnabled(false); setRecPhases([]); setExecDate(''); setExecTime(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
     setCertValidityDate(''); setCertValidityTouched(false);
     setEquipmentIds([]); setProducts([]); setReturnAt(''); setTouched(false); setFilledFrom(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -526,9 +529,9 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   // anterior (nunca de hoje) — plano com fim definido, não repetição infinita.
   const recurrenceOccurrences = useMemo(() => {
     if (!recEnabled || !recPhases.length) return [];
-    const baseIso = execDate ? dateInputToIso(execDate) : new Date().toISOString();
+    const baseIso = execDate ? combineDateTimeInputToIso(execDate, execTime) : new Date().toISOString();
     return computeRecurrenceOccurrences(baseIso, recPhases);
-  }, [recEnabled, recPhases, execDate]);
+  }, [recEnabled, recPhases, execDate, execTime]);
 
   const addRecPhase = () => setRecPhases((arr) => [...arr, { id: uid('ph'), frequency: 'mensal', occurrences: 1 }]);
   const updateRecPhase = (id: string, patch: Partial<RecurrencePhase>) => setRecPhases((arr) => arr.map((p) => (p.id === id ? { ...p, ...patch } : p)));
@@ -610,7 +613,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
         .forEach((a) => removeAppointment(a.id));
     }
     if (!recEnabled || !recPhases.length) return {};
-    const occurrences = computeRecurrenceOccurrences(execDate ? dateInputToIso(execDate) : new Date().toISOString(), recPhases);
+    const occurrences = computeRecurrenceOccurrences(execDate ? combineDateTimeInputToIso(execDate, execTime) : new Date().toISOString(), recPhases);
     if (!occurrences.length) return {};
     const groupId = uid('rec');
     const svc = serviceTypes.find((s) => s.id === serviceTypeIds[0]);
@@ -647,6 +650,8 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     if (!customerId) missing.push('Cliente');
     if (!serviceTypeIds.length) missing.push('Serviços executados');
     if (!technicianIds.length) missing.push('Equipe — técnicos');
+    if (!execDate) missing.push('Data do Serviço');
+    if (!execTime) missing.push('Horário do Serviço');
     if (missing.length) {
       toast(`Preencha os campos obrigatórios: ${missing.join(', ')}.`, { tone: 'warning' });
       return;
@@ -701,6 +706,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
         recurrenceGroupId: recPlan.recurrenceGroupId,
       },
       executionDate: execDate ? dateInputToIso(execDate) : undefined,
+      executionTime: execTime || undefined,
       dueDate: dueDate ? dateInputToIso(dueDate) : undefined,
       validityDate: validityDate ? dateInputToIso(validityDate) : undefined,
       certificateValidityDate: certValidityDate ? dateInputToIso(certValidityDate) : undefined,
@@ -786,7 +792,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     } else {
       const svc = serviceTypes.find((s) => s.id === serviceTypeIds[0]);
       const durationMin = duration ? Number(duration) : (svc?.defaultDurationMin ?? 60);
-      const startIso = execDate ? dateInputToIso(execDate) : now;
+      const startIso = execDate ? combineDateTimeInputToIso(execDate, execTime) : now;
       const endIso = new Date(new Date(startIso).getTime() + durationMin * 60000).toISOString();
       // Aguarda a confirmação remota do agendamento antes de vincular seu id
       // à OS — mesmo motivo do `await add(input)` acima: sem isso, o UPDATE
@@ -804,6 +810,10 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
           scheduledEnd: endIso,
           estimatedMinutes: durationMin,
           address: address(cust),
+          // Horário marcado explicitamente na OS: mantém a visita presa a
+          // essa janela na otimização de rota (ver lib/route.ts) em vez de
+          // deixá-la flutuar livremente entre as demais.
+          fixedTime: !!execTime,
           products: products.map((p) => ({ productId: p.productId, plannedQty: p.qty })),
         });
         updateOs(so.id, { appointmentId: newAppt.id });
@@ -1052,7 +1062,14 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
 
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           <Field label="Status"><Select value={status} onChange={(e) => setStatus(e.target.value as ServiceOrderStatus)}>{(Object.keys(OS_STATUS_LABEL) as ServiceOrderStatus[]).map((s) => <option key={s} value={s}>{OS_STATUS_LABEL[s]}</option>)}</Select></Field>
-          <Field label="Data do Serviço"><Input type="date" value={execDate} onChange={(e) => setExecDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+          <Field label="Data do Serviço" required>
+            <Input type="date" value={execDate} onChange={(e) => setExecDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} />
+            {touched && !execDate && <span className="mt-1 block text-xs text-danger">Informe a data do serviço.</span>}
+          </Field>
+          <Field label="Horário do Serviço" required hint="Define exatamente onde a visita entra na Agenda e na rota do técnico">
+            <Input type="time" value={execTime} onChange={(e) => setExecTime(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} />
+            {touched && !execTime && <span className="mt-1 block text-xs text-danger">Informe o horário do serviço.</span>}
+          </Field>
           <Field label="Data de Vencimento do Pagamento"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
           <Field label="Validade do Serviço" hint={!validityTouched && suggestedValidityDays != null ? `Sugerida pelo serviço/praga: ${suggestedValidityDays} dias` : 'Validade do serviço executado, com ou sem garantia'}>
             <Input type="date" value={validityDate} onChange={(e) => { setValidityDate(e.target.value); setValidityTouched(true); }} onClick={(e) => e.currentTarget.showPicker?.()} />

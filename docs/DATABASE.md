@@ -116,6 +116,12 @@ vez, nesta ordem — cada um depende de colunas/tabelas do anterior):
 Com isso, **todos os módulos do app estão migrados** — não sobra nenhuma
 store em localStorage-only (exceto `messagesStore`, de propósito — ver acima).
 
+**Incrementos pós-Fase 2** (rodar depois da lista acima, na ordem em que
+foram criados):
+- `db/migrate_serviceorders_time.sql` — adiciona `service_orders.execution_time`
+  (horário do serviço, `HH:MM`) — sem ele o agendamento vinculado à OS caía
+  sempre em meia-noite, e a roteirização não conseguia posicionar a visita.
+
 ## Convenções
 
 - **Multi-tenant** por `org_id` em toda tabela de negócio (habilite RLS no Supabase).

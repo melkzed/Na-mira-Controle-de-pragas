@@ -29,6 +29,22 @@ export function dateInputToIso(value: string): string {
 }
 
 /**
+ * Combina o valor de um `<input type="date">` com o de um `<input
+ * type="time">` (`HH:MM`) num ISO string ancorado no horário LOCAL — mesma
+ * lógica de `dateInputToIso`, mas preservando a hora informada em vez de
+ * cair sempre em meia-noite. Sem hora informada, cai em meia-noite local
+ * (mesmo comportamento de `dateInputToIso`).
+ */
+export function combineDateTimeInputToIso(dateValue: string, timeValue?: string): string {
+  const d = parseDateInput(dateValue);
+  if (timeValue) {
+    const [h, m] = timeValue.split(':').map(Number);
+    d.setHours(h || 0, m || 0, 0, 0);
+  }
+  return d.toISOString();
+}
+
+/**
  * Constrói um `Date` LOCAL a partir do valor de um `<input type="date">`
  * (`YYYY-MM-DD`) — use para fazer aritmética de datas (somar dias, comparar).
  * Nunca use `new Date(value)` diretamente com uma string desse formato: o
