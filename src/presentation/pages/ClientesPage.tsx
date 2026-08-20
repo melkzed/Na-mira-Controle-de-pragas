@@ -153,7 +153,7 @@ function ClienteDetail({
       onClose={() => { setConfirmDel(false); onClose(); }}
       title={customer.name}
       subtitle={formatDocument(customer.document)}
-      centered
+      wide
       footer={
         <div className="flex items-center justify-between gap-2">
           {confirmDel ? (

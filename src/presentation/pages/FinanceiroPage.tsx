@@ -711,7 +711,7 @@ function StatementDrawer({ account, onClose }: { account: BankAccount | null; on
   const list = transactions.filter((t) => t.accountId === account.id).sort((a, b) => b.date.localeCompare(a.date));
 
   return (
-    <Drawer open={!!account} onClose={onClose} title="Extrato eletrônico" subtitle={account.alias ?? account.bank} width="max-w-xl">
+    <Drawer open={!!account} onClose={onClose} title="Extrato eletrônico" subtitle={account.alias ?? account.bank}>
       <div className="space-y-2">
         {list.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma movimentação.</p>}
         {list.map((t) => {

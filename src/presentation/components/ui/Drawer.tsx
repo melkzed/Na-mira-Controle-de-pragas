@@ -3,11 +3,11 @@ import { X } from 'lucide-react';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Button } from './Button';
 
-/** Painel lateral deslizante para detalhes/edição (ou, com `centered`, um
- *  painel centralizado cobrindo a maior parte da tela — usado quando há
- *  muita informação para mostrar, como na Ordem de Serviço). Acessível:
- *  fecha com Esc, move o foco para o painel ao abrir e restaura o foco
- *  anterior ao fechar. */
+/** Painel centralizado (modal) para cadastro, edição e detalhes — ocupa 95%
+ *  da tela em todos os módulos. Substituiu a antiga aba lateral deslizante,
+ *  que era estreita demais para os formulários do sistema. Acessível: fecha
+ *  com Esc, move o foco para o painel ao abrir e restaura o foco anterior ao
+ *  fechar. */
 export function Drawer({
   open,
   onClose,
@@ -15,8 +15,7 @@ export function Drawer({
   subtitle,
   children,
   footer,
-  width = 'max-w-lg',
-  centered = false,
+  wide = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -24,9 +23,10 @@ export function Drawer({
   subtitle?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
-  width?: string;
-  /** Em vez de deslizar pela lateral, abre centralizado cobrindo ~90% da tela. */
-  centered?: boolean;
+  /** Conteúdo usa toda a largura do painel, sem a coluna de leitura. Para
+   *  telas de detalhe com várias colunas (Ordem de Serviço, Cliente) ou
+   *  tabelas largas; formulários ficam melhores no padrão. */
+  wide?: boolean;
 }) {
   const panelRef = useRef<HTMLElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -84,52 +84,35 @@ export function Drawer({
             exit={{ opacity: 0 }}
             onClick={onClose}
           />
-          {centered ? (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-              <motion.aside
-                ref={panelRef}
-                role="dialog"
-                aria-modal="true"
-                aria-label={typeof title === 'string' ? title : undefined}
-                tabIndex={-1}
-                className="flex h-[90vh] w-[90vw] flex-col rounded-2xl border border-border bg-surface shadow-elevated outline-none"
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.96 }}
-                transition={{ type: 'spring', damping: 30, stiffness: 320 }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <header className="flex items-start justify-between gap-4 border-b border-border p-5">
-                  {panel}
-                </header>
-                <div className="flex-1 overflow-y-auto p-6">{children}</div>
-                {footer && (
-                  <footer className="border-t border-border p-4">{footer}</footer>
-                )}
-              </motion.aside>
-            </div>
-          ) : (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4" onClick={onClose}>
             <motion.aside
               ref={panelRef}
               role="dialog"
               aria-modal="true"
               aria-label={typeof title === 'string' ? title : undefined}
               tabIndex={-1}
-              className={`fixed right-0 top-0 z-50 flex h-full w-full ${width} flex-col border-l border-border bg-surface shadow-elevated outline-none`}
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="flex h-[95vh] w-[95vw] flex-col rounded-2xl border border-border bg-surface shadow-elevated outline-none"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ type: 'spring', damping: 30, stiffness: 320 }}
+              onClick={(e) => e.stopPropagation()}
             >
               <header className="flex items-start justify-between gap-4 border-b border-border p-5">
                 {panel}
               </header>
-              <div className="flex-1 overflow-y-auto p-5">{children}</div>
+              {/* O painel ocupa 95% da tela, mas o conteúdo mantém uma coluna
+                  de leitura centralizada — um formulário de uma coluna
+                  esticado por um monitor inteiro fica ruim de usar. Telas de
+                  detalhe com várias colunas usam `wide`. */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+                <div className={wide ? 'w-full' : 'mx-auto w-full max-w-4xl'}>{children}</div>
+              </div>
               {footer && (
                 <footer className="border-t border-border p-4">{footer}</footer>
               )}
             </motion.aside>
-          )}
+          </div>
         </>
       )}
     </AnimatePresence>

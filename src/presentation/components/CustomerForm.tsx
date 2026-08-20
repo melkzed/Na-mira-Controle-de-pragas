@@ -307,7 +307,6 @@ export function CustomerForm({
       onClose={cancel}
       title={isEdit ? 'Editar cliente' : 'Novo cliente'}
       subtitle={isEdit ? initial?.name : 'Cadastro de cliente'}
-      centered
       footer={
         <div className="flex items-center justify-between gap-2">
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">

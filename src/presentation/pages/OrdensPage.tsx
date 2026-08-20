@@ -148,7 +148,7 @@ export function OrdensPage() {
         onClose={() => setFormOpen(false)}
         title="Nova Ordem de Serviço"
         subtitle="Preenchimento rápido — serviços, pragas e áreas em toques"
-        centered
+        wide
         footer={<div className="flex justify-end gap-2"><Button variant="outline" disabled={saving} onClick={() => setFormOpen(false)}>Cancelar</Button><Button disabled={saving} onClick={() => createFormRef.current?.submit()} leftIcon={<Check size={15} />}>{saving ? 'Criando…' : 'Criar OS'}</Button></div>}
       >
         {formOpen && (
@@ -165,7 +165,7 @@ export function OrdensPage() {
         onClose={() => { setSelected(null); setEditMode(false); }}
         title={editMode ? `Editar Ordem de Serviço #${selected?.number}` : `Ordem de Serviço #${selected?.number}`}
         subtitle={editMode ? 'Altere os dados necessários — as mudanças ficam registradas no histórico da OS' : (selected ? getCustomer(selected.customerId)?.name : '')}
-        centered
+        wide
         footer={editMode ? (
           <div className="flex justify-end gap-2">
             <Button variant="outline" disabled={saving} onClick={() => setEditMode(false)}>Cancelar</Button>

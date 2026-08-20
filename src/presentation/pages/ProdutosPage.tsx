@@ -226,7 +226,7 @@ function ImportProductsDrawer({ open, onClose }: { open: boolean; onClose: () =>
       onClose={onClose}
       title="Importar produtos de planilha"
       subtitle="Confira o que será importado antes de confirmar"
-      centered
+      wide
       footer={
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">
@@ -239,7 +239,7 @@ function ImportProductsDrawer({ open, onClose }: { open: boolean; onClose: () =>
         </div>
       }
     >
-      <div className="mx-auto max-w-5xl space-y-4">
+      <div className="space-y-4">
         <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 p-8 text-center transition hover:border-brand/50 hover:bg-brand-soft/20">
           <Upload size={22} className="text-muted-foreground" />
           <span className="text-sm font-medium text-foreground">{fileName || 'Escolher planilha'}</span>
@@ -364,7 +364,7 @@ function ProductForm({ open, initial, onClose, onSave }: { open: boolean; initia
   };
 
   return (
-    <Drawer open={open} onClose={onClose} title={isEdit ? 'Editar produto' : 'Novo produto'} subtitle="Catálogo de produtos" width="max-w-xl"
+    <Drawer open={open} onClose={onClose} title={isEdit ? 'Editar produto' : 'Novo produto'} subtitle="Catálogo de produtos"
       footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!f.name?.trim()}>{isEdit ? 'Salvar' : 'Adicionar'}</Button></div>}>
       <div className="grid grid-cols-2 gap-4">
         <Field label="Nome" required className="col-span-2"><Input value={f.name ?? ''} onChange={(e) => set('name', e.target.value)} />{nameErr && <span className="mt-1 block text-xs text-danger">Informe o nome.</span>}</Field>
