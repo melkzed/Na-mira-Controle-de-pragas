@@ -15,7 +15,9 @@ import { useUsersStore, useEquipmentStore, useVehiclesStore } from '@/store/enti
 import { useEquipmentRequestsStore } from '@/store/equipmentRequestsStore';
 import { useStockRequestsStore } from '@/store/stockRequestsStore';
 import { useStockStore } from '@/store/stockStore';
-import { useAppStore } from '@/store/appStore';
+import { currentOrgId, useAppStore } from '@/store/appStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import { SignaturePad } from '../components/SignaturePad';
 import { toast } from '@/store/toastStore';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { getProduct, appointmentsHistoryForTechnician, getCustomer, getServiceType, serviceOrdersForTechnician } from '@/application/repository';
@@ -184,11 +186,14 @@ function PendingRequestsPanel() {
 function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: User | null; onClose: () => void }) {
   const add = useUsersStore((s) => s.add);
   const update = useUsersStore((s) => s.update);
+  const savedSignatures = useSettingsStore((s) => s.signatures);
+  const setUserSignature = useSettingsStore((s) => s.setUserSignature);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [fieldAppAccess, setFieldAppAccess] = useState(true);
+  const [signature, setSignature] = useState<string | undefined>();
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -197,6 +202,8 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
     if (!open) return;
     setName(editing?.name ?? ''); setEmail(editing?.email ?? ''); setPhone(editing?.phone ?? '');
     setIsActive(editing?.isActive ?? true); setFieldAppAccess(editing?.fieldAppAccess ?? true); setTouched(false);
+    setSignature(editing ? savedSignatures[editing.id] : undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing]);
 
   const submit = async () => {
@@ -204,6 +211,7 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
     if (!name.trim() || !email.trim()) return;
     if (editing) {
       update(editing.id, { name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, isActive, fieldAppAccess });
+      setUserSignature(editing.id, signature);
       toast('Técnico atualizado.', { tone: 'success' });
       onClose();
       return;
@@ -228,12 +236,17 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
         toast(data?.error ?? 'Não foi possível convidar o técnico — tente novamente.', { tone: 'danger' });
         return;
       }
+      // A função devolve o cadastro já criado — só aí existe o id para
+      // vincular a assinatura enviada no formulário.
+      if (signature && data?.user?.id) setUserSignature(data.user.id, signature);
       toast('Convite enviado! O técnico recebe um e-mail para escolher a própria senha.', { tone: 'success' });
       onClose();
       return;
     }
     // Modo standalone: sem Supabase Auth de verdade, só o cadastro local.
-    add({ id: crypto.randomUUID(), orgId: 'org-namira', name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, role: 'tecnico', isActive, fieldAppAccess });
+    const newId = crypto.randomUUID();
+    add({ id: newId, orgId: currentOrgId(), name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, role: 'tecnico', isActive, fieldAppAccess });
+    if (signature) setUserSignature(newId, signature);
     toast('Técnico cadastrado. Login com a senha demo (namira123).', { tone: 'success' });
     onClose();
   };
@@ -265,6 +278,15 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
               : 'Senha de acesso: demonstração (namira123), a mesma dos demais usuários de exemplo.'}
           </p>
         )}
+
+        <div className="border-t border-border pt-4">
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Assinatura do técnico</p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Carregue o arquivo da assinatura (ou desenhe). Ela é usada automaticamente
+            nas Ordens de Serviço e nos Laudos deste técnico, sem precisar assinar de novo a cada atendimento.
+          </p>
+          <SignaturePad value={signature} onChange={setSignature} height={140} />
+        </div>
       </div>
     </Drawer>
   );

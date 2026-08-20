@@ -641,7 +641,10 @@ export type PaymentMethodKind = 'cheque' | 'debito_conta' | 'eletronico' | 'dinh
 /** Aprovação eletrônica do pagamento antes da emissão. */
 export type ApprovalStatus = 'pendente' | 'aprovado' | 'reprovado';
 /** Tributo estadual/municipal vinculado ao lançamento. */
-export type TaxKind = 'darf' | 'iptu' | 'concessionaria';
+/** Tipo de tributo de uma despesa. Texto livre de propósito: a lista de
+ *  tipos é cadastrada pela empresa em Fiscal (settingsStore.fiscal.taxKinds),
+ *  então não cabe fixar as opções aqui. */
+export type TaxKind = string;
 
 export interface FinanceEntry {
   id: string;

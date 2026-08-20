@@ -14,9 +14,9 @@ import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
 import type { Batch, Product } from '@/domain/types';
 import { formatCurrency, formatNumber } from '@/lib/utils';
-import { downloadCsv } from '@/lib/export';
-import { parseSheet, readSheetFile } from '@/lib/importSheet';
-import { previewProductImport, toProductPatch, PRODUCT_FIELD_LABEL, type ProductImportPreview } from '@/lib/importProducts';
+import { downloadCsv, downloadTextFile } from '@/lib/export';
+import { normalizeHeader, parseSheet, readSheetFile } from '@/lib/importSheet';
+import { previewProductImport, productTemplateCsv, toProductPatch, PRODUCT_FIELD_LABEL, type ProductField, type ProductImportPreview } from '@/lib/importProducts';
 import { toast } from '@/store/toastStore';
 import { currentBatch, expiryLevel } from '@/lib/batches';
 import { fmtDate } from '@/lib/date';
@@ -191,15 +191,38 @@ function ImportProductsDrawer({ open, onClose }: { open: boolean; onClose: () =>
     }
   };
 
-  const novos = preview?.rows.filter((r) => !r.existingId).length ?? 0;
-  const existentes = preview?.rows.filter((r) => r.existingId).length ?? 0;
+  /** Corrige um valor lido da planilha antes de gravar. Mexer no nome refaz a
+   *  checagem de duplicado — o produto casado passa a ser outro (ou nenhum). */
+  const editCell = (rowIdx: number, field: ProductField, value: string) => {
+    setPreview((prev) => {
+      if (!prev) return prev;
+      const rows = prev.rows.map((r, i) => {
+        if (i !== rowIdx) return r;
+        const values = { ...r.values, [field]: value };
+        if (field !== 'name') return { ...r, values };
+        const match = products.find((p) => normalizeHeader(p.name) === normalizeHeader(value));
+        return { ...r, values, existingId: match?.id };
+      });
+      return { ...prev, rows };
+    });
+  };
+
+  const removeRow = (rowIdx: number) =>
+    setPreview((prev) => (prev ? { ...prev, rows: prev.rows.filter((_, i) => i !== rowIdx) } : prev));
+
+  const downloadTemplate = () => downloadTextFile('modelo-produtos.csv', productTemplateCsv());
+
+  // Linhas sem nome (apagado na edição) não podem ser gravadas.
+  const validRows = preview?.rows.filter((r) => (r.values.name ?? '').trim()) ?? [];
+  const novos = validRows.filter((r) => !r.existingId).length;
+  const existentes = validRows.filter((r) => r.existingId).length;
   const totalGravar = novos + (updateExisting ? existentes : 0);
 
   const confirm = () => {
     if (!preview) return;
     let criados = 0;
     let atualizados = 0;
-    preview.rows.forEach((r) => {
+    validRows.forEach((r) => {
       const patch = toProductPatch(r.values);
       if (r.existingId) {
         if (!updateExisting) return;
@@ -252,6 +275,13 @@ function ImportProductsDrawer({ open, onClose }: { open: boolean; onClose: () =>
           />
         </label>
 
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/20 p-3">
+          <p className="text-xs text-muted-foreground">
+            Não tem uma planilha pronta? Baixe o modelo, preencha e importe aqui.
+          </p>
+          <Button variant="outline" size="sm" leftIcon={<Download size={14} />} onClick={downloadTemplate}>Baixar planilha modelo</Button>
+        </div>
+
         {error && <div className="rounded-xl border border-danger/30 bg-danger-soft/30 p-3 text-sm text-danger">{error}</div>}
 
         {preview && (
@@ -280,13 +310,17 @@ function ImportProductsDrawer({ open, onClose }: { open: boolean; onClose: () =>
             )}
 
             <div>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Pré-visualização</p>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Pré-visualização</p>
+                <p className="text-xs text-muted-foreground">Clique em qualquer campo para corrigir antes de importar.</p>
+              </div>
               <div className="max-h-80 overflow-auto rounded-xl border border-border">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-muted">
                     <tr>
                       <th className="px-2 py-1.5 text-left font-semibold text-muted-foreground">Situação</th>
                       {preview.mappedFields.map((f) => <th key={f} className="px-2 py-1.5 text-left font-semibold text-muted-foreground">{PRODUCT_FIELD_LABEL[f]}</th>)}
+                      <th className="w-8 px-2 py-1.5" />
                     </tr>
                   </thead>
                   <tbody>
@@ -295,12 +329,35 @@ function ImportProductsDrawer({ open, onClose }: { open: boolean; onClose: () =>
                         <td className="px-2 py-1.5">
                           <Badge tone={r.existingId ? 'warning' : 'success'} className="text-[10px]">{r.existingId ? 'Atualiza' : 'Novo'}</Badge>
                         </td>
-                        {preview.mappedFields.map((f) => <td key={f} className="px-2 py-1.5 text-foreground">{r.values[f] ?? '—'}</td>)}
+                        {preview.mappedFields.map((f) => (
+                          <td key={f} className="px-1 py-1">
+                            <input
+                              value={r.values[f] ?? ''}
+                              onChange={(e) => editCell(i, f, e.target.value)}
+                              aria-label={`${PRODUCT_FIELD_LABEL[f]} da linha ${i + 1}`}
+                              className="w-full min-w-24 rounded border border-transparent bg-transparent px-1.5 py-1 text-foreground transition hover:border-border focus:border-brand focus:bg-surface focus:outline-none"
+                            />
+                          </td>
+                        ))}
+                        <td className="px-1 py-1">
+                          <button
+                            type="button"
+                            onClick={() => removeRow(i)}
+                            aria-label={`Remover a linha ${i + 1} da importação`}
+                            title="Não importar esta linha"
+                            className="rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-danger"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              {preview.rows.length === 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">Nenhuma linha restante — escolha outra planilha.</p>
+              )}
             </div>
           </>
         )}

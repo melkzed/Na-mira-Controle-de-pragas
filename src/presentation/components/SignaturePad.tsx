@@ -23,14 +23,25 @@ export function SignaturePad({
   const drawing = useRef(false);
   const [dirty, setDirty] = useState(false);
 
-  // Prepara o canvas (resolução real conforme o DPR) e carrega valor existente.
+  /** Última imagem que o canvas está mostrando — evita redesenhar por causa do
+   *  eco do próprio onChange (a cada traço o `value` volta igual ao que já
+   *  está desenhado, e redesenhar ali causaria piscada). */
+  const renderedRef = useRef<string | undefined>();
+
+  // Prepara o canvas (resolução real conforme o DPR) e desenha o valor atual.
+  // Depende de `value` de propósito: quem usa o componente pode preencher o
+  // valor DEPOIS da montagem (ex.: o cadastro do técnico carrega a assinatura
+  // salva num efeito) — sem isso a assinatura existente nunca aparecia.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    if (renderedRef.current === value) return;
+
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
+    // Redimensionar o canvas já o limpa e zera a transformação.
     canvas.width = rect.width * dpr;
     canvas.height = height * dpr;
     ctx.scale(dpr, dpr);
@@ -38,12 +49,16 @@ export function SignaturePad({
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = '#0f172a';
+    renderedRef.current = value;
     if (value) {
       const img = new Image();
       img.onload = () => ctx.drawImage(img, 0, 0, rect.width, height);
       img.src = value;
+      setDirty(true);
+    } else {
+      setDirty(false);
     }
-  }, [height]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [height, value]);
 
   const pos = (e: React.PointerEvent) => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -68,13 +83,20 @@ export function SignaturePad({
   const end = () => {
     if (!drawing.current) return;
     drawing.current = false;
-    onChange(canvasRef.current!.toDataURL('image/png'));
+    emit(canvasRef.current!.toDataURL('image/png'));
   };
   const clear = () => {
     const canvas = canvasRef.current!;
     canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
     setDirty(false);
-    onChange(undefined);
+    emit(undefined);
+  };
+
+  /** Avisa quem usa o componente e registra o que ficou desenhado, para o
+   *  efeito acima ignorar o eco desse mesmo valor. */
+  const emit = (dataUrl?: string) => {
+    renderedRef.current = dataUrl;
+    onChange(dataUrl);
   };
 
   /** Carrega um arquivo de imagem (foto/scan da assinatura) e desenha no canvas. */
@@ -93,7 +115,7 @@ export function SignaturePad({
         const h = img.height * scale;
         ctx.drawImage(img, (rect.width - w) / 2, (height - h) / 2, w, h);
         setDirty(true);
-        onChange(canvas.toDataURL('image/png'));
+        emit(canvas.toDataURL('image/png'));
       };
       img.src = reader.result as string;
     };

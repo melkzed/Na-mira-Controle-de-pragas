@@ -58,6 +58,32 @@ export interface ProductImportPreview {
   skipped: number;
 }
 
+/** Colunas da planilha modelo, na mesma ordem da planilha usada pela empresa. */
+export const TEMPLATE_COLUMNS: { field: ProductField; header: string }[] = [
+  { field: 'name', header: 'PRODUTO' },
+  { field: 'chemicalGroup', header: 'GRUPO QUIMICO' },
+  { field: 'activeIngredient', header: 'PRINCIPIO ATIVO' },
+  { field: 'diluent', header: 'DILUENTE' },
+  { field: 'registrationCode', header: 'REGISTRO MS' },
+  { field: 'antidote', header: 'ANTIDOTO' },
+  { field: 'treatment', header: 'TRATAMENTO' },
+];
+
+/** Duas linhas de exemplo no modelo, para deixar claro o formato esperado. */
+const TEMPLATE_SAMPLE_ROWS = [
+  ['K-Othrine SC 25', 'Piretróide', 'Deltametrina 2,5%', 'Água', '3.0404.0031.001-0', '', 'Sintomático'],
+  ['Bloco Parafinado', 'Cumarínico', 'Brodifacoum 0,005%', 'Pronto para Uso', '3.2398.0006.001-0', 'Vitamina K1', 'Tratamento sintomático'],
+];
+
+/**
+ * Conteúdo da planilha modelo (CSV com `;`, que o Excel brasileiro abre em
+ * colunas direto). Volta como string para a página baixar como arquivo.
+ */
+export function productTemplateCsv(): string {
+  const rows = [TEMPLATE_COLUMNS.map((c) => c.header), ...TEMPLATE_SAMPLE_ROWS];
+  return rows.map((r) => r.map((c) => (/[;"\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(';')).join('\r\n');
+}
+
 function parsePrice(raw?: string): number | undefined {
   if (!raw) return undefined;
   // "R$ 1.234,56" → 1234.56 (formato brasileiro).

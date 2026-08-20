@@ -37,6 +37,14 @@ function esc(s: unknown): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/** Baixa um texto já pronto como arquivo (ex.: a planilha modelo de produtos).
+ *  Diferente de `downloadCsv`, que monta o CSV a partir de linhas do sistema. */
+export function downloadTextFile(filename: string, content: string): void {
+  // BOM para o Excel abrir os acentos corretamente.
+  const blob = new Blob(['﻿' + content], { type: 'text/csv;charset=utf-8;' });
+  triggerDownload(blob, filename);
+}
+
 /**
  * Exporta uma planilha real (.xls) que o Excel abre nativamente, com o cabeçalho
  * e as linhas do relatório solicitado (não um CSV genérico).

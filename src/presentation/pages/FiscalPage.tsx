@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, FileText, Plus, ShieldCheck, Trash2 } from 'lucide-react';
+import { Check, FileText, Plus, ShieldCheck, Trash2, X } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
@@ -226,8 +226,55 @@ function FiscalConfigPanel() {
           <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={fiscal.inssRetido} onChange={(e) => setFiscal({ inssRetido: e.target.checked })} className="h-4 w-4 rounded border-border" /> Reter INSS (11%)</label>
         </div>
         {info.functionPath && <p className="text-xs text-muted-foreground">Template do backend incluído no repositório em <code>{info.functionPath}</code>. As alíquotas variam por município e CNAE — confirme com sua contabilidade.</p>}
+
+        <div className="border-t border-border pt-4">
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Tipos de tributo</p>
+          <p className="mb-3 text-xs text-muted-foreground">Alimentam o campo "Tributo" ao lançar uma despesa no Financeiro.</p>
+          <TaxKindsEditor />
+        </div>
       </CardBody>
     </Card>
+  );
+}
+
+/** Cadastro dos tipos de tributo usados nas despesas (Financeiro). */
+function TaxKindsEditor() {
+  const taxKinds = useSettingsStore((s) => s.fiscal.taxKinds);
+  const setFiscal = useSettingsStore((s) => s.setFiscal);
+  const [novo, setNovo] = useState('');
+
+  const add = () => {
+    const v = novo.trim();
+    if (!v || taxKinds.some((k) => k.toLowerCase() === v.toLowerCase())) { setNovo(''); return; }
+    setFiscal({ taxKinds: [...taxKinds, v] });
+    setNovo('');
+  };
+  const remove = (k: string) => setFiscal({ taxKinds: taxKinds.filter((x) => x !== k) });
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {taxKinds.length === 0 && <span className="text-sm text-muted-foreground">Nenhum tipo cadastrado.</span>}
+        {taxKinds.map((k) => (
+          <span key={k} className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs text-foreground">
+            {k}
+            <button type="button" onClick={() => remove(k)} aria-label={`Remover ${k}`} className="text-muted-foreground hover:text-danger">
+              <X size={11} />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="mt-2 flex gap-2">
+        <Input
+          value={novo}
+          onChange={(e) => setNovo(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+          placeholder="Ex.: ISS, IPVA, Taxa de licença…"
+          className="max-w-xs"
+        />
+        <Button type="button" size="sm" variant="outline" leftIcon={<Plus size={14} />} onClick={add} disabled={!novo.trim()}>Adicionar</Button>
+      </div>
+    </div>
   );
 }
 

@@ -16,6 +16,7 @@ import { getCustomer } from '@/application/repository';
 import { useFinanceStore, useRecurringPayablesStore, useBankAccountsStore, useChecksStore, useLoansStore } from '@/store/entityStores';
 import { useBankTransactionsStore, accountBalance, TRANSACTION_SIGN } from '@/store/bankTransactionsStore';
 import { useCashClosingStore } from '@/store/cashClosingStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
 import { toast } from '@/store/toastStore';
@@ -36,7 +37,9 @@ const statusMeta: Record<FinanceEntryStatus, { label: string; tone: any }> = {
 const PAYMENT_METHOD_LABEL: Record<PaymentMethodKind, string> = {
   cheque: 'Cheque', debito_conta: 'Débito em conta', eletronico: 'Eletrônico', dinheiro: 'Dinheiro',
 };
-const TAX_KIND_LABEL: Record<TaxKind, string> = { darf: 'DARF', iptu: 'IPTU', concessionaria: 'Concessionária' };
+/** Rótulo dos tributos antigos, gravados quando a lista era fixa no código. */
+const LEGACY_TAX_KIND_LABEL: Record<string, string> = { darf: 'DARF', iptu: 'IPTU', concessionaria: 'Concessionária' };
+const taxKindLabel = (k: string) => LEGACY_TAX_KIND_LABEL[k] ?? k;
 
 /** Frequências mensais suportadas por contas recorrentes (intervalo em meses). */
 const PAYABLE_FREQ: { value: RecurrenceFreq; months: number }[] = [
@@ -173,7 +176,7 @@ function VisaoGeralTab() {
         <p className="font-medium">{e.description}</p>
         <div className="mt-0.5 flex flex-wrap items-center gap-1">
           {e.customerId && <span className="text-xs text-muted-foreground">{getCustomer(e.customerId)?.name}</span>}
-          {e.taxKind && <Badge tone="info" className="text-[10px]">{TAX_KIND_LABEL[e.taxKind]}</Badge>}
+          {e.taxKind && <Badge tone="info" className="text-[10px]">{taxKindLabel(e.taxKind)}</Badge>}
           {e.discount ? <Badge tone="brand" className="text-[10px]">desconto {formatCurrency(e.discount)}</Badge> : null}
           {e.postponedFrom && <Badge tone="warning" className="text-[10px]">prorrogada</Badge>}
         </div>
@@ -489,7 +492,8 @@ function FinanceForm({ open, defaultType, onClose, onSave }: { open: boolean; de
   const [discount, setDiscount] = useState('');
   const [status, setStatus] = useState<FinanceEntryStatus>('pendente');
   const [dueDate, setDueDate] = useState('');
-  const [taxKind, setTaxKind] = useState<TaxKind | ''>('');
+  const [taxKind, setTaxKind] = useState<TaxKind>('');
+  const taxKinds = useSettingsStore((s) => s.fiscal.taxKinds);
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
@@ -528,10 +532,10 @@ function FinanceForm({ open, defaultType, onClose, onSave }: { open: boolean; de
             </Select>
           </Field>
           {type === 'despesa' && (
-            <Field label="Tributo (opcional)" className="col-span-2">
-              <Select value={taxKind} onChange={(e) => setTaxKind(e.target.value as TaxKind | '')}>
+            <Field label="Tributo (opcional)" className="col-span-2" hint="Cadastre novos tipos em Fiscal → Tipos de tributo">
+              <Select value={taxKind} onChange={(e) => setTaxKind(e.target.value)}>
                 <option value="">Não é tributo</option>
-                {(Object.keys(TAX_KIND_LABEL) as TaxKind[]).map((k) => <option key={k} value={k}>{TAX_KIND_LABEL[k]}</option>)}
+                {taxKinds.map((k) => <option key={k} value={k}>{k}</option>)}
               </Select>
             </Field>
           )}

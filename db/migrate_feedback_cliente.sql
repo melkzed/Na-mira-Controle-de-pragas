@@ -29,3 +29,17 @@ alter table public.recurring_payables
   add column if not exists start_date date;
 
 notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- Segunda leva de ajustes da cliente.
+-- ============================================================================
+
+-- Tipo de tributo da despesa deixou de ser uma lista fixa no código (darf/
+-- iptu/concessionaria) e passou a ser cadastrado pela empresa em Fiscal.
+alter table public.finance_entries
+  alter column tax_kind type text using tax_kind::text;
+
+-- Primeiro vencimento das contas recorrentes (dia/mês/ano) — a coluna
+-- start_date já foi criada na leva anterior; nada a fazer aqui.
+
+notify pgrst, 'reload schema';

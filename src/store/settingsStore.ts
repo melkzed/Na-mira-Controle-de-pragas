@@ -38,6 +38,10 @@ export interface FiscalConfig {
    *  em municípios com webservice próprio. Deixe em branco se o município
    *  usa só o item LC 116 (a maioria dos que já migraram pro NFS-e Nacional). */
   codigoTributarioMunicipal: string;
+  /** Tipos de tributo disponíveis ao lançar uma despesa (DARF, IPTU, ISS,
+   *  taxa municipal…). Editável em Fiscal — cada empresa tem os seus, então
+   *  não dá para fixar uma lista no código. */
+  taxKinds: string[];
   issRate: number;
   regime: TaxRegime;
   issRetido: boolean;
@@ -53,6 +57,7 @@ const DEFAULT_FISCAL: FiscalConfig = {
   municipioIbge: '3550308', // São Paulo/SP
   itemListaServico: '14.02',
   codigoTributarioMunicipal: '',
+  taxKinds: ['DARF', 'IPTU', 'Concessionária', 'ISS', 'INSS', 'FGTS', 'Taxa municipal'],
   issRate: DEFAULT_TAX_CONFIG.issRate,
   regime: DEFAULT_TAX_CONFIG.regime,
   issRetido: DEFAULT_TAX_CONFIG.issRetido,
