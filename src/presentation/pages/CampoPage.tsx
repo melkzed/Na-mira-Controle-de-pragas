@@ -26,9 +26,9 @@ import { useStockStore } from '@/store/stockStore';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
 import { X } from 'lucide-react';
-import type { Appointment, PaymentStatus, ServiceOrder, ServiceOrderPhoto, ServiceOrderProduct } from '@/domain/types';
+import type { Appointment, Customer, PaymentStatus, ServiceOrder, ServiceOrderPhoto, ServiceOrderProduct } from '@/domain/types';
 import { fmtTime } from '@/lib/date';
-import { cn } from '@/lib/utils';
+import { cn, formatDocument } from '@/lib/utils';
 import { formatAddress, googleMapsRoute, googleMapsRouteToAddress } from '@/lib/geo';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
 import { stockLocations } from '@/infrastructure/seed/data';
@@ -391,11 +391,113 @@ function VisitDetailDrawer({ appt, onClose, onNavigate }: { appt: Appointment | 
         <div className="grid grid-cols-2 gap-3">
           <Info2 label="Horário" value={`${fmtTime(appt.scheduledStart)}–${fmtTime(appt.scheduledEnd)}`} />
           <Info2 label="Duração" value={`${appt.estimatedMinutes ?? '—'} min`} />
-          <Info2 label="Telefone" value={cust?.phone ?? '—'} />
-          <Info2 label="Tipo de imóvel" value={cust?.propertyType ?? '—'} />
         </div>
+
+        <CustomerInfoSection customer={cust} />
       </div>
     </Drawer>
+  );
+}
+
+/**
+ * Dados cadastrais do cliente no app de campo — o técnico precisa saber com
+ * quem falar, para onde ir e o que esperar do imóvel sem depender de ligar
+ * para o escritório.
+ */
+function CustomerInfoSection({ customer: c }: { customer?: Customer }) {
+  if (!c) return null;
+  const contacts = c.contacts ?? [];
+  const principal = contacts.find((ct) => ct.isPrincipal) ?? contacts[0];
+  const outros = contacts.filter((ct) => ct.id !== principal?.id);
+  const endereco = formatAddress(c);
+  const tel = (n?: string) => n?.replace(/[^\d+]/g, '');
+
+  return (
+    <Section title="Dados do cliente">
+      <div className="space-y-3">
+        <div>
+          <p className="text-sm font-semibold text-foreground">{c.name}</p>
+          {c.companyName && <p className="text-xs text-muted-foreground">{c.companyName}</p>}
+          <p className="text-xs text-muted-foreground">
+            {c.type === 'pj' ? 'Pessoa Jurídica' : 'Pessoa Física'}
+            {c.document ? ` · ${formatDocument(c.document)}` : ''}
+          </p>
+        </div>
+
+        {endereco && (
+          <div className="flex items-start gap-2 text-sm">
+            <MapPin size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
+            <span className="text-foreground">{endereco}</span>
+          </div>
+        )}
+
+        {/* Contatos: tocáveis, para ligar direto do celular. */}
+        {(principal || c.phone) && (
+          <div className="space-y-1.5">
+            {c.phone && (
+              <a href={`tel:${tel(c.phone)}`} className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2 text-sm transition hover:bg-muted">
+                <span className="text-muted-foreground">Telefone principal</span>
+                <span className="font-medium text-brand">{c.phone}</span>
+              </a>
+            )}
+            {principal && (
+              <a href={`tel:${tel(principal.phone)}`} className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2 text-sm transition hover:bg-muted">
+                <span className="min-w-0 truncate text-muted-foreground">{principal.name}{principal.role ? ` · ${principal.role}` : ''}</span>
+                <span className="ml-2 shrink-0 font-medium text-brand">{principal.phone}</span>
+              </a>
+            )}
+            {outros.map((ct) => (
+              <a key={ct.id} href={`tel:${tel(ct.phone)}`} className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2 text-sm transition hover:bg-muted">
+                <span className="min-w-0 truncate text-muted-foreground">{ct.name}{ct.role ? ` · ${ct.role}` : ''}</span>
+                <span className="ml-2 shrink-0 font-medium text-brand">{ct.phone}</span>
+              </a>
+            ))}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <Info2 label="Tipo de imóvel" value={c.propertyType ?? '—'} />
+          <Info2 label="Área" value={c.areaM2 ? `${c.areaM2} m²` : '—'} />
+          {c.roomCount != null && <Info2 label="Cômodos" value={String(c.roomCount)} />}
+          {c.email && <Info2 label="E-mail" value={c.email} />}
+        </div>
+
+        {!!c.localStructure?.length && (
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Estrutura do local</p>
+            <div className="flex flex-wrap gap-1.5">
+              {c.localStructure.map((s) => {
+                const qty = c.localStructureQty?.[s];
+                return <Badge key={s} tone="neutral">{qty && qty > 1 ? `${qty} ${s}` : s}</Badge>;
+              })}
+            </div>
+          </div>
+        )}
+
+        {!!c.reservoirs?.length && (
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Reservatórios</p>
+            <div className="flex flex-wrap gap-1.5">
+              {c.reservoirs.map((r) => <Badge key={r.id} tone="neutral">{r.type}{r.location ? ` · ${r.location}` : ''}</Badge>)}
+            </div>
+          </div>
+        )}
+
+        {(!!c.tags.length || c.monitoringContracted) && (
+          <div className="flex flex-wrap gap-1.5">
+            {c.monitoringContracted && <Badge tone="info" dot>Monitoramento contratado</Badge>}
+            {c.tags.map((t) => <Badge key={t} tone="neutral">{t}</Badge>)}
+          </div>
+        )}
+
+        {c.notes && (
+          <div>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Observações do cadastro</p>
+            <p className="text-sm text-foreground">{c.notes}</p>
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }
 
@@ -646,13 +748,14 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <Button variant="outline" size="sm" leftIcon={<Navigation size={15} />} disabled={appt.latitude == null && !appt.address && !(cust && formatAddress(cust))} onClick={onNavigate}>Navegar</Button>
           <Button
             variant="outline" size="sm" leftIcon={<PhoneCall size={15} />}
             disabled={!cust?.phone}
             onClick={() => cust?.phone && window.open(`tel:${cust.phone.replace(/[^\d+]/g, '')}`)}
           >Ligar</Button>
+          <Button variant="outline" size="sm" leftIcon={<Info size={15} />} onClick={onDetail}>Cliente</Button>
         </div>
 
         {/* Checklist pré-atendimento */}

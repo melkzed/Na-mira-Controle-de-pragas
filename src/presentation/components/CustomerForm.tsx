@@ -24,7 +24,53 @@ const CONTRACT_STATUS_LABEL: Record<ContractStatus, string> = {
   ativo: 'Ativo', vencido: 'Vencido', renovacao_pendente: 'Renovação pendente', cancelado: 'Cancelado',
 };
 
-/** Chips com toggle + adição de item personalizado — usado em Estrutura do Local e Outros Serviços. */
+/** Chips com toggle, quantidade (+/−) e adição de item personalizado — usado
+ *  na Estrutura do Local, onde importa "2 banheiros, 3 quartos" e não só quais
+ *  ambientes existem. O valor é um mapa nome → quantidade; ausente = não
+ *  selecionado. Mesmo padrão das "Áreas tratadas" da Ordem de Serviço. */
+function QtyTagChips({ presets, value, onChange }: { presets: string[]; value: Record<string, number>; onChange: (next: Record<string, number>) => void }) {
+  const [custom, setCustom] = useState('');
+  const all = [...new Set([...presets, ...Object.keys(value)])];
+
+  const toggle = (name: string) => {
+    if (value[name] != null) { const n = { ...value }; delete n[name]; onChange(n); }
+    else onChange({ ...value, [name]: 1 });
+  };
+  const setQty = (name: string, qty: number) => onChange({ ...value, [name]: Math.max(1, qty) });
+  const addCustom = () => {
+    const n = custom.trim();
+    if (n && !all.includes(n)) { onChange({ ...value, [n]: 1 }); setCustom(''); }
+  };
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {all.map((name) => {
+          const qty = value[name];
+          const active = qty != null;
+          return (
+            <div key={name} className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition ${active ? 'border-brand bg-brand-soft text-brand' : 'border-border text-muted-foreground hover:bg-muted'}`}>
+              <button type="button" onClick={() => toggle(name)}>{name}</button>
+              {active && (
+                <span className="flex items-center gap-1 border-l border-brand/30 pl-1">
+                  <button type="button" aria-label={`Diminuir quantidade de ${name}`} onClick={() => setQty(name, qty - 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">−</button>
+                  <span className="w-3.5 text-center font-semibold">{qty}</span>
+                  <button type="button" aria-label={`Aumentar quantidade de ${name}`} onClick={() => setQty(name, qty + 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">+</button>
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex gap-2">
+        <input value={custom} onChange={(e) => setCustom(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }} placeholder="Adicionar personalizado…" className="h-8 flex-1 rounded-lg border border-input bg-surface px-2.5 text-xs text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-ring/40" />
+        <Button type="button" size="sm" variant="outline" onClick={addCustom} disabled={!custom.trim()}>Adicionar</Button>
+      </div>
+    </div>
+  );
+}
+
+/** Chips com toggle + adição de item personalizado — usado em Outros Serviços. */
 function TagChips({ presets, value, onChange }: { presets: string[]; value: string[]; onChange: (next: string[]) => void }) {
   const [custom, setCustom] = useState('');
   const all = [...new Set([...presets, ...value])];
@@ -138,7 +184,7 @@ export function CustomerForm({
   const debounce = useRef<ReturnType<typeof setTimeout>>();
 
   const [tier, setTier] = useState<'basico' | 'completo'>('completo');
-  const [localStructure, setLocalStructure] = useState<string[]>([]);
+  const [localStructure, setLocalStructure] = useState<Record<string, number>>({});
   const [contacts, setContacts] = useState<CustomerContact[]>([]);
   const [reservoirs, setReservoirs] = useState<Reservoir[]>([]);
   const [contactNextAt, setContactNextAt] = useState('');
@@ -153,7 +199,11 @@ export function CustomerForm({
     if (initial) {
       setForm(fromCustomer(initial));
       setTier(initial.registrationTier ?? 'completo');
-      setLocalStructure(initial.localStructure ?? []);
+      setLocalStructure(
+        initial.localStructureQty && Object.keys(initial.localStructureQty).length
+          ? initial.localStructureQty
+          : Object.fromEntries((initial.localStructure ?? []).map((n) => [n, 1])),
+      );
       setContacts(initial.contacts?.length ? initial.contacts : (initial.whatsapp ? [{ id: uid('ct'), name: 'Contato', phone: initial.whatsapp, isPrincipal: true }] : []));
       setReservoirs(initial.reservoirs ?? []);
       setContactNextAt(initial.contactSchedule?.nextContactAt?.slice(0, 10) ?? '');
@@ -171,7 +221,7 @@ export function CustomerForm({
         setForm(empty);
       }
       setTier('basico');
-      setLocalStructure([]); setContacts([]); setReservoirs([]); setContactNextAt(''); setContactResponsibleId(''); setContactNotes(''); setContracts([]); setComplementary([]);
+      setLocalStructure({}); setContacts([]); setReservoirs([]); setContactNextAt(''); setContactResponsibleId(''); setContactNotes(''); setContracts([]); setComplementary([]);
     }
     setTouched(false);
   }, [open, initial]);
@@ -277,7 +327,8 @@ export function CustomerForm({
     const input: CustomerInput = {
       ...toInput(form),
       registrationTier: tier,
-      localStructure: tier === 'completo' && localStructure.length ? localStructure : undefined,
+      localStructure: tier === 'completo' && Object.keys(localStructure).length ? Object.keys(localStructure) : undefined,
+      localStructureQty: tier === 'completo' && Object.keys(localStructure).length ? localStructure : undefined,
       contacts: tier === 'completo' && contacts.length ? contacts : undefined,
       reservoirs: tier === 'completo' && reservoirs.length ? reservoirs : undefined,
       contactSchedule: tier === 'completo' && (contactNextAt || contactResponsibleId || contactNotes.trim())
@@ -451,7 +502,7 @@ export function CustomerForm({
 
             <div className="border-t border-border pt-4">
               <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Estrutura do local</p>
-              <TagChips presets={LOCAL_STRUCTURE_PRESETS} value={localStructure} onChange={setLocalStructure} />
+              <QtyTagChips presets={LOCAL_STRUCTURE_PRESETS} value={localStructure} onChange={setLocalStructure} />
             </div>
 
             <div className="border-t border-border pt-4">

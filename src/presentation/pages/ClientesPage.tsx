@@ -228,7 +228,12 @@ function ClienteDetail({
         {!!customer.localStructure?.length && (
           <div>
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Estrutura do local</p>
-            <div className="flex flex-wrap gap-1.5">{customer.localStructure.map((s) => <Badge key={s} tone="neutral">{s}</Badge>)}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {customer.localStructure.map((s) => {
+                const qty = customer.localStructureQty?.[s];
+                return <Badge key={s} tone="neutral">{qty && qty > 1 ? `${qty} ${s}` : s}</Badge>;
+              })}
+            </div>
           </div>
         )}
 
