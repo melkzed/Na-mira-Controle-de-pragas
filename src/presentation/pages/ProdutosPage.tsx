@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Download, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Check, Download, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Drawer } from '../components/ui/Drawer';
 import { Field, Input, Select } from '../components/ui/Field';
+import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
 import * as seed from '@/infrastructure/seed/data';
 import { centralBalance } from '@/application/repository';
@@ -14,6 +15,9 @@ import { currentOrgId } from '@/store/appStore';
 import type { Batch, Product } from '@/domain/types';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { downloadCsv } from '@/lib/export';
+import { parseSheet, readSheetFile } from '@/lib/importSheet';
+import { previewProductImport, toProductPatch, PRODUCT_FIELD_LABEL, type ProductImportPreview } from '@/lib/importProducts';
+import { toast } from '@/store/toastStore';
 import { currentBatch, expiryLevel } from '@/lib/batches';
 import { fmtDate } from '@/lib/date';
 
@@ -22,6 +26,7 @@ export function ProdutosPage() {
   const [selected, setSelected] = useState<Product | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [query, setQuery] = useState('');
   const catName = (id?: string) => seed.productCategories.find((c) => c.id === id)?.name ?? '—';
 
@@ -48,6 +53,7 @@ export function ProdutosPage() {
     { header: 'Produto', value: (p) => p.name },
     { header: 'Categoria', value: (p) => catName(p.categoryId) },
     { header: 'Princípio ativo', value: (p) => p.activeIngredient ?? '' },
+    { header: 'Grupo químico', value: (p) => p.chemicalGroup ?? '' },
     { header: 'Lote atual', value: (p) => currentBatch(p)?.code ?? '' },
     { header: 'Validade', value: (p) => { const e = currentBatch(p)?.expiresAt; return e ? fmtDate(e) : ''; } },
     { header: 'Unidade', value: (p) => p.unit },
@@ -62,6 +68,7 @@ export function ProdutosPage() {
         description={`${products.length} produtos no catálogo`}
         actions={
           <>
+            <Button variant="outline" leftIcon={<Upload size={16} />} onClick={() => setImportOpen(true)}>Importar planilha</Button>
             <Button variant="outline" leftIcon={<Download size={16} />} onClick={exportCsv}>Exportar CSV</Button>
             <Button leftIcon={<Plus size={16} />} onClick={() => { setEditing(null); setFormOpen(true); }}>Novo produto</Button>
           </>
@@ -94,6 +101,11 @@ export function ProdutosPage() {
               <Info label="Categoria" value={catName(selected.categoryId)} />
               <Info label="Registro MS/Anvisa" value={selected.registrationCode ?? '—'} />
               <Info label="Princípio ativo" value={selected.activeIngredient ?? '—'} />
+              <Info label="Grupo químico" value={selected.chemicalGroup ?? '—'} />
+              <Info label="Exibição no laudo" value={selected.reportLabel === 'nome' ? 'Nome do produto' : 'Princípio ativo'} />
+              <Info label="Diluente" value={selected.diluent ?? '—'} />
+              <Info label="Antídoto" value={selected.antidote ?? '—'} />
+              <Info label="Tratamento" value={selected.treatment ?? '—'} />
               <Info label="Tipo de aplicação" value={selected.applicationType ?? '—'} />
               <Info label="Dosagem" value={selected.dosage ?? '—'} />
               <Info label="Unidade" value={selected.unit} />
@@ -138,7 +150,162 @@ export function ProdutosPage() {
         onClose={() => setFormOpen(false)}
         onSave={(p, isNew) => { if (isNew) add(p); else update(p.id, p); setFormOpen(false); }}
       />
+
+      <ImportProductsDrawer open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
+  );
+}
+
+/**
+ * Importação de produtos por planilha. Lê o arquivo, mostra o que entendeu
+ * (colunas reconhecidas, ignoradas, quantos produtos são novos e quantos já
+ * existem) e só grava depois da confirmação — nada é alterado antes disso.
+ */
+function ImportProductsDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { items: products, add, update } = useProductsStore();
+  const [fileName, setFileName] = useState('');
+  const [preview, setPreview] = useState<ProductImportPreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [updateExisting, setUpdateExisting] = useState(true);
+
+  useEffect(() => {
+    if (!open) { setFileName(''); setPreview(null); setError(null); setUpdateExisting(true); }
+  }, [open]);
+
+  const pick = async (file: File) => {
+    setError(null); setPreview(null); setFileName(file.name);
+    try {
+      const sheet = parseSheet(await readSheetFile(file));
+      if (!sheet || !sheet.rows.length) {
+        setError('Não foi possível ler a planilha. Se for um .xlsx do Excel, salve como CSV e tente de novo.');
+        return;
+      }
+      const p = previewProductImport(sheet, products);
+      if (!p.mappedFields.includes('name')) {
+        setError('A planilha precisa ter uma coluna "Produto" (ou "Nome") com o nome de cada produto.');
+        return;
+      }
+      setPreview(p);
+    } catch {
+      setError('Falha ao ler o arquivo. Verifique se é uma planilha (.xls exportado, .csv) e tente novamente.');
+    }
+  };
+
+  const novos = preview?.rows.filter((r) => !r.existingId).length ?? 0;
+  const existentes = preview?.rows.filter((r) => r.existingId).length ?? 0;
+  const totalGravar = novos + (updateExisting ? existentes : 0);
+
+  const confirm = () => {
+    if (!preview) return;
+    let criados = 0;
+    let atualizados = 0;
+    preview.rows.forEach((r) => {
+      const patch = toProductPatch(r.values);
+      if (r.existingId) {
+        if (!updateExisting) return;
+        update(r.existingId, patch);
+        atualizados += 1;
+      } else {
+        add({
+          id: uid('prod'), orgId: currentOrgId(),
+          name: patch.name ?? '', unit: patch.unit ?? 'un', minQuantity: 0, price: patch.price ?? 0,
+          isRegulated: false, isActive: true, reportLabel: 'principio_ativo',
+          categoryId: seed.productCategories[0]?.id,
+          ...patch,
+        });
+        criados += 1;
+      }
+    });
+    toast(`Importação concluída: ${criados} produto(s) criado(s)${atualizados ? `, ${atualizados} atualizado(s)` : ''}.`, { tone: 'success' });
+    onClose();
+  };
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Importar produtos de planilha"
+      subtitle="Confira o que será importado antes de confirmar"
+      centered
+      footer={
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground">
+            {preview ? `${totalGravar} produto(s) serão gravados` : 'Selecione um arquivo para começar'}
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button onClick={confirm} disabled={!preview || totalGravar === 0} leftIcon={<Check size={15} />}>Importar</Button>
+          </div>
+        </div>
+      }
+    >
+      <div className="mx-auto max-w-5xl space-y-4">
+        <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 p-8 text-center transition hover:border-brand/50 hover:bg-brand-soft/20">
+          <Upload size={22} className="text-muted-foreground" />
+          <span className="text-sm font-medium text-foreground">{fileName || 'Escolher planilha'}</span>
+          <span className="text-xs text-muted-foreground">Planilha exportada (.xls), .csv ou .txt — colunas em qualquer ordem</span>
+          <input
+            type="file"
+            accept=".xls,.xlsx,.csv,.txt,.html,text/csv,text/html,application/vnd.ms-excel"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) pick(f); e.target.value = ''; }}
+          />
+        </label>
+
+        {error && <div className="rounded-xl border border-danger/30 bg-danger-soft/30 p-3 text-sm text-danger">{error}</div>}
+
+        {preview && (
+          <>
+            <div className="grid grid-cols-3 gap-3">
+              <Info label="Novos produtos" value={String(novos)} />
+              <Info label="Já cadastrados" value={String(existentes)} />
+              <Info label="Linhas ignoradas" value={String(preview.skipped)} />
+            </div>
+
+            <div className="rounded-xl border border-border bg-muted/30 p-3 text-xs">
+              <p className="text-foreground"><span className="font-semibold">Colunas reconhecidas:</span> {preview.mappedFields.map((f) => PRODUCT_FIELD_LABEL[f]).join(', ')}</p>
+              {preview.ignoredHeaders.length > 0 && (
+                <p className="mt-1 text-muted-foreground"><span className="font-semibold">Ignoradas:</span> {preview.ignoredHeaders.join(', ')}</p>
+              )}
+            </div>
+
+            {existentes > 0 && (
+              <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3">
+                <input type="checkbox" checked={updateExisting} onChange={(e) => setUpdateExisting(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-border" />
+                <span>
+                  <span className="block text-sm font-medium text-foreground">Atualizar produtos já cadastrados</span>
+                  <span className="block text-xs text-muted-foreground">{existentes} produto(s) da planilha já existem (mesmo nome). Desmarque para importar somente os novos.</span>
+                </span>
+              </label>
+            )}
+
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Pré-visualização</p>
+              <div className="max-h-80 overflow-auto rounded-xl border border-border">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-muted">
+                    <tr>
+                      <th className="px-2 py-1.5 text-left font-semibold text-muted-foreground">Situação</th>
+                      {preview.mappedFields.map((f) => <th key={f} className="px-2 py-1.5 text-left font-semibold text-muted-foreground">{PRODUCT_FIELD_LABEL[f]}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.rows.map((r, i) => (
+                      <tr key={i} className="border-t border-border/60">
+                        <td className="px-2 py-1.5">
+                          <Badge tone={r.existingId ? 'warning' : 'success'} className="text-[10px]">{r.existingId ? 'Atualiza' : 'Novo'}</Badge>
+                        </td>
+                        {preview.mappedFields.map((f) => <td key={f} className="px-2 py-1.5 text-foreground">{r.values[f] ?? '—'}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </Drawer>
   );
 }
 
@@ -153,7 +320,7 @@ function ProductForm({ open, initial, onClose, onSave }: { open: boolean; initia
 
   useEffect(() => {
     if (!open) return;
-    setF(initial ? { ...initial } : { unit: 'un', minQuantity: 0, price: 0, isRegulated: false, isActive: true, categoryId: seed.productCategories[0]?.id });
+    setF(initial ? { ...initial } : { unit: 'un', minQuantity: 0, price: 0, isRegulated: false, isActive: true, categoryId: seed.productCategories[0]?.id, reportLabel: 'principio_ativo' });
     setBatchCode(''); setBatchExpiry(''); setBatchQty('');
     setTouched(false);
   }, [open, initial]);
@@ -178,6 +345,11 @@ function ProductForm({ open, initial, onClose, onSave }: { open: boolean; initia
       manufacturer: f.manufacturer?.trim() || undefined,
       registrationCode: f.registrationCode?.trim() || undefined,
       activeIngredient: f.activeIngredient?.trim() || undefined,
+      chemicalGroup: f.chemicalGroup?.trim() || undefined,
+      diluent: f.diluent?.trim() || undefined,
+      antidote: f.antidote?.trim() || undefined,
+      treatment: f.treatment?.trim() || undefined,
+      reportLabel: f.reportLabel === 'nome' ? 'nome' : 'principio_ativo',
       applicationType: f.applicationType?.trim() || undefined,
       dosage: f.dosage?.trim() || undefined,
       unit: f.unit || 'un',
@@ -199,7 +371,22 @@ function ProductForm({ open, initial, onClose, onSave }: { open: boolean; initia
         <Field label="Categoria"><Select value={f.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value)}>{seed.productCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
         <Field label="Fabricante"><Input value={f.manufacturer ?? ''} onChange={(e) => set('manufacturer', e.target.value)} /></Field>
         <Field label="Princípio ativo"><Input value={f.activeIngredient ?? ''} onChange={(e) => set('activeIngredient', e.target.value)} /></Field>
+        <Field label="Grupo químico" hint="Ex.: Piretróide, Neonicotinóide, Hidroxicumarina…"><Input value={f.chemicalGroup ?? ''} onChange={(e) => set('chemicalGroup', e.target.value)} /></Field>
         <Field label="Registro MS/Anvisa"><Input value={f.registrationCode ?? ''} onChange={(e) => set('registrationCode', e.target.value)} /></Field>
+        <Field label="Diluente" hint="Ex.: Água, Gel, Pronto para Uso"><Input value={f.diluent ?? ''} onChange={(e) => set('diluent', e.target.value)} /></Field>
+        <Field label="Antídoto"><Input value={f.antidote ?? ''} onChange={(e) => set('antidote', e.target.value)} /></Field>
+        <Field label="Tratamento" hint="Conduta em caso de intoxicação — sai no laudo"><Input value={f.treatment ?? ''} onChange={(e) => set('treatment', e.target.value)} /></Field>
+        <Field label="Exibir nos laudos como" className="col-span-2" hint="Como este produto aparece no Laudo e no Certificado impressos">
+          <Segmented
+            value={f.reportLabel === 'nome' ? 'nome' : 'principio_ativo'}
+            onChange={(v) => set('reportLabel', v)}
+            size="sm"
+            options={[
+              { value: 'principio_ativo', label: 'Princípio ativo' },
+              { value: 'nome', label: 'Nome do produto' },
+            ]}
+          />
+        </Field>
         <Field label="Tipo de aplicação"><Input value={f.applicationType ?? ''} onChange={(e) => set('applicationType', e.target.value)} placeholder="Pulverização, Gel…" /></Field>
         <Field label="Dosagem"><Input value={f.dosage ?? ''} onChange={(e) => set('dosage', e.target.value)} /></Field>
         <Field label="Unidade"><Select value={f.unit ?? 'un'} onChange={(e) => set('unit', e.target.value)}>{['un', 'L', 'ml', 'kg', 'g', 'cx', 'par'].map((u) => <option key={u}>{u}</option>)}</Select></Field>

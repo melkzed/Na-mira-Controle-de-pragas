@@ -12,6 +12,7 @@ import type { ContractStatus, Customer, CustomerContact, Reservoir, ServiceContr
 import type { CustomerType } from '@/domain/enums';
 import { isEmail, isValidDocument, maskCep, maskDocument, maskPhone } from '@/lib/validation';
 import { lookupCnpj } from '@/lib/cnpj';
+import { lookupCep } from '@/lib/cep';
 import { dateInputToIso, fmtDate } from '@/lib/date';
 
 const DRAFT_KEY = 'namira-cliente-draft';
@@ -60,6 +61,7 @@ type FormState = {
   state: string;
   propertyType: string;
   areaM2: string;
+  roomCount: string;
   tags: string;
   notes: string;
   permanentNotes: string;
@@ -71,7 +73,7 @@ type FormState = {
 const empty: FormState = {
   type: 'pf', name: '', companyName: '', document: '', phone: '',
   email: '', cep: '', street: '', number: '', complement: '', district: '',
-  city: '', state: '', propertyType: '', areaM2: '', tags: '', notes: '',
+  city: '', state: '', propertyType: '', areaM2: '', roomCount: '', tags: '', notes: '',
   permanentNotes: '', monitoring: false, registrationStatus: '', economicActivity: '',
 };
 
@@ -82,6 +84,7 @@ function fromCustomer(c: Customer): FormState {
     street: c.street ?? '', number: c.number ?? '', complement: c.complement ?? '',
     district: c.district ?? '', city: c.city ?? '', state: c.state ?? '',
     propertyType: c.propertyType ?? '', areaM2: c.areaM2 ? String(c.areaM2) : '',
+    roomCount: c.roomCount ? String(c.roomCount) : '',
     tags: c.tags.join(', '), notes: c.notes ?? '',
     permanentNotes: c.permanentNotes ?? '', monitoring: !!c.monitoringContracted,
     registrationStatus: c.registrationStatus ?? '', economicActivity: c.economicActivity ?? '',
@@ -105,6 +108,7 @@ function toInput(f: FormState): CustomerInput {
     state: f.state.trim().toUpperCase() || undefined,
     propertyType: f.propertyType.trim() || undefined,
     areaM2: f.areaM2 ? Number(f.areaM2) : undefined,
+    roomCount: f.roomCount ? Number(f.roomCount) : undefined,
     tags: f.tags.split(',').map((t) => t.trim()).filter(Boolean),
     notes: f.notes.trim() || undefined,
     permanentNotes: f.permanentNotes.trim() || undefined,
@@ -236,6 +240,37 @@ export function CustomerForm({
     }
   };
 
+  // Consulta o CEP (BrasilAPI) e preenche logradouro/bairro/cidade/UF. Dispara
+  // sozinha assim que o CEP fica completo (8 dígitos) — vale para PF e PJ, nos
+  // dois níveis de cadastro, já que o bloco de endereço é o mesmo.
+  const [cepLoading, setCepLoading] = useState(false);
+  const [cepMsg, setCepMsg] = useState<string | null>(null);
+  const lastCepLookup = useRef('');
+  const doLookupCep = async (rawCep: string) => {
+    const digits = rawCep.replace(/\D/g, '');
+    if (digits.length !== 8 || digits === lastCepLookup.current) return;
+    lastCepLookup.current = digits;
+    setCepMsg(null);
+    setCepLoading(true);
+    try {
+      const d = await lookupCep(digits);
+      setTouched(true);
+      // Não sobrescreve o que o usuário já digitou à mão.
+      setForm((f) => ({
+        ...f,
+        street: f.street || d.street || '',
+        district: f.district || d.district || '',
+        city: f.city || d.city || '',
+        state: f.state || d.state || '',
+      }));
+      setCepMsg('ok');
+    } catch (err) {
+      setCepMsg(err instanceof Error ? err.message : 'Falha na consulta.');
+    } finally {
+      setCepLoading(false);
+    }
+  };
+
   const submit = () => {
     setTouched(true);
     if (Object.keys(errors).length) return;
@@ -272,7 +307,7 @@ export function CustomerForm({
       onClose={cancel}
       title={isEdit ? 'Editar cliente' : 'Novo cliente'}
       subtitle={isEdit ? initial?.name : 'Cadastro de cliente'}
-      width="max-w-xl"
+      centered
       footer={
         <div className="flex items-center justify-between gap-2">
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -287,7 +322,7 @@ export function CustomerForm({
         </div>
       }
     >
-      <div className="space-y-4">
+      <div className="mx-auto max-w-4xl space-y-4">
         <div>
           <Segmented
             value={tier}
@@ -353,13 +388,39 @@ export function CustomerForm({
         <div className="border-t border-border pt-4">
           <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Endereço</p>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Field label="CEP" className="col-span-1"><Input value={form.cep} onChange={(e) => set('cep', maskCep(e.target.value))} placeholder="00000-000" inputMode="numeric" /></Field>
+            <Field label="CEP" className="col-span-1">
+              <div className="relative">
+                <Input
+                  value={form.cep}
+                  onChange={(e) => { const v = maskCep(e.target.value); set('cep', v); doLookupCep(v); }}
+                  onBlur={(e) => doLookupCep(e.target.value)}
+                  placeholder="00000-000"
+                  inputMode="numeric"
+                />
+                {cepLoading && <Loader2 size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" />}
+              </div>
+              {cepMsg === 'ok' && <span className="mt-1 block text-xs text-success">Endereço preenchido.</span>}
+              {cepMsg && cepMsg !== 'ok' && <span className="mt-1 block text-xs text-danger">{cepMsg}</span>}
+            </Field>
             <Field label="Logradouro" className="col-span-2 sm:col-span-2"><Input value={form.street} onChange={(e) => set('street', e.target.value)} /></Field>
             <Field label="Número"><Input value={form.number} onChange={(e) => set('number', e.target.value)} /></Field>
             <Field label="Complemento" className="col-span-2"><Input value={form.complement} onChange={(e) => set('complement', e.target.value)} /></Field>
             <Field label="Bairro" className="col-span-2"><Input value={form.district} onChange={(e) => set('district', e.target.value)} /></Field>
             <Field label="Cidade" className="col-span-2 sm:col-span-3"><Input value={form.city} onChange={(e) => set('city', e.target.value)} /></Field>
             <Field label="UF"><Input value={form.state} onChange={(e) => set('state', e.target.value.toUpperCase().slice(0, 2))} maxLength={2} /></Field>
+            {/* Tipo de imóvel fica no cadastro básico também — antes só existia
+                no completo, e a informação aparecia apenas na Agenda. */}
+            <Field label="Tipo de imóvel" className="col-span-2">
+              <Select value={form.propertyType} onChange={(e) => set('propertyType', e.target.value)}>
+                <option value="">—</option>
+                {['Residencial', 'Comercial', 'Industrial', 'Condomínio', 'Rural', 'Institucional'].map((o) => <option key={o} value={o}>{o}</option>)}
+              </Select>
+            </Field>
+            {tier === 'completo' && form.type === 'pf' && (
+              <Field label="Quantidade de cômodos" className="col-span-2">
+                <Input type="number" min={0} value={form.roomCount} onChange={(e) => set('roomCount', e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="Ex.: 5" />
+              </Field>
+            )}
           </div>
         </div>
 
@@ -368,13 +429,7 @@ export function CustomerForm({
             <div className="border-t border-border pt-4">
               <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Imóvel e observações</p>
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Tipo de imóvel">
-                  <Select value={form.propertyType} onChange={(e) => set('propertyType', e.target.value)}>
-                    <option value="">—</option>
-                    {['Residencial', 'Comercial', 'Industrial', 'Condomínio', 'Rural', 'Institucional'].map((o) => <option key={o} value={o}>{o}</option>)}
-                  </Select>
-                </Field>
-                <Field label="Área aproximada (m²)"><Input value={form.areaM2} onChange={(e) => set('areaM2', e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" /></Field>
+                <Field label="Área aproximada (m²)" className="col-span-2"><Input value={form.areaM2} onChange={(e) => set('areaM2', e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" /></Field>
                 <Field label="Etiquetas (separadas por vírgula)" className="col-span-2"><Input value={form.tags} onChange={(e) => set('tags', e.target.value)} placeholder="Contrato mensal, Alimentício" /></Field>
                 <Field label="Observações" className="col-span-2"><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
               </div>

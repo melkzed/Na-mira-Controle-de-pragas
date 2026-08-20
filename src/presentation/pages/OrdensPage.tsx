@@ -29,7 +29,6 @@ import { useCustomersStore } from '@/store/customersStore';
 import { usePestsStore, useAreasStore, useEquipmentStore, useFinanceStore, useServiceTypesStore, useUsersStore, useLicensesStore, useProductsStore } from '@/store/entityStores';
 import { logChange, useAuditStore, type AuditEntry } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
-import { SignaturePad } from '../components/SignaturePad';
 import { QuickAddChip } from '../components/QuickAddChip';
 import { Combobox, MultiCombobox } from '../components/ui/Combobox';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -261,7 +260,6 @@ export function OrdensPage() {
 
             <div className="space-y-5">
               <FiscalSection so={selected} />
-              <OsSignatures so={selected} />
               <div className="rounded-lg border border-danger/20 bg-danger-soft/20 p-2.5 text-xs text-danger">
                 <span className="font-semibold">Emergência (CIT):</span> {settingsEmergency()}
               </div>
@@ -1120,52 +1118,10 @@ function settingsEmergency(): string {
   return `${s.emergencyPhone}${s.emergencyInfo ? ` — ${s.emergencyInfo}` : ''}`;
 }
 
-/** Captura das assinaturas eletrônicas da OS (técnico e cliente) → PDF.
- *  Ao selecionar técnico/cliente que já têm assinatura cadastrada, ela é
- *  carregada automaticamente; uma assinatura nova (traço ou arquivo) fica
- *  registrada para reaproveitar nas próximas OS do mesmo técnico/cliente. */
-function OsSignatures({ so }: { so: ServiceOrder }) {
-  const update = useServiceOrdersStore((s) => s.update);
-  const savedSignatures = useSettingsStore((s) => s.signatures);
-  const setEntitySignature = useSettingsStore((s) => s.setUserSignature);
-  const [techSig, setTechSig] = useState<string | undefined>(so.technicianSignature);
-  const [custSig, setCustSig] = useState<string | undefined>(so.customerSignature);
-
-  const techId = so.technicianIds?.[0] ?? so.technicianId;
-
-  useEffect(() => {
-    const storedTech = techId ? savedSignatures[techId] : undefined;
-    const storedCust = savedSignatures[so.customerId];
-    const nextTech = so.technicianSignature ?? storedTech;
-    const nextCust = so.customerSignature ?? storedCust;
-    setTechSig(nextTech);
-    setCustSig(nextCust);
-    // Grava na própria OS se veio de um cadastro salvo (sem exigir novo traço).
-    if (!so.technicianSignature && storedTech) update(so.id, { technicianSignature: storedTech });
-    if (!so.customerSignature && storedCust) update(so.id, { customerSignature: storedCust, hasCustomerSignature: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [so.id, techId]);
-
-  const saveTech = (d?: string) => {
-    setTechSig(d);
-    update(so.id, { technicianSignature: d });
-    if (d && techId) setEntitySignature(techId, d);
-  };
-  const saveCust = (d?: string) => {
-    setCustSig(d);
-    update(so.id, { customerSignature: d, hasCustomerSignature: !!d });
-    if (d) setEntitySignature(so.customerId, d);
-  };
-
-  return (
-    <Section title="Assinaturas eletrônicas">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <SignaturePad key={`tech-${so.id}-${techId}`} label="Técnico" value={techSig} onChange={saveTech} height={130} />
-        <SignaturePad key={`cust-${so.id}`} label="Cliente" value={custSig} onChange={saveCust} height={130} />
-      </div>
-    </Section>
-  );
-}
+// Assinaturas eletrônicas da OS deixaram de ser capturadas nesta tela —
+// desnecessário aqui, já que o técnico já captura ambas em campo
+// (CampoPage, ao finalizar o atendimento); ver so.technicianSignature/
+// so.customerSignature, ainda usados na impressão (printDocuments.ts).
 
 /** Emissão de NFS-e a partir da OS concluída (Governo · NFS-e Nacional / simulação). */
 function FiscalSection({ so }: { so: ServiceOrder }) {

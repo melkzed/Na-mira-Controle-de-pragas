@@ -214,6 +214,7 @@ function ClienteDetail({
         <div className="grid grid-cols-3 gap-2">
           <Info label="Tipo de imóvel" value={customer.propertyType ?? '—'} />
           <Info label="Área" value={customer.areaM2 ? `${customer.areaM2} m²` : '—'} />
+          <Info label="Cômodos" value={customer.roomCount ? String(customer.roomCount) : '—'} />
           <Info label="Cliente desde" value={fmtDate(customer.createdAt)} />
         </div>
 

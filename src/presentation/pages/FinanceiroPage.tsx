@@ -53,7 +53,7 @@ function occurrenceDates(p: RecurringPayable, count: number): Date[] {
   const M = monthsFor(p.frequency);
   const day = Math.min(p.dueDay || 1, 28);
   const now = new Date();
-  const anchor = new Date(p.createdAt);
+  const anchor = p.startDate ? parseDateInput(p.startDate) : new Date(p.createdAt);
   let d = new Date(anchor.getFullYear(), anchor.getMonth(), day);
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   while (d < firstOfMonth) d = new Date(d.getFullYear(), d.getMonth() + M, day);
@@ -195,6 +195,7 @@ function VisaoGeralTab() {
           {e.type === 'despesa' && (e.status === 'pendente' || e.status === 'atrasado') && (e.approvalStatus ?? 'pendente') !== 'aprovado' && (
             <Badge tone="warning" className="text-[10px]">aprovação pendente</Badge>
           )}
+          {e.status === 'pago' && e.paidAt && <span className="text-[10px] text-muted-foreground">pago em {fmtDate(e.paidAt)}</span>}
           {e.paymentMethod && <span className="text-[10px] text-muted-foreground">{PAYMENT_METHOD_LABEL[e.paymentMethod]}</span>}
         </div>
       );
@@ -318,8 +319,9 @@ function PaymentDialog({ entries, onClose }: { entries: FinanceEntry[] | null; o
   const [method, setMethod] = useState<PaymentMethodKind>('eletronico');
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? '');
   const [checkNumber, setCheckNumber] = useState('');
+  const [paidAt, setPaidAt] = useState(toDateInputValue(new Date()));
 
-  useEffect(() => { if (entries) { setMethod('eletronico'); setAccountId(accounts[0]?.id ?? ''); setCheckNumber(''); } }, [entries]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (entries) { setMethod('eletronico'); setAccountId(accounts[0]?.id ?? ''); setCheckNumber(''); setPaidAt(toDateInputValue(new Date())); } }, [entries]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!entries || entries.length === 0) return null;
   const total = entries.reduce((s, e) => s + netAmount(e), 0);
@@ -327,17 +329,16 @@ function PaymentDialog({ entries, onClose }: { entries: FinanceEntry[] | null; o
   const account = accounts.find((a) => a.id === accountId);
 
   const confirm = () => {
-    const now = new Date().toISOString();
-    const today = now.slice(0, 10);
+    const effectiveDate = paidAt || toDateInputValue(new Date());
     const groupId = entries.length > 1 ? uid('grp') : undefined;
-    entries.forEach((e) => update(e.id, { status: 'pago', paidAt: today, paymentMethod: method, bankAccountId: (method === 'debito_conta' || method === 'eletronico') ? accountId : undefined, groupId }));
+    entries.forEach((e) => update(e.id, { status: 'pago', paidAt: effectiveDate, paymentMethod: method, bankAccountId: (method === 'debito_conta' || method === 'eletronico') ? accountId : undefined, groupId }));
 
     if ((method === 'debito_conta' || method === 'eletronico') && account) {
       addTransaction({
         accountId: account.id,
         type: isReceita ? 'recebimento' : 'pagamento',
         amount: total,
-        date: today,
+        date: effectiveDate,
         description: entries.length > 1 ? `Pagamento agrupado (${entries.length} lançamentos)` : entries[0].description,
         relatedFinanceEntryId: entries[0].id,
       });
@@ -345,7 +346,7 @@ function PaymentDialog({ entries, onClose }: { entries: FinanceEntry[] | null; o
     if (method === 'cheque') {
       addCheck({
         id: uid('chk'), orgId: currentOrgId(), number: checkNumber.trim() || `CHQ-${Date.now().toString().slice(-6)}`,
-        bank: account?.bank ?? 'Banco', amount: total, issueDate: today, status: 'emitido', financeEntryId: entries[0].id,
+        bank: account?.bank ?? 'Banco', amount: total, issueDate: effectiveDate, status: 'emitido', financeEntryId: entries[0].id,
       });
     }
     toast(entries.length > 1 ? `${entries.length} lançamentos pagos (${formatCurrency(total)}).` : `Lançamento pago (${formatCurrency(total)}).`, { tone: 'success' });
@@ -359,6 +360,9 @@ function PaymentDialog({ entries, onClose }: { entries: FinanceEntry[] | null; o
         <div className="space-y-1.5 rounded-lg border border-border bg-muted/30 p-3">
           {entries.map((e) => <div key={e.id} className="flex items-center justify-between text-sm"><span className="text-foreground">{e.description}</span><span className="font-medium text-foreground">{formatCurrency(netAmount(e))}</span></div>)}
         </div>
+        <Field label="Data do pagamento" hint="Pré-preenchida com hoje — ajuste se o pagamento foi antecipado ou já ocorreu em outra data">
+          <Input type="date" value={paidAt} onChange={(ev) => setPaidAt(ev.target.value)} onClick={(ev) => ev.currentTarget.showPicker?.()} />
+        </Field>
         <Field label="Forma de pagamento">
           <Select value={method} onChange={(ev) => setMethod(ev.target.value as PaymentMethodKind)}>
             {(Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethodKind[]).map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABEL[m]}</option>)}
@@ -380,14 +384,27 @@ function PaymentDialog({ entries, onClose }: { entries: FinanceEntry[] | null; o
   );
 }
 
-/** Contas a pagar recorrentes — geração automática de lançamentos futuros. */
+/** Contas a pagar recorrentes — geração automática de lançamentos futuros,
+ *  com status (a pagar/paga/vencida) e baixa direto por aqui — cada linha
+ *  reflete o lançamento (FinanceEntry) mais relevante gerado por ela. */
 function RecurringPayablesPanel() {
   const { items, add, update, remove } = useRecurringPayablesStore();
+  const entries = useFinanceStore((s) => s.items);
   const [formOpen, setFormOpen] = useState(false);
+  const [payDialogEntries, setPayDialogEntries] = useState<FinanceEntry[] | null>(null);
 
   const gerar = () => {
     const n = generateRecurring(3);
     toast(n > 0 ? `${n} lançamento(s) futuro(s) gerado(s).` : 'Lançamentos já estão em dia.', { tone: n > 0 ? 'success' : 'info' });
+  };
+
+  /** Lançamento mais relevante desta conta: o próximo em aberto (pendente/
+   *  atrasado) ou, se não houver, o mais recente já pago. */
+  const relevantEntry = (p: RecurringPayable): FinanceEntry | undefined => {
+    const linked = entries.filter((e) => e.recurringId === p.id);
+    const open = linked.filter((e) => e.status === 'pendente' || e.status === 'atrasado').sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''));
+    if (open.length) return open[0];
+    return [...linked.filter((e) => e.status === 'pago')].sort((a, b) => (b.dueDate ?? '').localeCompare(a.dueDate ?? ''))[0];
   };
 
   return (
@@ -399,19 +416,32 @@ function RecurringPayablesPanel() {
       />
       <CardBody className="space-y-2">
         {items.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma conta recorrente cadastrada.</p>}
-        {items.map((p) => (
-          <div key={p.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 p-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-foreground">{p.description}{p.category ? <span className="ml-1 font-normal text-muted-foreground">· {p.category}</span> : null}</p>
-              <p className="text-xs text-muted-foreground">{RECURRENCE_FREQ_LABEL[p.frequency]} · vence dia {p.dueDay} · {formatCurrency(p.amount)}</p>
+        {items.map((p) => {
+          const next = relevantEntry(p);
+          const overdue = !!next && next.status === 'pendente' && !!next.dueDate && (daysUntil(next.dueDate) ?? 1) < 0;
+          const entryStatus = next ? (overdue ? 'atrasado' : next.status) : undefined;
+          return (
+            <div key={p.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 p-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-foreground">{p.description}{p.category ? <span className="ml-1 font-normal text-muted-foreground">· {p.category}</span> : null}</p>
+                <p className="text-xs text-muted-foreground">
+                  {RECURRENCE_FREQ_LABEL[p.frequency]} · {next?.dueDate ? `vence ${fmtDate(next.dueDate)}` : `vence dia ${p.dueDay}`} · {formatCurrency(p.amount)}
+                  {next?.status === 'pago' && next.paidAt && <> · pago em {fmtDate(next.paidAt)}</>}
+                </p>
+              </div>
+              {entryStatus && <Badge tone={statusMeta[entryStatus].tone} dot>{statusMeta[entryStatus].label}</Badge>}
+              <Badge tone={p.active ? 'success' : 'neutral'} dot>{p.active ? 'Ativa' : 'Pausada'}</Badge>
+              {next && (next.status === 'pendente' || next.status === 'atrasado') && (
+                <Button size="sm" onClick={() => setPayDialogEntries([next])}>Pagar</Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => update(p.id, { active: !p.active })}>{p.active ? 'Pausar' : 'Ativar'}</Button>
+              <button onClick={() => { remove(p.id); toast('Conta recorrente removida.', { tone: 'danger', action: { label: 'Desfazer', onClick: () => add(p) } }); }} aria-label={`Excluir ${p.description}`} className="rounded-md p-1 text-muted-foreground hover:text-danger"><Trash2 size={15} /></button>
             </div>
-            <Badge tone={p.active ? 'success' : 'neutral'} dot>{p.active ? 'Ativa' : 'Pausada'}</Badge>
-            <Button size="sm" variant="ghost" onClick={() => update(p.id, { active: !p.active })}>{p.active ? 'Pausar' : 'Ativar'}</Button>
-            <button onClick={() => { remove(p.id); toast('Conta recorrente removida.', { tone: 'danger', action: { label: 'Desfazer', onClick: () => add(p) } }); }} aria-label={`Excluir ${p.description}`} className="rounded-md p-1 text-muted-foreground hover:text-danger"><Trash2 size={15} /></button>
-          </div>
-        ))}
+          );
+        })}
       </CardBody>
       <RecurringForm open={formOpen} onClose={() => setFormOpen(false)} onSave={(p) => { add(p); setFormOpen(false); generateRecurring(3); toast('Conta recorrente cadastrada.', { tone: 'success' }); }} />
+      <PaymentDialog entries={payDialogEntries} onClose={() => setPayDialogEntries(null)} />
     </Card>
   );
 }
@@ -421,28 +451,31 @@ function RecurringForm({ open, onClose, onSave }: { open: boolean; onClose: () =
   const [category, setCategory] = useState('Aluguel');
   const [amount, setAmount] = useState('');
   const [frequency, setFrequency] = useState<RecurrenceFreq>('mensal');
-  const [dueDay, setDueDay] = useState('5');
+  const [startDate, setStartDate] = useState(toDateInputValue(new Date()));
   const [touched, setTouched] = useState(false);
 
-  useEffect(() => { if (open) { setDescription(''); setCategory('Aluguel'); setAmount(''); setFrequency('mensal'); setDueDay('5'); setTouched(false); } }, [open]);
+  useEffect(() => { if (open) { setDescription(''); setCategory('Aluguel'); setAmount(''); setFrequency('mensal'); setStartDate(toDateInputValue(new Date())); setTouched(false); } }, [open]);
 
-  const valid = description.trim() && Number(amount) > 0;
+  const valid = description.trim() && Number(amount) > 0 && startDate;
   const submit = () => {
     setTouched(true);
     if (!valid) return;
-    onSave({ id: uid('rp'), orgId: currentOrgId(), description: description.trim(), category: category.trim() || undefined, amount: Number(amount), frequency, dueDay: Math.min(Math.max(Number(dueDay) || 1, 1), 28), active: true, createdAt: new Date().toISOString() });
+    const dueDay = Math.min(Math.max(parseDateInput(startDate).getDate(), 1), 28);
+    onSave({ id: uid('rp'), orgId: currentOrgId(), description: description.trim(), category: category.trim() || undefined, amount: Number(amount), frequency, dueDay, startDate, active: true, createdAt: new Date().toISOString() });
   };
 
   return (
     <Drawer open={open} onClose={onClose} title="Nova conta recorrente" subtitle="Gera lançamentos a pagar automaticamente"
-      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha descrição e valor.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!valid}>Cadastrar</Button></div></div>}>
+      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha descrição, valor e primeiro vencimento.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!valid}>Cadastrar</Button></div></div>}>
       <div className="space-y-4">
         <Field label="Descrição" required><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Aluguel da sede" /></Field>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Categoria"><Select value={category} onChange={(e) => setCategory(e.target.value)}>{['Aluguel', 'Salários', 'Água', 'Energia', 'Internet', 'Telefonia', 'Contrato', 'Impostos', 'Outros'].map((c) => <option key={c}>{c}</option>)}</Select></Field>
           <Field label="Valor (R$)" required><Input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
           <Field label="Frequência"><Select value={frequency} onChange={(e) => setFrequency(e.target.value as RecurrenceFreq)}>{PAYABLE_FREQ.map((f) => <option key={f.value} value={f.value}>{RECURRENCE_FREQ_LABEL[f.value]}</option>)}</Select></Field>
-          <Field label="Dia de vencimento"><Input type="number" min={1} max={28} value={dueDay} onChange={(e) => setDueDay(e.target.value)} /></Field>
+          <Field label="Primeiro vencimento" required hint="Dia, mês e ano — define quando a recorrência começa">
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} />
+          </Field>
         </div>
       </div>
     </Drawer>
