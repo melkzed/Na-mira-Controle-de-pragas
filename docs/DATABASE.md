@@ -118,6 +118,11 @@ store em localStorage-only (exceto `messagesStore`, de propósito — ver acima)
 
 **Incrementos pós-Fase 2** (rodar depois da lista acima, na ordem em que
 foram criados):
+- `db/migrate_stock_locations_cadastro.sql` — locais de estoque viram cadastro
+  de verdade (Realtime + cria o local que falta para cada técnico já
+  cadastrado). Antes a lista vinha só do seed do frontend e um técnico
+  cadastrado pela tela ficava sem estoque próprio — ver `docs/ARCHITECTURE.md`
+  §3.6.
 - `db/migrate_serviceorders_time.sql` — adiciona `service_orders.execution_time`
   (horário do serviço, `HH:MM`) — sem ele o agendamento vinculado à OS caía
   sempre em meia-noite, e a roteirização não conseguia posicionar a visita.

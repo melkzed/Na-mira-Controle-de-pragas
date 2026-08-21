@@ -31,7 +31,7 @@ import { fmtTime } from '@/lib/date';
 import { cn, formatDocument } from '@/lib/utils';
 import { formatAddress, googleMapsRoute, googleMapsRouteToAddress } from '@/lib/geo';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
-import { stockLocations } from '@/infrastructure/seed/data';
+import { ensureTechnicianStockLocation, technicianStockLocationId } from '@/store/stockLocations';
 
 /** Linha de produto aplicado em campo — quantidade e se foi de fato usado. */
 interface AppliedProductRow { productId: string; qty: number; used: boolean }
@@ -43,10 +43,9 @@ interface FieldSaveData {
   paymentStatus: PaymentStatus;
 }
 
-/** Local de estoque de um técnico (cadastro fixo do seed — ver
- *  src/infrastructure/seed/data.ts → stockLocations). */
+/** Local de estoque de um técnico (cadastro real — ver store/stockLocations.ts). */
 function techStockLocationId(techId: string): string | undefined {
-  return stockLocations.find((l) => l.kind === 'tecnico' && l.ownerId === techId)?.id;
+  return technicianStockLocationId(techId);
 }
 
 /** Saldo combinado de um produto somando o estoque de todos os técnicos
@@ -137,6 +136,12 @@ export function CampoPage() {
   const updateAppt = useAppointmentsStore((s) => s.update);
   const storeAppts = useAppointmentsStore((s) => s.appointments); // reatividade
   const updateOs = useServiceOrdersStore((s) => s.update);
+
+  // Técnicos cadastrados antes de os locais de estoque virarem cadastro real
+  // (ou criados pela Edge Function de convite, que grava direto em
+  // public.users) ainda não têm o seu — garante aqui, na primeira vez que o
+  // app de campo abre para ele. Idempotente.
+  useEffect(() => { if (techId) ensureTechnicianStockLocation(techId, techName); }, [techId, techName]);
 
   const todayIso = new Date().toISOString();
   const appts = useMemo(() => releasedAppointmentsForTechnician(techId, todayIso), [techId, todayIso, storeAppts]);

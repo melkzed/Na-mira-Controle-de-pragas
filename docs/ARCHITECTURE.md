@@ -204,13 +204,27 @@ produto/equipamento pro outro usar. Implementado em `CampoPage.tsx`:
   (`stockRequestsStore` + aprovação do gestor em `/tecnicos`) — o aviso de
   "fora do estoque" é para quando o técnico usa sem ter solicitado antes.
 
-Limitação conhecida (não resolvida agora): o local de estoque de cada
-técnico (`stockLocations`) ainda vem só do seed do frontend, não é um
-cadastro de verdade — um técnico convidado pela tela (ver §3.4) não ganha um
-local automaticamente. `pooledBalance` trata isso como saldo zero (não
-quebra), mas o técnico realmente não tem onde guardar estoque próprio até
-alguém criar a linha manualmente (mesmo apontamento de
-`db/migrate_stock_realtime.sql`).
+### 3.6 Locais de estoque (cadastro real)
+
+Os locais de estoque (`stock_locations`) são um cadastro dual-mode como os
+demais (`useStockLocationsStore`, via a fábrica genérica — §3.2). Antes a
+lista vinha só do seed do frontend, o que quebrava na prática: um técnico
+convidado pela tela (§3.4) nunca ganhava um local, ficava com saldo zero
+para sempre e não tinha onde guardar produto próprio.
+
+`src/store/stockLocations.ts` concentra o acesso:
+- `ensureTechnicianStockLocation(techId, nome)` — cria o local se faltar e
+  devolve o id. Idempotente. Chamado ao cadastrar/convidar um técnico e
+  também ao abrir o app de campo, para regularizar quem foi criado antes
+  desta mudança (ou pela Edge Function de convite, que grava direto em
+  `public.users` sem passar pelo frontend).
+- `technicianStockLocationId(techId)` — usado pela roteirização de estoque em
+  campo (`pooledBalance`/`reconcileTechStock`, §3.5).
+- `centralStockLocationId()` — o padrão de entradas/compras; substituiu o
+  `'loc-central'` fixo que estava espalhado pelo código.
+
+Migration: `db/migrate_stock_locations_cadastro.sql` (habilita Realtime e
+cria de uma vez os locais que faltam para os técnicos já cadastrados).
 
 ## 4. Fluxos principais
 

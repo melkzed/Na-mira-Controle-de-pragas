@@ -17,6 +17,7 @@ import { useStockRequestsStore } from '@/store/stockRequestsStore';
 import { useStockStore } from '@/store/stockStore';
 import { currentOrgId, useAppStore } from '@/store/appStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { centralStockLocationId, ensureTechnicianStockLocation } from '@/store/stockLocations';
 import { SignaturePad } from '../components/SignaturePad';
 import { toast } from '@/store/toastStore';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
@@ -134,7 +135,8 @@ function PendingRequestsPanel() {
   const denyEquip = (reqId: string) => { resolveEquip(reqId, 'negada', currentUser?.id); toast('Solicitação de equipamento recusada.', { tone: 'default' }); };
 
   const approveProd = (reqId: string, productId: string, quantity: number) => {
-    entry('loc-central', productId, quantity);
+    const central = centralStockLocationId();
+    if (central) entry(central, productId, quantity);
     resolveStock(reqId, 'atendida');
     toast('Reposição atendida e lançada no estoque central.', { tone: 'success' });
   };
@@ -238,7 +240,12 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
       }
       // A função devolve o cadastro já criado — só aí existe o id para
       // vincular a assinatura enviada no formulário.
-      if (signature && data?.user?.id) setUserSignature(data.user.id, signature);
+      if (data?.user?.id) {
+        if (signature) setUserSignature(data.user.id, signature);
+        // Estoque próprio do técnico — sem isso ele fica sem onde guardar
+        // produto e aparece com saldo zero para sempre.
+        ensureTechnicianStockLocation(data.user.id, name.trim());
+      }
       toast('Convite enviado! O técnico recebe um e-mail para escolher a própria senha.', { tone: 'success' });
       onClose();
       return;
@@ -247,6 +254,7 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
     const newId = crypto.randomUUID();
     add({ id: newId, orgId: currentOrgId(), name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, role: 'tecnico', isActive, fieldAppAccess });
     if (signature) setUserSignature(newId, signature);
+    ensureTechnicianStockLocation(newId, name.trim());
     toast('Técnico cadastrado. Login com a senha demo (namira123).', { tone: 'success' });
     onClose();
   };

@@ -1,6 +1,6 @@
 import { createEntityStore } from './createEntityStore';
 import * as seed from '@/infrastructure/seed/data';
-import type { BankAccount, Check, Department, Equipment, FinanceEntry, License, LoanInvestment, NonConformity, Pest, Product, RecurringPayable, ServiceType, TreatedArea, TrapType, User, Vehicle } from '@/domain/types';
+import type { BankAccount, Check, Department, Equipment, FinanceEntry, License, LoanInvestment, NonConformity, Pest, Product, RecurringPayable, ServiceType, StockLocation, TreatedArea, TrapType, User, Vehicle } from '@/domain/types';
 
 /** Stores reativas dos demais módulos (CRUD, dual-mode — ver createEntityStore.ts). */
 export const useUsersStore = createEntityStore<User>('namira-users', seed.users, 'users');
@@ -19,3 +19,7 @@ export const useRecurringPayablesStore = createEntityStore<RecurringPayable>('na
 export const useBankAccountsStore = createEntityStore<BankAccount>('namira-bank-accounts', seed.bankAccounts, 'bank_accounts');
 export const useChecksStore = createEntityStore<Check>('namira-checks', [], 'checks');
 export const useLoansStore = createEntityStore<LoanInvestment>('namira-loans', [], 'loan_investments');
+/** Locais de estoque (central, por técnico, por veículo). Cada técnico tem o
+ *  seu — criado junto com o cadastro dele, ver `ensureTechnicianStockLocation`
+ *  em `src/store/stockLocations.ts`. */
+export const useStockLocationsStore = createEntityStore<StockLocation>('namira-stock-locations', seed.stockLocations, 'stock_locations');

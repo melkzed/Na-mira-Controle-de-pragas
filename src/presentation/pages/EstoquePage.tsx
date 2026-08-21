@@ -10,9 +10,9 @@ import { Table, type Column } from '../components/ui/Table';
 import { Avatar } from '../components/ui/Avatar';
 import { Drawer } from '../components/ui/Drawer';
 import { Field, Input, Select } from '../components/ui/Field';
-import * as seed from '@/infrastructure/seed/data';
 import { centralBalance, getProduct, getUser, technicianBalances } from '@/application/repository';
-import { useProductsStore } from '@/store/entityStores';
+import { useProductsStore, useStockLocationsStore } from '@/store/entityStores';
+import { centralStockLocationId } from '@/store/stockLocations';
 import { useStockStore } from '@/store/stockStore';
 import { useStockRequestsStore } from '@/store/stockRequestsStore';
 import { toast } from '@/store/toastStore';
@@ -70,7 +70,8 @@ function RestockRequestsPanel() {
   const pending = requests.filter((r) => r.status === 'pendente');
 
   const atender = (id: string, productId: string, quantity: number) => {
-    entry('loc-central', productId, quantity); // repõe no estoque central
+    const central = centralStockLocationId();
+    if (central) entry(central, productId, quantity); // repõe no estoque central
     resolve(id, 'atendida');
     toast('Reposição atendida e lançada no estoque central.', { tone: 'success' });
   };
@@ -109,11 +110,18 @@ function RestockRequestsPanel() {
 function EntryForm({ open, onClose }: { open: boolean; onClose: () => void }) {
   const products = useProductsStore((s) => s.items);
   const entry = useStockStore((s) => s.entry);
+  const locations = useStockLocationsStore((s) => s.items);
   const [productId, setProductId] = useState('');
-  const [locationId, setLocationId] = useState('loc-central');
+  const [locationId, setLocationId] = useState('');
   const [qty, setQty] = useState('');
 
-  useEffect(() => { if (open) { setProductId(products[0]?.id ?? ''); setLocationId('loc-central'); setQty(''); } }, [open, products]);
+  useEffect(() => {
+    if (!open) return;
+    setProductId(products[0]?.id ?? '');
+    setLocationId(centralStockLocationId() ?? locations[0]?.id ?? '');
+    setQty('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, products]);
 
   const submit = () => {
     const n = Number(qty);
@@ -132,7 +140,7 @@ function EntryForm({ open, onClose }: { open: boolean; onClose: () => void }) {
           <Select value={productId} onChange={(e) => setProductId(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
         </Field>
         <Field label="Local">
-          <Select value={locationId} onChange={(e) => setLocationId(e.target.value)}>{seed.stockLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</Select>
+          <Select value={locationId} onChange={(e) => setLocationId(e.target.value)}>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</Select>
         </Field>
         <Field label="Quantidade" required>
           <Input type="number" min={1} value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" />
@@ -148,14 +156,20 @@ function TransferForm({ open, onClose }: { open: boolean; onClose: () => void })
   const transfer = useStockStore((s) => s.transfer);
   const balanceOf = useStockStore((s) => s.balanceOf);
   const [productId, setProductId] = useState('');
-  const [fromLoc, setFromLoc] = useState('loc-central');
+  const [fromLoc, setFromLoc] = useState('');
   const [toLoc, setToLoc] = useState('');
   const [qty, setQty] = useState('');
 
-  const techLocations = seed.stockLocations.filter((l) => l.kind === 'tecnico');
+  const locations = useStockLocationsStore((st) => st.items);
+  const techLocations = locations.filter((l) => l.kind === 'tecnico');
   useEffect(() => {
-    if (open) { setProductId(products[0]?.id ?? ''); setFromLoc('loc-central'); setToLoc(techLocations[0]?.id ?? ''); setQty(''); }
-  }, [open, products]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!open) return;
+    setProductId(products[0]?.id ?? '');
+    setFromLoc(centralStockLocationId() ?? locations[0]?.id ?? '');
+    setToLoc(techLocations[0]?.id ?? '');
+    setQty('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, products]);
 
   const available = productId ? balanceOf(fromLoc, productId) : 0;
   const n = Number(qty);
@@ -177,8 +191,8 @@ function TransferForm({ open, onClose }: { open: boolean; onClose: () => void })
           <Select value={productId} onChange={(e) => setProductId(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
         </Field>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="De"><Select value={fromLoc} onChange={(e) => setFromLoc(e.target.value)}>{seed.stockLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</Select></Field>
-          <Field label="Para"><Select value={toLoc} onChange={(e) => setToLoc(e.target.value)}>{seed.stockLocations.filter((l) => l.id !== fromLoc).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</Select></Field>
+          <Field label="De"><Select value={fromLoc} onChange={(e) => setFromLoc(e.target.value)}>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</Select></Field>
+          <Field label="Para"><Select value={toLoc} onChange={(e) => setToLoc(e.target.value)}>{locations.filter((l) => l.id !== fromLoc).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</Select></Field>
         </div>
         <Field label="Quantidade" required hint={`Disponível na origem: ${available}`}>
           <Input type="number" min={1} max={available} value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" />
@@ -217,7 +231,7 @@ function CentralStock() {
 
 function TechStock() {
   useStockStore((s) => s.balances); // reatividade ao alterar o estoque
-  const techLocations = seed.stockLocations.filter((l) => l.kind === 'tecnico');
+  const techLocations = useStockLocationsStore((st) => st.items).filter((l) => l.kind === 'tecnico');
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       {techLocations.map((loc) => {
