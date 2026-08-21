@@ -56,7 +56,7 @@ export function printServiceOrder(so: ServiceOrder): void {
       <td>${esc(prod?.registrationCode ?? '—')}</td>
       <td>${esc(prod?.applicationType ?? '—')}</td>
       <td class="r">${esc(p.usedQty)} ${esc(prod?.unit ?? '')}</td>
-      <td>${esc(prod?.antidote ?? '—')}</td>
+      <td>${esc([prod?.antidote, prod?.treatment].filter(Boolean).join(' · ') || '—')}</td>
     </tr>`;
   }).join('');
 

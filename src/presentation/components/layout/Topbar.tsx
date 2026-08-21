@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Bell, LogOut, Menu, Moon, Search, Smartphone, Sun } from 'lucide-react';
+import { Bell, LogOut, Menu, Moon, Search, Smartphone, Sun, X } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import { ROLE_META } from '@/domain/enums';
 import { Button } from '../ui/Button';
@@ -10,7 +10,7 @@ import { Badge } from '../ui/Badge';
 import { cn } from '@/lib/utils';
 
 export function Topbar({ onMenu }: { onMenu: () => void }) {
-  const { theme, toggleTheme, currentUser, logout, notifications, markAllRead, setCommandOpen } =
+  const { theme, toggleTheme, currentUser, logout, notifications, markAllRead, dismissNotification, setCommandOpen } =
     useAppStore();
   const navigate = useNavigate();
   const [notifOpen, setNotifOpen] = useState(false);
@@ -79,16 +79,27 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
                 </button>
               </div>
               <div className="max-h-80 space-y-1 overflow-y-auto">
+                {notifications.length === 0 && (
+                  <p className="px-2 py-6 text-center text-xs text-muted-foreground">Nenhuma notificação.</p>
+                )}
                 {notifications.map((n) => (
                   <div
                     key={n.id}
-                    className={cn('flex gap-3 rounded-lg px-2 py-2.5 transition hover:bg-muted', !n.read && 'bg-muted/50')}
+                    className={cn('group flex gap-3 rounded-lg px-2 py-2.5 transition hover:bg-muted', !n.read && 'bg-muted/50')}
                   >
                     <Badge tone={n.tone} dot className="mt-0.5 shrink-0">{''}</Badge>
-                    <div className="min-w-0 leading-snug">
+                    <div className="min-w-0 flex-1 leading-snug">
                       <p className="text-sm font-medium text-foreground">{n.title}</p>
                       <p className="text-xs text-muted-foreground">{n.body}</p>
                     </div>
+                    <button
+                      onClick={() => dismissNotification(n.id)}
+                      aria-label={`Remover notificação: ${n.title}`}
+                      title="Remover"
+                      className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition hover:bg-border hover:text-danger focus:opacity-100 group-hover:opacity-100"
+                    >
+                      <X size={13} />
+                    </button>
                   </div>
                 ))}
               </div>

@@ -20,6 +20,8 @@ interface AppState {
   login: (email: string, password: string) => Promise<User | null>;
   logout: () => void;
   markAllRead: () => void;
+  /** Remove uma notificação específica (o X de cada item da lista). */
+  dismissNotification: (id: string) => void;
   setCommandOpen: (open: boolean) => void;
   addNotification: (n: Omit<AppNotification, 'id' | 'read' | 'createdAt'>) => void;
 }
@@ -82,6 +84,8 @@ export const useAppStore = create<AppState>((set) => ({
     set((s) => ({
       notifications: s.notifications.map((n) => ({ ...n, read: true })),
     })),
+  dismissNotification: (id) =>
+    set((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) })),
   setCommandOpen: (commandOpen) => set({ commandOpen }),
   addNotification: (n) =>
     set((s) => ({

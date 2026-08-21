@@ -16,13 +16,34 @@ const ACTION_TONE: Record<string, Tone> = {
   reagendamento: 'warning', cancelamento: 'danger', inspeção: 'info',
 };
 
+/** Todos os módulos e ações que o sistema registra em auditoria (ver as
+ *  chamadas de `logChange`). Os filtros partem destas listas, e não só do que
+ *  já apareceu nos registros — senão um módulo sem movimento ainda hoje
+ *  simplesmente não aparece como opção de filtro. */
+const ALL_MODULES = [
+  'agendamento', 'armadilha', 'cliente', 'fiscal', 'não conformidade',
+  'ordem de serviço', 'whatsapp',
+];
+const ALL_ACTIONS = [
+  'alteração', 'cancelamento', 'conclusão', 'confirmação', 'criação', 'edição',
+  'emissão', 'exclusão', 'inspeção', 'mensagem', 'reagendamento',
+];
+
 export function HistoricoPage() {
   const entries = useAuditStore((s) => s.entries);
   const [entity, setEntity] = useState('todos');
   const [action, setAction] = useState('todos');
 
-  const entityTypes = useMemo(() => [...new Set(entries.map((e) => e.entityType))].sort(), [entries]);
-  const actions = useMemo(() => [...new Set(entries.map((e) => e.action))].sort(), [entries]);
+  // União do catálogo fixo com o que houver nos registros — assim um módulo/
+  // ação novo (ou vindo de dado antigo) também aparece, sem sumir da lista.
+  const entityTypes = useMemo(
+    () => [...new Set([...ALL_MODULES, ...entries.map((e) => e.entityType)])].sort(),
+    [entries],
+  );
+  const actions = useMemo(
+    () => [...new Set([...ALL_ACTIONS, ...entries.map((e) => e.action)])].sort(),
+    [entries],
+  );
 
   const filtered = useMemo(
     () => entries.filter((e) => (entity === 'todos' || e.entityType === entity) && (action === 'todos' || e.action === action)),

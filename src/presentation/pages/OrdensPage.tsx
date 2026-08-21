@@ -148,7 +148,7 @@ export function OrdensPage() {
         onClose={() => setFormOpen(false)}
         title="Nova Ordem de Serviço"
         subtitle="Preenchimento rápido — serviços, pragas e áreas em toques"
-        centered
+        wide
         footer={<div className="flex justify-end gap-2"><Button variant="outline" disabled={saving} onClick={() => setFormOpen(false)}>Cancelar</Button><Button disabled={saving} onClick={() => createFormRef.current?.submit()} leftIcon={<Check size={15} />}>{saving ? 'Criando…' : 'Criar OS'}</Button></div>}
       >
         {formOpen && (
@@ -165,7 +165,7 @@ export function OrdensPage() {
         onClose={() => { setSelected(null); setEditMode(false); }}
         title={editMode ? `Editar Ordem de Serviço #${selected?.number}` : `Ordem de Serviço #${selected?.number}`}
         subtitle={editMode ? 'Altere os dados necessários — as mudanças ficam registradas no histórico da OS' : (selected ? getCustomer(selected.customerId)?.name : '')}
-        centered
+        wide
         footer={editMode ? (
           <div className="flex justify-end gap-2">
             <Button variant="outline" disabled={saving} onClick={() => setEditMode(false)}>Cancelar</Button>
@@ -241,13 +241,20 @@ export function OrdensPage() {
                     const prod = getProduct(p.productId);
                     const batch = currentBatch(prod);
                     return (
-                      <div key={p.productId} className={cn('flex items-center justify-between rounded-lg border p-2.5', p.outOfStock ? 'border-warning/50 bg-warning-soft/20' : 'border-border')}>
-                        <div>
+                      <div key={p.productId} className={cn('flex items-start justify-between gap-2 rounded-lg border p-2.5', p.outOfStock ? 'border-warning/50 bg-warning-soft/20' : 'border-border')}>
+                        <div className="min-w-0">
                           <span className="text-sm text-foreground">{prod?.name}</span>
+                          {(prod?.activeIngredient || prod?.chemicalGroup) && (
+                            <p className="text-xs text-muted-foreground">
+                              {prod?.activeIngredient && <>Princípio ativo: {prod.activeIngredient}</>}
+                              {prod?.activeIngredient && prod?.chemicalGroup && ' · '}
+                              {prod?.chemicalGroup && <>Grupo químico: {prod.chemicalGroup}</>}
+                            </p>
+                          )}
                           {batch && <p className="text-xs text-muted-foreground">Lote {batch.code}{batch.expiresAt ? ` · val. ${fmtDate(batch.expiresAt)}` : ''}</p>}
                           {p.outOfStock && <p className="text-xs text-warning"><TriangleAlert size={11} className="mr-1 inline" />Usado além do estoque do(s) técnico(s)</p>}
                         </div>
-                        <Badge tone="brand">{p.usedQty} {prod?.unit}</Badge>
+                        <Badge tone="brand" className="shrink-0">{p.usedQty} {prod?.unit}</Badge>
                       </div>
                     );
                   })}

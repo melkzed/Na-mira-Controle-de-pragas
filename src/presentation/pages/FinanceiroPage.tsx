@@ -16,6 +16,7 @@ import { getCustomer } from '@/application/repository';
 import { useFinanceStore, useRecurringPayablesStore, useBankAccountsStore, useChecksStore, useLoansStore } from '@/store/entityStores';
 import { useBankTransactionsStore, accountBalance, TRANSACTION_SIGN } from '@/store/bankTransactionsStore';
 import { useCashClosingStore } from '@/store/cashClosingStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
 import { toast } from '@/store/toastStore';
@@ -36,7 +37,9 @@ const statusMeta: Record<FinanceEntryStatus, { label: string; tone: any }> = {
 const PAYMENT_METHOD_LABEL: Record<PaymentMethodKind, string> = {
   cheque: 'Cheque', debito_conta: 'Débito em conta', eletronico: 'Eletrônico', dinheiro: 'Dinheiro',
 };
-const TAX_KIND_LABEL: Record<TaxKind, string> = { darf: 'DARF', iptu: 'IPTU', concessionaria: 'Concessionária' };
+/** Rótulo dos tributos antigos, gravados quando a lista era fixa no código. */
+const LEGACY_TAX_KIND_LABEL: Record<string, string> = { darf: 'DARF', iptu: 'IPTU', concessionaria: 'Concessionária' };
+const taxKindLabel = (k: string) => LEGACY_TAX_KIND_LABEL[k] ?? k;
 
 /** Frequências mensais suportadas por contas recorrentes (intervalo em meses). */
 const PAYABLE_FREQ: { value: RecurrenceFreq; months: number }[] = [
@@ -48,18 +51,51 @@ const toDateStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pa
 const today0 = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const netAmount = (e: FinanceEntry) => e.amount - (e.discount ?? 0);
 
-/** Próximas datas de vencimento de uma conta recorrente (a partir do mês atual). */
+/** Intervalo em meses da conta: o personalizado, quando informado, senão o da
+ *  frequência padrão escolhida. */
+const intervalMonths = (p: RecurringPayable) =>
+  p.customIntervalMonths && p.customIntervalMonths > 0 ? p.customIntervalMonths : monthsFor(p.frequency);
+
+/**
+ * Próximas datas de vencimento de uma conta recorrente (a partir do mês atual),
+ * respeitando por quanto tempo a cobrança vale: número de ocorrências contadas
+ * desde o primeiro vencimento, data final, ou sem fim previsto.
+ */
 function occurrenceDates(p: RecurringPayable, count: number): Date[] {
-  const M = monthsFor(p.frequency);
+  const M = intervalMonths(p);
   const day = Math.min(p.dueDay || 1, 28);
   const now = new Date();
   const anchor = p.startDate ? parseDateInput(p.startDate) : new Date(p.createdAt);
   let d = new Date(anchor.getFullYear(), anchor.getMonth(), day);
+
+  // Limite: última data permitida pela duração configurada.
+  let limit: Date | undefined;
+  if (p.durationKind === 'ate_data' && p.endDate) limit = parseDateInput(p.endDate);
+  else if (p.durationKind === 'ocorrencias' && p.occurrences && p.occurrences > 0) {
+    limit = new Date(d.getFullYear(), d.getMonth() + M * (p.occurrences - 1), day);
+  }
+
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   while (d < firstOfMonth) d = new Date(d.getFullYear(), d.getMonth() + M, day);
+
   const out: Date[] = [];
-  for (let i = 0; i < count; i++) { out.push(new Date(d)); d = new Date(d.getFullYear(), d.getMonth() + M, day); }
+  for (let i = 0; i < count; i++) {
+    if (limit && d > limit) break;
+    out.push(new Date(d));
+    d = new Date(d.getFullYear(), d.getMonth() + M, day);
+  }
   return out;
+}
+
+/** Resumo legível da recorrência, para a listagem ("Mensal · 12 cobranças"). */
+function recurrenceSummary(p: RecurringPayable): string {
+  const M = intervalMonths(p);
+  const base = p.customIntervalMonths && p.customIntervalMonths > 0
+    ? (M === 1 ? 'A cada mês' : `A cada ${M} meses`)
+    : RECURRENCE_FREQ_LABEL[p.frequency];
+  if (p.durationKind === 'ocorrencias' && p.occurrences) return `${base} · ${p.occurrences} cobrança(s)`;
+  if (p.durationKind === 'ate_data' && p.endDate) return `${base} · até ${fmtDate(p.endDate)}`;
+  return base;
 }
 
 /** Gera os lançamentos futuros das contas recorrentes (idempotente). Retorna quantos criou. */
@@ -173,7 +209,7 @@ function VisaoGeralTab() {
         <p className="font-medium">{e.description}</p>
         <div className="mt-0.5 flex flex-wrap items-center gap-1">
           {e.customerId && <span className="text-xs text-muted-foreground">{getCustomer(e.customerId)?.name}</span>}
-          {e.taxKind && <Badge tone="info" className="text-[10px]">{TAX_KIND_LABEL[e.taxKind]}</Badge>}
+          {e.taxKind && <Badge tone="info" className="text-[10px]">{taxKindLabel(e.taxKind)}</Badge>}
           {e.discount ? <Badge tone="brand" className="text-[10px]">desconto {formatCurrency(e.discount)}</Badge> : null}
           {e.postponedFrom && <Badge tone="warning" className="text-[10px]">prorrogada</Badge>}
         </div>
@@ -425,7 +461,7 @@ function RecurringPayablesPanel() {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-foreground">{p.description}{p.category ? <span className="ml-1 font-normal text-muted-foreground">· {p.category}</span> : null}</p>
                 <p className="text-xs text-muted-foreground">
-                  {RECURRENCE_FREQ_LABEL[p.frequency]} · {next?.dueDate ? `vence ${fmtDate(next.dueDate)}` : `vence dia ${p.dueDay}`} · {formatCurrency(p.amount)}
+                  {recurrenceSummary(p)} · {next?.dueDate ? `vence ${fmtDate(next.dueDate)}` : `vence dia ${p.dueDay}`} · {formatCurrency(p.amount)}
                   {next?.status === 'pago' && next.paidAt && <> · pago em {fmtDate(next.paidAt)}</>}
                 </p>
               </div>
@@ -450,18 +486,46 @@ function RecurringForm({ open, onClose, onSave }: { open: boolean; onClose: () =
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Aluguel');
   const [amount, setAmount] = useState('');
-  const [frequency, setFrequency] = useState<RecurrenceFreq>('mensal');
+  // 'custom' só existe neste formulário: ao salvar vira frequency 'mensal' +
+  // customIntervalMonths, que é o que o domínio entende.
+  const [frequency, setFrequency] = useState<RecurrenceFreq | 'custom'>('mensal');
+  const [customInterval, setCustomInterval] = useState('');
+  const [durationKind, setDurationKind] = useState<'indeterminado' | 'ocorrencias' | 'ate_data'>('indeterminado');
+  const [occurrences, setOccurrences] = useState('12');
+  const [endDate, setEndDate] = useState('');
   const [startDate, setStartDate] = useState(toDateInputValue(new Date()));
   const [touched, setTouched] = useState(false);
 
-  useEffect(() => { if (open) { setDescription(''); setCategory('Aluguel'); setAmount(''); setFrequency('mensal'); setStartDate(toDateInputValue(new Date())); setTouched(false); } }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    setDescription(''); setCategory('Aluguel'); setAmount(''); setFrequency('mensal');
+    setCustomInterval(''); setDurationKind('indeterminado'); setOccurrences('12'); setEndDate('');
+    setStartDate(toDateInputValue(new Date())); setTouched(false);
+  }, [open]);
 
-  const valid = description.trim() && Number(amount) > 0 && startDate;
+  const usaCustom = frequency === 'custom';
+  const valid = !!description.trim() && Number(amount) > 0 && !!startDate
+    && (!usaCustom || Number(customInterval) > 0)
+    && (durationKind !== 'ocorrencias' || Number(occurrences) > 0)
+    && (durationKind !== 'ate_data' || !!endDate);
+
   const submit = () => {
     setTouched(true);
     if (!valid) return;
     const dueDay = Math.min(Math.max(parseDateInput(startDate).getDate(), 1), 28);
-    onSave({ id: uid('rp'), orgId: currentOrgId(), description: description.trim(), category: category.trim() || undefined, amount: Number(amount), frequency, dueDay, startDate, active: true, createdAt: new Date().toISOString() });
+    onSave({
+      id: uid('rp'), orgId: currentOrgId(),
+      description: description.trim(), category: category.trim() || undefined,
+      amount: Number(amount),
+      // No modo personalizado a frequência padrão perde o sentido — grava
+      // 'mensal' como base e deixa o intervalo em meses mandar no cálculo.
+      frequency: usaCustom ? 'mensal' : frequency,
+      customIntervalMonths: usaCustom ? Number(customInterval) : undefined,
+      durationKind,
+      occurrences: durationKind === 'ocorrencias' ? Number(occurrences) : undefined,
+      endDate: durationKind === 'ate_data' ? endDate : undefined,
+      dueDay, startDate, active: true, createdAt: new Date().toISOString(),
+    });
   };
 
   return (
@@ -472,10 +536,47 @@ function RecurringForm({ open, onClose, onSave }: { open: boolean; onClose: () =
         <div className="grid grid-cols-2 gap-4">
           <Field label="Categoria"><Select value={category} onChange={(e) => setCategory(e.target.value)}>{['Aluguel', 'Salários', 'Água', 'Energia', 'Internet', 'Telefonia', 'Contrato', 'Impostos', 'Outros'].map((c) => <option key={c}>{c}</option>)}</Select></Field>
           <Field label="Valor (R$)" required><Input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
-          <Field label="Frequência"><Select value={frequency} onChange={(e) => setFrequency(e.target.value as RecurrenceFreq)}>{PAYABLE_FREQ.map((f) => <option key={f.value} value={f.value}>{RECURRENCE_FREQ_LABEL[f.value]}</option>)}</Select></Field>
+          <Field label="Frequência">
+            <Select value={frequency} onChange={(e) => setFrequency(e.target.value as RecurrenceFreq | 'custom')}>
+              {PAYABLE_FREQ.map((f) => <option key={f.value} value={f.value}>{RECURRENCE_FREQ_LABEL[f.value]}</option>)}
+              <option value="custom">Personalizada…</option>
+            </Select>
+          </Field>
           <Field label="Primeiro vencimento" required hint="Dia, mês e ano — define quando a recorrência começa">
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} />
           </Field>
+          {usaCustom && (
+            <Field label="Repetir a cada (meses)" required className="col-span-2" hint="Ex.: 4 = a cada quatro meses">
+              <Input type="number" min={1} max={120} value={customInterval} onChange={(e) => setCustomInterval(e.target.value)} placeholder="4" />
+            </Field>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-border bg-muted/30 p-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Duração da cobrança</p>
+          <Segmented
+            value={durationKind}
+            onChange={setDurationKind}
+            size="sm"
+            options={[
+              { value: 'indeterminado', label: 'Sem fim previsto' },
+              { value: 'ocorrencias', label: 'Nº de cobranças' },
+              { value: 'ate_data', label: 'Até uma data' },
+            ]}
+          />
+          {durationKind === 'indeterminado' && (
+            <p className="mt-2 text-xs text-muted-foreground">A conta continua gerando lançamentos até ser pausada — use para despesas fixas como aluguel e salários.</p>
+          )}
+          {durationKind === 'ocorrencias' && (
+            <Field label="Total de cobranças" required className="mt-3">
+              <Input type="number" min={1} max={360} value={occurrences} onChange={(e) => setOccurrences(e.target.value)} />
+            </Field>
+          )}
+          {durationKind === 'ate_data' && (
+            <Field label="Cobrar até" required className="mt-3">
+              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} />
+            </Field>
+          )}
         </div>
       </div>
     </Drawer>
@@ -489,7 +590,8 @@ function FinanceForm({ open, defaultType, onClose, onSave }: { open: boolean; de
   const [discount, setDiscount] = useState('');
   const [status, setStatus] = useState<FinanceEntryStatus>('pendente');
   const [dueDate, setDueDate] = useState('');
-  const [taxKind, setTaxKind] = useState<TaxKind | ''>('');
+  const [taxKind, setTaxKind] = useState<TaxKind>('');
+  const taxKinds = useSettingsStore((s) => s.fiscal.taxKinds);
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
@@ -528,10 +630,10 @@ function FinanceForm({ open, defaultType, onClose, onSave }: { open: boolean; de
             </Select>
           </Field>
           {type === 'despesa' && (
-            <Field label="Tributo (opcional)" className="col-span-2">
-              <Select value={taxKind} onChange={(e) => setTaxKind(e.target.value as TaxKind | '')}>
+            <Field label="Tributo (opcional)" className="col-span-2" hint="Cadastre novos tipos em Fiscal → Tipos de tributo">
+              <Select value={taxKind} onChange={(e) => setTaxKind(e.target.value)}>
                 <option value="">Não é tributo</option>
-                {(Object.keys(TAX_KIND_LABEL) as TaxKind[]).map((k) => <option key={k} value={k}>{TAX_KIND_LABEL[k]}</option>)}
+                {taxKinds.map((k) => <option key={k} value={k}>{k}</option>)}
               </Select>
             </Field>
           )}
@@ -711,7 +813,7 @@ function StatementDrawer({ account, onClose }: { account: BankAccount | null; on
   const list = transactions.filter((t) => t.accountId === account.id).sort((a, b) => b.date.localeCompare(a.date));
 
   return (
-    <Drawer open={!!account} onClose={onClose} title="Extrato eletrônico" subtitle={account.alias ?? account.bank} width="max-w-xl">
+    <Drawer open={!!account} onClose={onClose} title="Extrato eletrônico" subtitle={account.alias ?? account.bank}>
       <div className="space-y-2">
         {list.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma movimentação.</p>}
         {list.map((t) => {

@@ -114,6 +114,10 @@ export interface Customer {
   registrationTier?: 'basico' | 'completo';
   /** Ambientes do local, conforme o segmento do cliente (ex.: Cozinha, Câmara Fria). */
   localStructure?: string[];
+  /** Quantidade de cada ambiente da estrutura (ex.: { Banheiro: 2, Quarto: 3 }).
+   *  Campo paralelo a `localStructure` — cadastros antigos só têm a lista de
+   *  nomes, e nesse caso cada ambiente conta como 1. */
+  localStructureQty?: Record<string, number>;
   reservoirs?: Reservoir[];
   contactSchedule?: ContactSchedule;
   contracts?: ServiceContract[];
@@ -641,7 +645,10 @@ export type PaymentMethodKind = 'cheque' | 'debito_conta' | 'eletronico' | 'dinh
 /** Aprovação eletrônica do pagamento antes da emissão. */
 export type ApprovalStatus = 'pendente' | 'aprovado' | 'reprovado';
 /** Tributo estadual/municipal vinculado ao lançamento. */
-export type TaxKind = 'darf' | 'iptu' | 'concessionaria';
+/** Tipo de tributo de uma despesa. Texto livre de propósito: a lista de
+ *  tipos é cadastrada pela empresa em Fiscal (settingsStore.fiscal.taxKinds),
+ *  então não cabe fixar as opções aqui. */
+export type TaxKind = string;
 
 export interface FinanceEntry {
   id: string;
@@ -758,6 +765,17 @@ export interface RecurringPayable {
   /** Data do primeiro vencimento (dia/mês/ano) — âncora usada para calcular
    *  as próximas ocorrências. Contas antigas sem essa data usam createdAt. */
   startDate?: string;
+  /** Intervalo personalizado em meses, quando nenhuma das frequências padrão
+   *  serve (ex.: a cada 4 meses). Tem prioridade sobre `frequency`. */
+  customIntervalMonths?: number;
+  /** Por quanto tempo a cobrança se repete. `indeterminado` = sem fim previsto
+   *  (o padrão de contas fixas como aluguel); `ocorrencias` = um número fixo de
+   *  cobranças; `ate_data` = repete até a data informada. */
+  durationKind?: 'indeterminado' | 'ocorrencias' | 'ate_data';
+  /** Total de cobranças, quando durationKind = 'ocorrencias'. */
+  occurrences?: number;
+  /** Última data de cobrança, quando durationKind = 'ate_data'. */
+  endDate?: string;
   active: boolean;
   createdAt: string;
 }

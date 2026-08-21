@@ -220,9 +220,14 @@ export function RelatoriosPage() {
                 <Button key={qr.label} type="button" variant="outline" size="sm" onClick={() => applyQuickRange(qr.days)}>{qr.label}</Button>
               ))}
             </div>
-            <div className="relative flex items-end">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input value={f.search} onChange={(e) => set({ search: e.target.value })} placeholder="Pesquisar…" className="pl-9" />
+            {/* O `relative` precisa envolver só o campo: no contêiner
+                `items-end` (mais alto que o input) o `top-1/2` centralizava a
+                lupa na altura da linha inteira, não na do campo. */}
+            <div className="flex items-end">
+              <div className="relative w-full">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input value={f.search} onChange={(e) => set({ search: e.target.value })} placeholder="Pesquisar…" className="pl-9" />
+              </div>
             </div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
