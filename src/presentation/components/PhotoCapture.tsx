@@ -1,7 +1,8 @@
-import { useRef, type ChangeEvent } from 'react';
+import { useRef, useState, type ChangeEvent } from 'react';
 import { Camera, X } from 'lucide-react';
 import type { ServiceOrderPhoto } from '@/domain/types';
 import { cn } from '@/lib/utils';
+import { photoSrc, uploadPhoto } from '@/lib/photoStorage';
 
 type Phase = 'antes' | 'durante' | 'apos';
 const PHASES: { key: Phase; label: string }[] = [
@@ -38,7 +39,8 @@ function toDataUrl(file: File): Promise<string> {
 
 /**
  * Captura de fotos por fase (antes / durante / após). Usa a câmera no celular
- * (capture) e armazena como dataURL leve. Vinculável à OS ou à visita.
+ * (capture), reduz a imagem e envia para o Storage — só a URL fica gravada
+ * (ver lib/photoStorage.ts). Vinculável à OS ou à visita.
  */
 export function PhotoCapture({
   photos,
@@ -54,15 +56,23 @@ export function PhotoCapture({
   disabled?: boolean;
 }) {
   const inputs = useRef<Record<Phase, HTMLInputElement | null>>({ antes: null, durante: null, apos: null });
+  // Enviar para o Storage leva alguns segundos numa rede de campo — sem
+  // indicação, o técnico acha que a foto não entrou e tenta de novo.
+  const [uploading, setUploading] = useState(false);
 
   const addFiles = async (phase: Phase, e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []).slice(0, 6);
+    e.target.value = '';
+    if (!files.length) return;
+    setUploading(true);
     const added: ServiceOrderPhoto[] = [];
     for (const file of files) {
-      try { added.push({ dataUrl: await toDataUrl(file), phase, name: file.name }); } catch { /* ignora */ }
+      try {
+        added.push(await uploadPhoto(await toDataUrl(file), phase, file.name));
+      } catch { /* ignora o arquivo problemático e segue com os demais */ }
     }
+    setUploading(false);
     if (added.length) onChange([...photos, ...added]);
-    e.target.value = '';
   };
   const removeAt = (idx: number) => onChange(photos.filter((_, i) => i !== idx));
 
@@ -76,14 +86,14 @@ export function PhotoCapture({
               <span className="text-xs font-semibold text-foreground">{label}</span>
               <button
                 type="button"
-                disabled={disabled}
+                disabled={disabled || uploading}
                 onClick={() => inputs.current[key]?.click()}
                 className={cn(
                   'inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs transition',
-                  disabled ? 'cursor-not-allowed text-muted-foreground/50' : 'text-brand hover:bg-brand-soft',
+                  disabled || uploading ? 'cursor-not-allowed text-muted-foreground/50' : 'text-brand hover:bg-brand-soft',
                 )}
               >
-                <Camera size={13} /> Adicionar
+                <Camera size={13} /> {uploading ? 'Enviando…' : 'Adicionar'}
               </button>
               <input
                 ref={(el) => (inputs.current[key] = el)}
@@ -98,7 +108,7 @@ export function PhotoCapture({
               <div className="flex flex-wrap gap-2">
                 {list.map(({ p, i }) => (
                   <div key={i} className="relative">
-                    <img src={p.dataUrl} alt={p.name ?? label} className="h-16 w-20 rounded-lg border border-border object-cover" />
+                    <img src={photoSrc(p)} alt={p.name ?? label} className="h-16 w-20 rounded-lg border border-border object-cover" />
                     {!disabled && (
                       <button type="button" onClick={() => removeAt(i)} aria-label="Remover foto" className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-danger text-white"><X size={11} /></button>
                     )}

@@ -599,9 +599,17 @@ export interface TreatedArea {
   isActive?: boolean;
 }
 
-/** Foto vinculada à OS, por fase do serviço. */
+/** Foto vinculada à OS, por fase do serviço.
+ *
+ *  A imagem vem de `url` (arquivo no Supabase Storage) ou de `dataUrl`
+ *  (imagem embutida). O modo standalone não tem Storage e continua usando
+ *  `dataUrl`; em modo Supabase a foto vai pro Storage e só a URL fica na
+ *  linha — gravar base64 dentro do registro inchava o banco rápido, já que
+ *  são várias fotos por visita. Fotos antigas só têm `dataUrl`, então
+ *  sempre leia pelas duas (ver `photoSrc` em `src/lib/photoStorage.ts`). */
 export interface ServiceOrderPhoto {
-  dataUrl: string;
+  url?: string;
+  dataUrl?: string;
   phase: 'antes' | 'durante' | 'apos';
   name?: string;
 }

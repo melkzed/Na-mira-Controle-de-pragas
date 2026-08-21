@@ -32,10 +32,12 @@ Já migrados:
 - **Agenda** (`db/migrate_appointments_realtime.sql`) — completa colunas de
   execução em campo (`fixed_time`, `technician_notes`, `photos`,
   `technician_signature`, `products`) e habilita Realtime na tabela
-  `appointments`. Atenção: `photos` grava as fotos como data URL (base64)
-  direto na linha, igual já fazia no `localStorage` — funciona, mas não
-  escala bem; migrar pra Supabase Storage (guardando só a URL do arquivo) é
-  um follow-up conhecido, ainda não feito.
+  `appointments`. As fotos **não** ficam mais embutidas na linha: vão para o
+  Storage (bucket `atendimentos`, ver `db/storage_atendimentos.sql`) e a
+  coluna guarda só a URL — gravar base64 no registro inchava o banco rápido,
+  já que são várias fotos por visita. Fotos antigas, gravadas como data URL,
+  continuam sendo exibidas normalmente (ver `photoSrc` em
+  `src/lib/photoStorage.ts`).
 - **16 módulos de cadastro simples** (`db/migrate_entitystores_realtime.sql`)
   — Usuários, Departamentos, Produtos, Financeiro, Equipamentos, Veículos,
   Serviços, Não-conformidades, Pragas, Áreas tratadas, Tipos de armadilha,
@@ -118,6 +120,9 @@ store em localStorage-only (exceto `messagesStore`, de propósito — ver acima)
 
 **Incrementos pós-Fase 2** (rodar depois da lista acima, na ordem em que
 foram criados):
+- `db/storage_atendimentos.sql` — cria o bucket das fotos de atendimento e
+  suas políticas de acesso. Necessário antes de o técnico tirar fotos em modo
+  Supabase; sem ele o envio falha e a foto cai no modo antigo (embutida).
 - `db/migrate_stock_locations_cadastro.sql` — locais de estoque viram cadastro
   de verdade (Realtime + cria o local que falta para cada técnico já
   cadastrado). Antes a lista vinha só do seed do frontend e um técnico
