@@ -49,6 +49,14 @@ interface ExpiryRow {
   daysLeft: number;
 }
 
+/** Quais tipos cada card do grupo "Vencimentos" mostra. */
+const EXPIRY_REPORT_KINDS: Record<string, string[]> = {
+  'Licenças e certificados a vencer': ['Licença / Alvará'],
+  'Contratos a vencer': ['Contrato'],
+  'Lotes de produto vencendo': ['Lote de produto'],
+  'Validade de serviços executados': ['Certificado', 'Validade do serviço'],
+};
+
 /** Situação legível a partir dos dias restantes. */
 function expiryStatus(daysLeft: number): string {
   if (daysLeft < 0) return `Vencido há ${Math.abs(daysLeft)} dia(s)`;
@@ -67,7 +75,7 @@ function expiryStatus(daysLeft: number): string {
  * a pergunta útil é "o que está vencido ou vence até tal dia", e um vencimento
  * antigo esquecido não pode sumir do relatório só porque saiu da janela.
  */
-function buildExpiryReport(f: Filters): ReportData {
+function buildExpiryReport(f: Filters, reportName?: string): ReportData {
   const q = f.search.trim().toLowerCase();
   const { end } = rangeBounds(f);
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -128,7 +136,11 @@ function buildExpiryReport(f: Filters): ReportData {
     });
   });
 
-  let filtered = rows.filter((r) => new Date(r.expiresAt) <= end || r.daysLeft < 0);
+  // Cada card do grupo mostra só o seu tipo — clicar em "Contratos a vencer"
+  // e receber a lista inteira não ajuda ninguém.
+  const kinds = reportName ? EXPIRY_REPORT_KINDS[reportName] : undefined;
+  let filtered = rows.filter((r) => (!kinds || kinds.includes(r.kind))
+    && (new Date(r.expiresAt) <= end || r.daysLeft < 0));
   if (f.customerId) {
     const nome = getCustomer(f.customerId)?.name ?? '';
     filtered = filtered.filter((r) => r.reference === nome);
@@ -163,8 +175,8 @@ function buildExpiryReport(f: Filters): ReportData {
 }
 
 /** Monta o conjunto de dados do relatório aplicando os filtros e a pesquisa. */
-function buildReport(group: string, f: Filters): ReportData {
-  if (group === 'Vencimentos') return buildExpiryReport(f);
+function buildReport(group: string, f: Filters, reportName?: string): ReportData {
+  if (group === 'Vencimentos') return buildExpiryReport(f, reportName);
 
   const q = f.search.trim().toLowerCase();
   const { start, end } = rangeBounds(f);
@@ -325,9 +337,9 @@ export function RelatoriosPage() {
     return `${group} · ${parts.filter(Boolean).join(' · ')}`;
   };
 
-  const exportPdf = (group: string, name: string) => { const { columns, rows, summary } = buildReport(group, f); printDataReport(name, subtitleFor(group), columns, rows, summary); };
-  const exportXls = (group: string, name: string) => { const { columns, rows } = buildReport(group, f); downloadXls(fileName(name), rows, columns, `${name} — ${rangeLabel}`); };
-  const exportCsv = (group: string, name: string) => { const { columns, rows } = buildReport(group, f); downloadCsv(fileName(name), rows, columns); };
+  const exportPdf = (group: string, name: string) => { const { columns, rows, summary } = buildReport(group, f, name); printDataReport(name, subtitleFor(group), columns, rows, summary); };
+  const exportXls = (group: string, name: string) => { const { columns, rows } = buildReport(group, f, name); downloadXls(fileName(name), rows, columns, `${name} — ${rangeLabel}`); };
+  const exportCsv = (group: string, name: string) => { const { columns, rows } = buildReport(group, f, name); downloadCsv(fileName(name), rows, columns); };
 
   return (
     <div>
@@ -403,7 +415,7 @@ export function RelatoriosPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-foreground">{r.name}</p>
-                        <p className="text-xs text-muted-foreground">{rangeLabel} · {counts[section.group as keyof typeof counts]} registro(s)</p>
+                        <p className="text-xs text-muted-foreground">{rangeLabel} · {buildReport(section.group, f, r.name).rows.length} registro(s)</p>
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5">
