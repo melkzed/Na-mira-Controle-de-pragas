@@ -48,3 +48,19 @@ export function ensureTechnicianStockLocation(techId: string, techName?: string)
 export function centralStockLocationId(): string | undefined {
   return useStockLocationsStore.getState().items.find((l) => l.kind === 'central')?.id;
 }
+
+/**
+ * Ordena os locais para exibição: central primeiro, depois os demais em ordem
+ * alfabética. A store guarda na ordem de criação (mais novo primeiro), então
+ * sem isso um técnico recém-cadastrado aparecia no topo das listas, acima do
+ * estoque central.
+ */
+export function sortedStockLocations(items: StockLocation[]): StockLocation[] {
+  return [...items].sort((a, b) => {
+    if (a.kind !== b.kind) {
+      if (a.kind === 'central') return -1;
+      if (b.kind === 'central') return 1;
+    }
+    return a.name.localeCompare(b.name, 'pt-BR');
+  });
+}

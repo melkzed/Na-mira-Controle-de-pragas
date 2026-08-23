@@ -12,7 +12,7 @@ import { Drawer } from '../components/ui/Drawer';
 import { Field, Input, Select } from '../components/ui/Field';
 import { centralBalance, getProduct, getUser, technicianBalances } from '@/application/repository';
 import { useProductsStore, useStockLocationsStore } from '@/store/entityStores';
-import { centralStockLocationId } from '@/store/stockLocations';
+import { centralStockLocationId, sortedStockLocations } from '@/store/stockLocations';
 import { useStockStore } from '@/store/stockStore';
 import { useStockRequestsStore } from '@/store/stockRequestsStore';
 import { toast } from '@/store/toastStore';
@@ -110,7 +110,7 @@ function RestockRequestsPanel() {
 function EntryForm({ open, onClose }: { open: boolean; onClose: () => void }) {
   const products = useProductsStore((s) => s.items);
   const entry = useStockStore((s) => s.entry);
-  const locations = useStockLocationsStore((s) => s.items);
+  const locations = sortedStockLocations(useStockLocationsStore((s) => s.items));
   const [productId, setProductId] = useState('');
   const [locationId, setLocationId] = useState('');
   const [qty, setQty] = useState('');
@@ -160,7 +160,7 @@ function TransferForm({ open, onClose }: { open: boolean; onClose: () => void })
   const [toLoc, setToLoc] = useState('');
   const [qty, setQty] = useState('');
 
-  const locations = useStockLocationsStore((st) => st.items);
+  const locations = sortedStockLocations(useStockLocationsStore((st) => st.items));
   const techLocations = locations.filter((l) => l.kind === 'tecnico');
   useEffect(() => {
     if (!open) return;
@@ -231,7 +231,7 @@ function CentralStock() {
 
 function TechStock() {
   useStockStore((s) => s.balances); // reatividade ao alterar o estoque
-  const techLocations = useStockLocationsStore((st) => st.items).filter((l) => l.kind === 'tecnico');
+  const techLocations = sortedStockLocations(useStockLocationsStore((st) => st.items)).filter((l) => l.kind === 'tecnico');
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       {techLocations.map((loc) => {
