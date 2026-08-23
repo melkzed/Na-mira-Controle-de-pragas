@@ -62,3 +62,11 @@ alter table public.customers
   add column if not exists local_structure_qty jsonb;
 
 notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- Textos padrão dos documentos (laudo/certificado) — antes fixos no código.
+-- ============================================================================
+alter table public.fiscal_settings
+  add column if not exists document_texts jsonb;
+
+notify pgrst, 'reload schema';
