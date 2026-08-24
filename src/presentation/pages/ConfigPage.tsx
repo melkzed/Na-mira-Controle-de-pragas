@@ -5,11 +5,11 @@ import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
-import { Field, Input, Select } from '../components/ui/Field';
+import { Field, Input, Select, Textarea } from '../components/ui/Field';
 import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
 import { useAreasStore, useDepartmentsStore, usePestsStore, useProductsStore, useServiceTypesStore, useTrapTypesStore, useUsersStore, useLicensesStore } from '@/store/entityStores';
-import { useSettingsStore } from '@/store/settingsStore';
+import { DEFAULT_DOCUMENT_TEXTS, useSettingsStore } from '@/store/settingsStore';
 import { useOrgProfileStore } from '@/store/orgProfileStore';
 import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
@@ -374,7 +374,95 @@ function OperacionalTab() {
       <p className="text-sm text-muted-foreground">Configurações usadas na Agenda e na Ordem de Serviço.</p>
       <TechnicianSignaturesPanel />
       <EmergencyPanel />
+      <DocumentTextsPanel />
     </div>
+  );
+}
+
+/**
+ * Textos que saem nos documentos impressos. Antes ficavam fixos no código, o
+ * que obrigava a mexer no sistema para trocar um prazo de reentrada ou o
+ * texto da declaração — coisas que mudam por empresa e por exigência do
+ * cliente.
+ */
+function DocumentTextsPanel() {
+  const documentTexts = useSettingsStore((s) => s.documentTexts);
+  const setDocumentTexts = useSettingsStore((s) => s.setDocumentTexts);
+  const [form, setForm] = useState(documentTexts);
+  const [novaMedida, setNovaMedida] = useState('');
+  useEffect(() => setForm(documentTexts), [documentTexts]);
+
+  const dirty = JSON.stringify(form) !== JSON.stringify(documentTexts);
+  const isDefault = JSON.stringify(form) === JSON.stringify(DEFAULT_DOCUMENT_TEXTS);
+
+  const addMedida = () => {
+    const v = novaMedida.trim();
+    if (!v) return;
+    setForm((f) => ({ ...f, safetyMeasures: [...f.safetyMeasures, v] }));
+    setNovaMedida('');
+  };
+  const editMedida = (i: number, v: string) =>
+    setForm((f) => ({ ...f, safetyMeasures: f.safetyMeasures.map((m, idx) => (idx === i ? v : m)) }));
+  const removeMedida = (i: number) =>
+    setForm((f) => ({ ...f, safetyMeasures: f.safetyMeasures.filter((_, idx) => idx !== i) }));
+
+  const salvar = () => { setDocumentTexts(form); toast('Textos dos documentos atualizados.', { tone: 'success' }); };
+  const restaurar = () => { setForm(DEFAULT_DOCUMENT_TEXTS); toast('Textos padrão restaurados — clique em Salvar para aplicar.', { tone: 'default' }); };
+
+  return (
+    <Card>
+      <CardHeader
+        title="Textos padrão dos documentos"
+        subtitle="Aparecem no Laudo e no Certificado impressos"
+        action={
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={restaurar} disabled={isDefault}>Restaurar padrão</Button>
+            <Button size="sm" onClick={salvar} disabled={!dirty}>Salvar</Button>
+          </div>
+        }
+      />
+      <CardBody className="space-y-5">
+        <div>
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Medidas de segurança / orientações</p>
+          <p className="mb-2 text-xs text-muted-foreground">Saem como lista no Laudo. Deixe vazio para omitir a seção inteira.</p>
+          <div className="space-y-1.5">
+            {form.safetyMeasures.map((m, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input value={m} onChange={(e) => editMedida(i, e.target.value)} aria-label={`Medida de segurança ${i + 1}`} />
+                <button
+                  type="button"
+                  onClick={() => removeMedida(i)}
+                  aria-label={`Remover a medida ${i + 1}`}
+                  className="shrink-0 rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-danger"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex gap-2">
+            <Input
+              value={novaMedida}
+              onChange={(e) => setNovaMedida(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addMedida(); } }}
+              placeholder="Adicionar orientação…"
+            />
+            <Button type="button" size="sm" variant="outline" onClick={addMedida} disabled={!novaMedida.trim()}>Adicionar</Button>
+          </div>
+        </div>
+
+        <Field
+          label="Declaração do certificado"
+          hint="Marcadores disponíveis: {{empresa}}, {{cnpj}}, {{cliente}}, {{documento}}, {{endereco}} — trocados pelos dados reais na impressão"
+        >
+          <Textarea rows={4} value={form.certificateDeclaration} onChange={(e) => setForm((f) => ({ ...f, certificateDeclaration: e.target.value }))} />
+        </Field>
+
+        <Field label="Observação final do laudo" hint="Opcional — sai depois das medidas de segurança. Ex.: condições da garantia.">
+          <Textarea rows={3} value={form.laudoNotes} onChange={(e) => setForm((f) => ({ ...f, laudoNotes: e.target.value }))} placeholder="Deixe em branco para não exibir." />
+        </Field>
+      </CardBody>
+    </Card>
   );
 }
 

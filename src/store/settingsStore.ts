@@ -66,19 +66,51 @@ const DEFAULT_FISCAL: FiscalConfig = {
   irrfRate: DEFAULT_TAX_CONFIG.irrfRate,
 };
 
+/** Textos que saem nos documentos impressos e que cada empresa ajusta ao seu
+ *  jeito de trabalhar (prazos de reentrada, garantias, ressalvas legais). */
+export interface DocumentTexts {
+  /** Itens da seção "Medidas de Segurança / Orientações" do laudo. */
+  safetyMeasures: string[];
+  /** Parágrafo de abertura do certificado. Aceita os marcadores
+   *  {{empresa}}, {{cnpj}}, {{cliente}}, {{documento}} e {{endereco}}. */
+  certificateDeclaration: string;
+  /** Observação livre no fim do laudo (garantias, condições). Vazio = não sai. */
+  laudoNotes: string;
+}
+
+export const DEFAULT_DOCUMENT_TEXTS: DocumentTexts = {
+  safetyMeasures: [
+    'Aguardar no mínimo 2 a 6 (duas a seis) horas para permitir o ingresso de pessoas e animais',
+    'Abrir as janelas para arejar o ambiente antes de ocupar o local desinfectado',
+    'Observar um prazo maior para acesso de crianças, idosos e pessoas alérgicas ao local tratado',
+    'Lavar com detergente as louças e utensílios expostos aos vapores do inseticida',
+    'Aguardar 72 horas para limpar o ambiente tratado',
+    'O produto possui eficácia de até 3 meses, a depender da manutenção do cliente',
+    'Desocupação do local onde será aplicado o produto por parte do cliente',
+    'Não retornamos ao local para retirada das pragas',
+  ],
+  certificateDeclaration:
+    'A {{empresa}}, CNPJ {{cnpj}}, declara para os devidos fins que prestou serviço(s) para '
+    + '{{cliente}}, CPF/CNPJ {{documento}}, situado à {{endereco}}, conforme área tratada, '
+    + 'pragas-alvo, produtos químicos e garantia abaixo descritos.',
+  laudoNotes: '',
+};
+
 interface SettingsState {
   companySignature?: string;
   signatures: Record<string, string>;
   emergencyPhone: string;
   emergencyInfo: string;
   fiscal: FiscalConfig;
+  documentTexts: DocumentTexts;
   setCompanySignature: (dataUrl?: string) => void;
   setUserSignature: (userId: string, dataUrl?: string) => void;
   setEmergency: (phone: string, info: string) => void;
   setFiscal: (patch: Partial<FiscalConfig>) => void;
+  setDocumentTexts: (patch: Partial<DocumentTexts>) => void;
 }
 
-type Persisted = Pick<SettingsState, 'companySignature' | 'signatures' | 'emergencyPhone' | 'emergencyInfo' | 'fiscal'>;
+type Persisted = Pick<SettingsState, 'companySignature' | 'signatures' | 'emergencyPhone' | 'emergencyInfo' | 'fiscal' | 'documentTexts'>;
 
 interface SettingsRow {
   company_signature: string | null;
@@ -97,11 +129,13 @@ interface SettingsRow {
   retencoes: boolean | null;
   inss_retido: boolean | null;
   irrf_rate: number | null;
+  document_texts: DocumentTexts | null;
 }
 
 function fromRow(row: SettingsRow): Persisted {
   return {
     companySignature: row.company_signature ?? undefined,
+    documentTexts: { ...DEFAULT_DOCUMENT_TEXTS, ...(row.document_texts ?? {}) },
     signatures: row.signatures ?? {},
     emergencyPhone: row.emergency_phone ?? orgProfile.emergencyPhone,
     emergencyInfo: row.emergency_info ?? orgProfile.emergencyInfo,
@@ -125,6 +159,7 @@ function fromRow(row: SettingsRow): Persisted {
 function toRow(s: Persisted): Partial<SettingsRow> {
   return {
     company_signature: s.companySignature ?? null,
+    document_texts: s.documentTexts,
     signatures: s.signatures,
     emergency_phone: s.emergencyPhone,
     emergency_info: s.emergencyInfo,
@@ -144,11 +179,11 @@ function toRow(s: Persisted): Partial<SettingsRow> {
 }
 
 function load(): Persisted {
-  const base: Persisted = { companySignature: undefined, signatures: {}, emergencyPhone: orgProfile.emergencyPhone, emergencyInfo: orgProfile.emergencyInfo, fiscal: DEFAULT_FISCAL };
+  const base: Persisted = { companySignature: undefined, signatures: {}, emergencyPhone: orgProfile.emergencyPhone, emergencyInfo: orgProfile.emergencyInfo, fiscal: DEFAULT_FISCAL, documentTexts: DEFAULT_DOCUMENT_TEXTS };
   if (supabaseEnabled) return base;
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) { const p = JSON.parse(raw); return { ...base, ...p, fiscal: { ...DEFAULT_FISCAL, ...(p.fiscal ?? {}) } }; }
+    if (raw) { const p = JSON.parse(raw); return { ...base, ...p, fiscal: { ...DEFAULT_FISCAL, ...(p.fiscal ?? {}) }, documentTexts: { ...DEFAULT_DOCUMENT_TEXTS, ...(p.documentTexts ?? {}) } }; }
   } catch {
     /* ignora */
   }
@@ -157,7 +192,7 @@ function load(): Persisted {
 const persist = (s: SettingsState) => {
   if (supabaseEnabled) return;
   try {
-    localStorage.setItem(KEY, JSON.stringify({ companySignature: s.companySignature, signatures: s.signatures, emergencyPhone: s.emergencyPhone, emergencyInfo: s.emergencyInfo, fiscal: s.fiscal }));
+    localStorage.setItem(KEY, JSON.stringify({ companySignature: s.companySignature, signatures: s.signatures, emergencyPhone: s.emergencyPhone, emergencyInfo: s.emergencyInfo, fiscal: s.fiscal, documentTexts: s.documentTexts }));
   } catch {
     /* cota — ignora */
   }
@@ -201,6 +236,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setFiscal: (patch) => {
     const prev = get();
     set({ fiscal: { ...prev.fiscal, ...patch } });
+    if (supabaseEnabled) syncRemote(prev); else persist(get());
+  },
+  setDocumentTexts: (patch) => {
+    const prev = get();
+    set({ documentTexts: { ...prev.documentTexts, ...patch } });
     if (supabaseEnabled) syncRemote(prev); else persist(get());
   },
 }));

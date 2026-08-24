@@ -212,6 +212,13 @@ export function address(c: ReturnType<typeof getCustomer>): string {
 export function printCertificate(so: ServiceOrder): void {
   const c = getCustomer(so.customerId);
   const org = getOrgProfile();
+  const declaracao = applyTemplate(useSettingsStore.getState().documentTexts.certificateDeclaration, {
+    empresa: org.legalName ?? org.name ?? '',
+    cnpj: org.cnpj ?? '',
+    cliente: c?.name ?? '',
+    documento: formatDocument(c?.document),
+    endereco: address(c),
+  });
   const dataExec = fmtDate(so.executionDate ?? so.finishedAt ?? so.startedAt ?? so.createdAt);
   const validade = certificateValidityText(so);
   const pests = osPests(so);
@@ -223,7 +230,7 @@ export function printCertificate(so: ServiceOrder): void {
 
   const body = `${header('Certificado Sanitário')}
     <p class="doctitle">CERTIFICADO SANITÁRIO DE COMBATE A VETORES E PRAGAS URBANAS</p>
-    <p class="lead">A <strong>${esc(org.legalName)}</strong>, CNPJ ${esc(org.cnpj)}, declara para os devidos fins que prestou serviço(s) para <strong>${esc(c?.name)}</strong>, CPF/CNPJ ${esc(formatDocument(c?.document))}, situado à ${esc(address(c))}, conforme área tratada, pragas-alvo, produtos químicos e garantia abaixo descritos.</p>
+    <p class="lead">${esc(declaracao)}</p>
 
     <div class="cesrow">
       <span><strong>CES — Comprovante de Execução de Serviço:</strong> ${esc(so.number)}</span>
@@ -248,20 +255,14 @@ export function printCertificate(so: ServiceOrder): void {
   openPrint(`Certificado · ${c?.name ?? ''}`, body);
 }
 
-/** Medidas de segurança / orientações padrão pós-tratamento. */
-const SAFETY_MEASURES = [
-  'Aguardar no mínimo 2 a 6 (duas a seis) horas para permitir o ingresso de pessoas e animais',
-  'Abrir as janelas para arejar o ambiente antes de ocupar o local desinfectado',
-  'Observar um prazo maior para acesso de crianças, idosos e pessoas alérgicas ao local tratado',
-  'Lavar com detergente as louças e utensílios expostos aos vapores do inseticida',
-  'Aguardar 72 horas para limpar o ambiente tratado',
-  'O produto possui eficácia de até 3 meses, a depender da manutenção do cliente',
-  'Desocupação do local onde será aplicado o produto por parte do cliente',
-  'Não retornamos ao local para retirada das pragas',
-];
+/** Substitui os marcadores {{campo}} do texto configurado pelos valores reais. */
+function applyTemplate(tpl: string, vars: Record<string, string>): string {
+  return tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) => vars[k] ?? '');
+}
 
 /** Laudo técnico detalhado do atendimento (CES completo). */
 export function printLaudo(so: ServiceOrder): void {
+  const { safetyMeasures, laudoNotes } = useSettingsStore.getState().documentTexts;
   const c = getCustomer(so.customerId);
   const org = getOrgProfile();
   const techIds = so.technicianIds?.length ? so.technicianIds : [so.technicianId];
@@ -333,8 +334,9 @@ export function printLaudo(so: ServiceOrder): void {
     <p class="lead">${esc(so.areaTreated || 'Não informado.')}</p>
     ${so.procedures ? `<p class="lead">${esc(so.procedures)}</p>` : ''}
 
-    <h2>Medidas de Segurança / Orientações</h2>
-    <ul class="checklist">${SAFETY_MEASURES.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
+    ${safetyMeasures.length ? `<h2>Medidas de Segurança / Orientações</h2>
+    <ul class="checklist">${safetyMeasures.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}
+    ${laudoNotes ? `<p class="lead">${esc(laudoNotes)}</p>` : ''}
 
     <div class="twocol">
       <div>

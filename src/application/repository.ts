@@ -11,6 +11,7 @@ import { useCustomersStore } from '@/store/customersStore';
 import { useAreasStore, useEquipmentStore, useProductsStore, usePestsStore, useServiceTypesStore, useUsersStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useStockStore } from '@/store/stockStore';
+import { centralStockLocationId } from '@/store/stockLocations';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import { RELEASED_TO_TECH_STATUSES } from '@/lib/confirmation';
 import type {
@@ -84,7 +85,8 @@ export function getEquipment(id?: string): Equipment | undefined {
 }
 
 export function centralBalance(productId: string): number {
-  return useStockStore.getState().balanceOf('loc-central', productId);
+  const central = centralStockLocationId();
+  return central ? useStockStore.getState().balanceOf(central, productId) : 0;
 }
 
 export function technicianBalances(locationId: string) {

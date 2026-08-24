@@ -9,7 +9,7 @@ import { Input, Select } from '../components/ui/Field';
 import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getServiceType, getUser } from '@/application/repository';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
-import { useProductsStore, useUsersStore } from '@/store/entityStores';
+import { useLicensesStore, useProductsStore, useUsersStore } from '@/store/entityStores';
 import { useCustomersStore } from '@/store/customersStore';
 import { downloadCsv, downloadXls } from '@/lib/export';
 import { printDataReport, type ReportColumn } from '@/lib/printReports';
@@ -39,8 +39,145 @@ const defaultFilters = (): Filters => ({
   endDate: toDateInputValue(new Date()),
 });
 
+/** Uma coisa que vence: licença da empresa, contrato do cliente, lote de
+ *  produto ou validade de um serviço executado. */
+interface ExpiryRow {
+  kind: string;
+  description: string;
+  reference: string;
+  expiresAt: string;
+  daysLeft: number;
+}
+
+/** Quais tipos cada card do grupo "Vencimentos" mostra. */
+const EXPIRY_REPORT_KINDS: Record<string, string[]> = {
+  'Licenças e certificados a vencer': ['Licença / Alvará'],
+  'Contratos a vencer': ['Contrato'],
+  'Lotes de produto vencendo': ['Lote de produto'],
+  'Validade de serviços executados': ['Certificado', 'Validade do serviço'],
+};
+
+/** Situação legível a partir dos dias restantes. */
+function expiryStatus(daysLeft: number): string {
+  if (daysLeft < 0) return `Vencido há ${Math.abs(daysLeft)} dia(s)`;
+  if (daysLeft === 0) return 'Vence hoje';
+  if (daysLeft <= 30) return `Vence em ${daysLeft} dia(s)`;
+  return 'Em dia';
+}
+
+/**
+ * Tudo que tem prazo, num lugar só — o que já venceu e o que vence em breve.
+ * Contrato vencido é receita perdida e licença vencida é risco legal, então
+ * ambos precisam aparecer antes da data, não depois.
+ *
+ * Diferente dos outros relatórios, aqui o período filtra pela data de
+ * vencimento e o que já venceu entra sempre (independente da data inicial):
+ * a pergunta útil é "o que está vencido ou vence até tal dia", e um vencimento
+ * antigo esquecido não pode sumir do relatório só porque saiu da janela.
+ */
+function buildExpiryReport(f: Filters, reportName?: string): ReportData {
+  const q = f.search.trim().toLowerCase();
+  const { end } = rangeBounds(f);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const daysFrom = (iso: string) => Math.round((new Date(iso).setHours(0, 0, 0, 0) - today.getTime()) / 86400000);
+
+  const rows: ExpiryRow[] = [];
+
+  // Licenças, alvarás e registros da empresa.
+  useLicensesStore.getState().items.forEach((l) => {
+    if (!l.expiresAt) return;
+    rows.push({
+      kind: 'Licença / Alvará',
+      description: l.name,
+      reference: l.number ? `nº ${l.number}` : (l.issuer ?? ''),
+      expiresAt: l.expiresAt,
+      daysLeft: daysFrom(l.expiresAt),
+    });
+  });
+
+  // Contratos dos clientes.
+  useCustomersStore.getState().customers.forEach((c) => {
+    (c.contracts ?? []).forEach((ct) => {
+      if (!ct.endDate || ct.status === 'cancelado') return;
+      rows.push({
+        kind: 'Contrato',
+        description: `Contrato · ${ct.renewal ?? 'renovação não definida'}`,
+        reference: c.name,
+        expiresAt: ct.endDate,
+        daysLeft: daysFrom(ct.endDate),
+      });
+    });
+  });
+
+  // Lotes de produto — produto vencido não pode ser aplicado.
+  useProductsStore.getState().items.forEach((prod) => {
+    (prod.batches ?? []).forEach((b) => {
+      if (!b.expiresAt) return;
+      rows.push({
+        kind: 'Lote de produto',
+        description: `${prod.name} · lote ${b.code}`,
+        reference: `${b.quantity} ${prod.unit}`,
+        expiresAt: b.expiresAt,
+        daysLeft: daysFrom(b.expiresAt),
+      });
+    });
+  });
+
+  // Validade do serviço/certificado emitido por OS.
+  useServiceOrdersStore.getState().orders.forEach((so) => {
+    const date = so.certificateValidityDate ?? so.validityDate;
+    if (!date) return;
+    rows.push({
+      kind: so.certificateValidityDate ? 'Certificado' : 'Validade do serviço',
+      description: `OS #${so.number}`,
+      reference: getCustomer(so.customerId)?.name ?? '',
+      expiresAt: date,
+      daysLeft: daysFrom(date),
+    });
+  });
+
+  // Cada card do grupo mostra só o seu tipo — clicar em "Contratos a vencer"
+  // e receber a lista inteira não ajuda ninguém.
+  const kinds = reportName ? EXPIRY_REPORT_KINDS[reportName] : undefined;
+  let filtered = rows.filter((r) => (!kinds || kinds.includes(r.kind))
+    && (new Date(r.expiresAt) <= end || r.daysLeft < 0));
+  if (f.customerId) {
+    const nome = getCustomer(f.customerId)?.name ?? '';
+    filtered = filtered.filter((r) => r.reference === nome);
+  }
+  if (q) {
+    filtered = filtered.filter((r) =>
+      r.description.toLowerCase().includes(q)
+      || r.reference.toLowerCase().includes(q)
+      || r.kind.toLowerCase().includes(q));
+  }
+  // Mais urgente primeiro.
+  filtered.sort((a, b) => a.daysLeft - b.daysLeft);
+
+  const vencidos = filtered.filter((r) => r.daysLeft < 0).length;
+  const em30 = filtered.filter((r) => r.daysLeft >= 0 && r.daysLeft <= 30).length;
+
+  return {
+    columns: [
+      { header: 'Tipo', value: (r: ExpiryRow) => r.kind },
+      { header: 'Descrição', value: (r: ExpiryRow) => r.description },
+      { header: 'Referência', value: (r: ExpiryRow) => r.reference },
+      { header: 'Vencimento', value: (r: ExpiryRow) => fmtDate(r.expiresAt) },
+      { header: 'Situação', value: (r: ExpiryRow) => expiryStatus(r.daysLeft) },
+    ],
+    rows: filtered,
+    summary: [
+      { label: 'Itens', value: filtered.length },
+      { label: 'Vencidos', value: vencidos },
+      { label: 'Vencem em 30 dias', value: em30 },
+    ],
+  };
+}
+
 /** Monta o conjunto de dados do relatório aplicando os filtros e a pesquisa. */
-function buildReport(group: string, f: Filters): ReportData {
+function buildReport(group: string, f: Filters, reportName?: string): ReportData {
+  if (group === 'Vencimentos') return buildExpiryReport(f, reportName);
+
   const q = f.search.trim().toLowerCase();
   const { start, end } = rangeBounds(f);
 
@@ -137,6 +274,12 @@ const reports = [
     { name: 'Movimentação de estoque', icon: 'ArrowLeftRight' },
     { name: 'Veículos e equipamentos', icon: 'Truck' },
   ] },
+  { group: 'Vencimentos', items: [
+    { name: 'Licenças e certificados a vencer', icon: 'ShieldCheck' },
+    { name: 'Contratos a vencer', icon: 'FileClock' },
+    { name: 'Lotes de produto vencendo', icon: 'PackageX' },
+    { name: 'Validade de serviços executados', icon: 'CalendarClock' },
+  ] },
   { group: 'Financeiro & Fiscal', items: [
     { name: 'Faturamento', icon: 'TrendingUp' },
     { name: 'Custos operacionais', icon: 'TrendingDown' },
@@ -180,6 +323,7 @@ export function RelatoriosPage() {
   const counts = useMemo(() => ({
     'Operação': buildReport('Operação', f).rows.length,
     'Equipes & Recursos': buildReport('Equipes & Recursos', f).rows.length,
+    'Vencimentos': buildReport('Vencimentos', f).rows.length,
     'Financeiro & Fiscal': buildReport('Financeiro & Fiscal', f).rows.length,
   }), [f]);
 
@@ -193,9 +337,9 @@ export function RelatoriosPage() {
     return `${group} · ${parts.filter(Boolean).join(' · ')}`;
   };
 
-  const exportPdf = (group: string, name: string) => { const { columns, rows, summary } = buildReport(group, f); printDataReport(name, subtitleFor(group), columns, rows, summary); };
-  const exportXls = (group: string, name: string) => { const { columns, rows } = buildReport(group, f); downloadXls(fileName(name), rows, columns, `${name} — ${rangeLabel}`); };
-  const exportCsv = (group: string, name: string) => { const { columns, rows } = buildReport(group, f); downloadCsv(fileName(name), rows, columns); };
+  const exportPdf = (group: string, name: string) => { const { columns, rows, summary } = buildReport(group, f, name); printDataReport(name, subtitleFor(group), columns, rows, summary); };
+  const exportXls = (group: string, name: string) => { const { columns, rows } = buildReport(group, f, name); downloadXls(fileName(name), rows, columns, `${name} — ${rangeLabel}`); };
+  const exportCsv = (group: string, name: string) => { const { columns, rows } = buildReport(group, f, name); downloadCsv(fileName(name), rows, columns); };
 
   return (
     <div>
@@ -271,7 +415,7 @@ export function RelatoriosPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-foreground">{r.name}</p>
-                        <p className="text-xs text-muted-foreground">{rangeLabel} · {counts[section.group as keyof typeof counts]} registro(s)</p>
+                        <p className="text-xs text-muted-foreground">{rangeLabel} · {buildReport(section.group, f, r.name).rows.length} registro(s)</p>
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5">

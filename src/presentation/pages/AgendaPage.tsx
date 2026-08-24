@@ -25,6 +25,7 @@ import { addDays, fmtTime, isSameDay, isToday, parseISO, weekDays, weekRangeLabe
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { photoSrc } from '@/lib/photoStorage';
 
 type View = 'dia' | 'semana' | 'mes' | 'agenda' | 'mapa';
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 7); // 07h–18h
@@ -488,7 +489,7 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
                   <div key={ph}>
                     <p className="mb-1 text-[11px] font-medium text-muted-foreground">{label}</p>
                     <div className="flex flex-wrap gap-2">
-                      {list.map((p, i) => <img key={i} src={p.dataUrl} alt={p.name ?? label} className="h-16 w-20 rounded-lg border border-border object-cover" />)}
+                      {list.map((p, i) => <img key={i} src={photoSrc(p)} alt={p.name ?? label} className="h-16 w-20 rounded-lg border border-border object-cover" />)}
                     </div>
                   </div>
                 );
