@@ -22,11 +22,31 @@
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// O supabase-js manda cabeçalhos próprios em toda chamada (`x-client-info`,
+// `apikey`, e versões novas também `x-supabase-api-version`). Se qualquer um
+// deles ficar de fora do Access-Control-Allow-Headers, o navegador barra o
+// preflight e a requisição nem chega a rodar — o erro aparece como CORS, não
+// como falha da função. Por isso a lista abaixo é fixa E o preflight ainda
+// devolve de volta o que o navegador pediu.
+const ALLOW_HEADERS = 'authorization, x-client-info, apikey, content-type, x-supabase-api-version';
+
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Allow-Headers': ALLOW_HEADERS,
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
+
+/** Resposta do preflight, ecoando os cabeçalhos que o navegador anunciou. */
+function preflight(req: Request): Response {
+  const requested = req.headers.get('Access-Control-Request-Headers');
+  return new Response('ok', {
+    headers: {
+      ...cors,
+      'Access-Control-Allow-Headers': requested ?? ALLOW_HEADERS,
+      'Access-Control-Max-Age': '86400',
+    },
+  });
+}
 
 const ALLOWED_ROLES = ['admin', 'supervisor', 'financeiro', 'atendimento', 'estoque', 'tecnico'];
 const CAN_INVITE = ['admin', 'supervisor'];
@@ -60,7 +80,7 @@ function bestRow(rows: CallerRow[]): CallerRow | null {
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+  if (req.method === 'OPTIONS') return preflight(req);
   if (req.method !== 'POST') return json({ error: 'Use POST.', code: 'method' }, 405);
 
   try {
