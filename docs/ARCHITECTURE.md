@@ -173,10 +173,20 @@ Function `supabase/functions/convidar-tecnico`:
    devolve `data: null` em qualquer status fora do 2xx, então sem ler
    `error.context` o usuário só veria "non-2xx status code".
    `db/diagnose_convite_tecnico.sql` confere no banco quem pode convidar.
-3. Com a service role, chama `auth.admin.inviteUserByEmail` — o próprio
-   Supabase Auth manda o e-mail de convite (usa o SMTP já configurado no
-   projeto), com um link para a pessoa **escolher a própria senha** no
-   primeiro acesso. Nenhuma senha trafega em texto puro em lugar nenhum.
+3. Com a service role, cria o login. **Quem define a senha é o
+   administrador**, no próprio formulário: a senha vai no corpo da requisição
+   (HTTPS) e a função chama `auth.admin.createUser({ password,
+   email_confirm: true })` — o técnico já entra com ela, sem e-mail de
+   confirmação no caminho. A senha é guardada só pelo Supabase Auth, que
+   salva apenas o hash; nada dela fica no navegador nem em `public.users`.
+   Se o corpo **não** trouxer senha, a função cai em
+   `auth.admin.inviteUserByEmail` (o Supabase manda um link para a pessoa
+   escolher a senha) — é o caminho da importação por planilha, que não tem
+   coluna de senha.
+   A mesma função atende `action: 'redefinir_senha'` (`userId` + `password`),
+   usada quando o administrador troca a senha de um técnico pela tela de
+   edição; ela confere que o técnico é da mesma organização antes de chamar
+   `auth.admin.updateUserById`.
 4. A função já grava a linha em `public.users` com `auth_user_id` vinculado
    ao usuário recém-convidado — não precisa mais do passo manual
    (Authentication → Users + `db/link_admins.sql`) por novo funcionário.
@@ -188,7 +198,11 @@ ou `?code=...` do PKCE — o cliente Supabase deste app usa
 parsing manualmente) e chama `supabase.auth.updateUser({ password })`.
 
 Em modo standalone (sem Supabase), o cadastro continua 100% local, como
-sempre foi — a Edge Function só existe/roda em modo Supabase.
+sempre foi — a Edge Function só existe/roda em modo Supabase. A senha
+definida pelo administrador fica em `store/localPasswords.ts` para a
+demonstração se comportar como o sistema de verdade; os usuários de exemplo
+seguem na senha de demonstração. Essa store **nunca** é usada com Supabase
+ligado.
 
 ### 3.5 Estoque combinado entre técnicos de uma OS
 

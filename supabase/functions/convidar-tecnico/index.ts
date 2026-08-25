@@ -4,9 +4,16 @@
 // direto em public.users, porque criar um LOGIN de verdade (não só uma linha
 // de cadastro) exige a Service Role Key — que nunca pode ficar no navegador.
 // Fluxo: valida que quem está chamando é admin/supervisor da própria
-// organização → convida por e-mail via Supabase Auth (o próprio Supabase
-// manda o e-mail, com um link para a pessoa escolher a senha) → grava
-// public.users já com auth_user_id vinculado.
+// organização → cria o login → grava public.users já com auth_user_id
+// vinculado.
+//
+// A senha é definida pelo administrador no formulário e vai no corpo da
+// requisição (sempre por HTTPS, e nunca gravada em lugar nenhum além do
+// Supabase Auth, que guarda só o hash). Se o corpo não trouxer senha, cai no
+// convite por e-mail — é o caso da importação por planilha sem coluna SENHA.
+//
+// Também atende `action: 'redefinir_senha'`, para o administrador trocar a
+// senha de um técnico que esqueceu a dele.
 //
 // Deploy:  supabase functions deploy convidar-tecnico
 // Não precisa configurar nenhum secret — SUPABASE_URL, SUPABASE_ANON_KEY e
@@ -23,6 +30,10 @@ const cors = {
 
 const ALLOWED_ROLES = ['admin', 'supervisor', 'financeiro', 'atendimento', 'estoque', 'tecnico'];
 const CAN_INVITE = ['admin', 'supervisor'];
+
+/** Mínimo do Supabase Auth. Mantido aqui para a mensagem sair em português. */
+const MIN_PASSWORD = 6;
+const senhaCurta = () => `A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.`;
 
 /** Prioridade para escolher a linha de public.users quando existe mais de uma
  *  para a mesma pessoa (cadastro duplicado: convidada como técnica e depois
@@ -119,14 +130,39 @@ serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
+
+    // ── Redefinir a senha de um técnico já cadastrado ─────────────────────
+    if (body.action === 'redefinir_senha') {
+      const targetId = String(body.userId ?? '');
+      const password = String(body.password ?? '');
+      if (!targetId || !password) return json({ error: 'Informe o técnico e a nova senha.', code: 'missing_fields' }, 400);
+      if (password.length < MIN_PASSWORD) return json({ error: senhaCurta(), code: 'weak_password' }, 400);
+
+      // Só dentro da própria organização — o id vem do navegador.
+      const { data: target } = await admin
+        .from('users')
+        .select('id, auth_user_id, org_id')
+        .eq('id', targetId)
+        .eq('org_id', callerRow.org_id)
+        .maybeSingle();
+      if (!target?.auth_user_id) {
+        return json({ error: 'Esse técnico ainda não tem login vinculado — cadastre-o novamente para criar o acesso.', code: 'target_not_found' }, 404);
+      }
+      const { error: updateError } = await admin.auth.admin.updateUserById(target.auth_user_id, { password });
+      if (updateError) return json({ error: updateError.message, code: 'update_failed' }, 400);
+      return json({ ok: true });
+    }
+
     const name = String(body.name ?? '').trim();
     const email = String(body.email ?? '').trim().toLowerCase();
     const phone = body.phone ? String(body.phone).trim() : null;
     const fieldAppAccess = body.fieldAppAccess !== false;
     const role = ALLOWED_ROLES.includes(body.role) ? body.role : 'tecnico';
     const redirectTo = body.redirectTo ? String(body.redirectTo) : undefined;
+    const password = body.password ? String(body.password) : '';
 
     if (!name || !email) return json({ error: 'Nome e e-mail são obrigatórios.', code: 'missing_fields' }, 400);
+    if (password && password.length < MIN_PASSWORD) return json({ error: senhaCurta(), code: 'weak_password' }, 400);
 
     const { data: existing } = await admin
       .from('users')
@@ -136,21 +172,42 @@ serve(async (req) => {
       .maybeSingle();
     if (existing) return json({ error: 'Já existe um funcionário com esse e-mail nesta organização.', code: 'duplicate' }, 409);
 
-    const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
-      data: { name },
-      redirectTo,
-    });
-    if (inviteError || !invited?.user) {
-      return json({
-        error: inviteError?.message ?? 'Não foi possível enviar o convite por e-mail.',
-        code: 'invite_failed',
-      }, 400);
+    // Com senha definida pelo administrador, o login já nasce pronto para uso
+    // (email_confirm: true dispensa a confirmação por e-mail, que aqui só
+    // atrasaria o primeiro acesso). Sem senha, convida por e-mail.
+    let authUser: { id: string } | null = null;
+    if (password) {
+      const { data: created, error: createError } = await admin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { name },
+      });
+      if (createError || !created?.user) {
+        return json({
+          error: createError?.message ?? 'Não foi possível criar o login do técnico.',
+          code: 'create_failed',
+        }, 400);
+      }
+      authUser = created.user;
+    } else {
+      const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
+        data: { name },
+        redirectTo,
+      });
+      if (inviteError || !invited?.user) {
+        return json({
+          error: inviteError?.message ?? 'Não foi possível enviar o convite por e-mail.',
+          code: 'invite_failed',
+        }, 400);
+      }
+      authUser = invited.user;
     }
 
     const newUser = {
       id: crypto.randomUUID(),
       org_id: callerRow.org_id,
-      auth_user_id: invited.user.id,
+      auth_user_id: authUser.id,
       name,
       email,
       phone,
@@ -160,16 +217,15 @@ serve(async (req) => {
     };
     const { error: insertError } = await admin.from('users').insert(newUser);
     if (insertError) {
-      // O convite já foi enviado (o login existe) mas o cadastro em
-      // public.users falhou — não dá pra desfazer o e-mail já mandado, então
-      // avisa com uma mensagem que explica o que aconteceu de verdade.
+      // O login já existe, mas o cadastro em public.users falhou — avisa com
+      // uma mensagem que explica o que aconteceu de verdade.
       return json({
-        error: `O convite foi enviado, mas houve um erro ao salvar o cadastro: ${insertError.message}`,
+        error: `O login foi criado, mas houve um erro ao salvar o cadastro: ${insertError.message}`,
         code: 'insert_failed',
       }, 500);
     }
 
-    return json({ user: newUser });
+    return json({ user: newUser, invited: !password });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : 'Erro interno.', code: 'exception' }, 500);
   }
