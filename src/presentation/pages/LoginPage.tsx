@@ -30,7 +30,9 @@ export function LoginPage() {
     const user = await login(email, password);
     setLoading(false);
     if (!user) {
-      setError(demoAccounts.length ? 'E-mail ou senha inválidos. Use a senha de demonstração abaixo.' : 'E-mail ou senha inválidos.');
+      // Não aponta para a senha de demonstração: técnico cadastrado com senha
+      // definida pelo administrador não entra com ela (ver TecnicosPage).
+      setError('E-mail ou senha inválidos.');
       return;
     }
     navigate(landingPathFor(user), { replace: true });
