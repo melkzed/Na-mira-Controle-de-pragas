@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Appointment, AppointmentProduct, ServiceOrderPhoto } from '@/domain/types';
+import type { Appointment, AppointmentProduct, ServiceOrderPhoto, VerificationItem } from '@/domain/types';
 import type { AppointmentStatus } from '@/domain/enums';
 import { appointments as seedAppointments } from '@/infrastructure/seed/data';
 import { isDueForConfirmation } from '@/lib/confirmation';
@@ -103,6 +103,8 @@ interface AppointmentRow {
   technician_notes: string | null;
   photos: ServiceOrderPhoto[] | null;
   technician_signature: string | null;
+  customer_signature: string | null;
+  verification: VerificationItem[] | null;
   route_order: number | null;
   products: AppointmentProduct[] | null;
   recurrence_id: string | null;
@@ -132,6 +134,8 @@ function fromRow(row: AppointmentRow): Appointment {
     technicianNotes: row.technician_notes ?? undefined,
     photos: row.photos ?? undefined,
     technicianSignature: row.technician_signature ?? undefined,
+    customerSignature: row.customer_signature ?? undefined,
+    verification: row.verification ?? undefined,
     routeOrder: row.route_order ?? undefined,
     products: row.products ?? [],
     recurrenceId: row.recurrence_id ?? undefined,
@@ -162,6 +166,8 @@ function toRow(a: Appointment): AppointmentRow {
     technician_notes: a.technicianNotes ?? null,
     photos: a.photos ?? null,
     technician_signature: a.technicianSignature ?? null,
+    customer_signature: a.customerSignature ?? null,
+    verification: a.verification ?? null,
     route_order: a.routeOrder ?? null,
     products: a.products ?? [],
     recurrence_id: a.recurrenceId ?? null,

@@ -1,13 +1,21 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from './Button';
 
 /** Painel centralizado (modal) para cadastro, edição e detalhes — ocupa 95%
  *  da tela em todos os módulos. Substituiu a antiga aba lateral deslizante,
  *  que era estreita demais para os formulários do sistema. Acessível: fecha
  *  com Esc, move o foco para o painel ao abrir e restaura o foco anterior ao
- *  fechar. */
+ *  fechar.
+ *
+ *  Renderiza em portal no `body` de propósito: qualquer ancestral com
+ *  `transform`/`filter` (um `Card hover` com `hover:-translate-y-0.5`, por
+ *  exemplo) vira bloco de contenção e faz o `position: fixed` do painel
+ *  passar a se ancorar nele em vez da viewport — o modal sai do lugar
+ *  enquanto o mouse está sobre o cartão. No portal isso não acontece,
+ *  independente de onde o `<Drawer>` esteja escrito na árvore. */
 export function Drawer({
   open,
   onClose,
@@ -73,7 +81,7 @@ export function Drawer({
     </>
   );
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -115,6 +123,7 @@ export function Drawer({
           </div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
