@@ -42,6 +42,27 @@ interface FieldSaveData {
   signature?: string;
   products: AppliedProductRow[];
   paymentStatus: PaymentStatus;
+  /** Horário informado pelo técnico (`HH:MM`) — o relógio do sistema marca
+   *  quando ele apertou o botão, que nem sempre é quando o serviço começou
+   *  ou terminou de fato. É o que sai na Ordem de Serviço. */
+  startTime?: string;
+  endTime?: string;
+}
+
+/** `HH:MM` local de um ISO, para preencher `<input type="time">`. */
+function hhmm(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Aplica `HH:MM` informado pelo técnico à data da visita. */
+function withTime(dateIso: string, time?: string): string | undefined {
+  if (!time) return undefined;
+  const [h, m] = time.split(':').map(Number);
+  const d = new Date(dateIso);
+  d.setHours(h || 0, m || 0, 0, 0);
+  return d.toISOString();
 }
 
 /** Local de estoque de um técnico (cadastro real — ver store/stockLocations.ts). */
@@ -171,7 +192,7 @@ export function CampoPage() {
   /** Finaliza o atendimento: grava assinatura, produtos aplicados e pagamento
    *  na OS, dá baixa no estoque combinado dos técnicos da OS (ver
    *  reconcileTechStock) e registra o histórico da OS. */
-  const handleFinish = ({ signature, products, paymentStatus }: FieldSaveData) => {
+  const handleFinish = ({ signature, products, paymentStatus, startTime, endTime }: FieldSaveData) => {
     if (!active) return;
     const so = serviceOrderForAppointment(active.id);
     const now = new Date().toISOString();
@@ -181,11 +202,15 @@ export function CampoPage() {
       // A assinatura do cliente é colhida no menu Gerenciar; é ela que sai
       // no PDF da OS, então precisa ser copiada para lá ao fechar.
       const customerSignature = active.customerSignature ?? so.customerSignature;
+      const startedAt = withTime(active.scheduledStart, startTime) ?? so.startedAt ?? now;
+      const finishedAt = withTime(active.scheduledStart, endTime) ?? now;
       const technicianIds = so.technicianIds?.length ? so.technicianIds : [so.technicianId ?? techId];
       const outOfStock = reconcileTechStock(technicianIds, techId, so.products, products);
       updateOs(so.id, {
         status: 'concluida',
-        finishedAt: now,
+        startedAt,
+        finishedAt,
+        totalMinutes: Math.max(0, Math.round((new Date(finishedAt).getTime() - new Date(startedAt).getTime()) / 60000)) || undefined,
         products: products.filter((p) => p.used).map((p) => ({ productId: p.productId, usedQty: p.qty, outOfStock: outOfStock.has(p.productId) || undefined })),
         paymentStatus,
         paymentDate: paymentStatus === 'pago' ? now : so.paymentDate,
@@ -203,17 +228,24 @@ export function CampoPage() {
 
   /** Corrige um atendimento já finalizado — atualiza a OS de novo, mas o
    *  histórico registra "alteração", não uma nova finalização. */
-  const handleEditSave = ({ products, paymentStatus }: FieldSaveData) => {
+  const handleEditSave = ({ products, paymentStatus, startTime, endTime }: FieldSaveData) => {
     if (!active) return;
     const so = serviceOrderForAppointment(active.id);
     if (!so) return;
     const now = new Date().toISOString();
     const technicianIds = so.technicianIds?.length ? so.technicianIds : [so.technicianId ?? techId];
     const outOfStock = reconcileTechStock(technicianIds, techId, so.products, products);
+    const startedAt = withTime(active.scheduledStart, startTime) ?? so.startedAt;
+    const finishedAt = withTime(active.scheduledStart, endTime) ?? so.finishedAt;
     updateOs(so.id, {
       products: products.filter((p) => p.used).map((p) => ({ productId: p.productId, usedQty: p.qty, outOfStock: outOfStock.has(p.productId) || undefined })),
       paymentStatus,
       paymentDate: paymentStatus === 'pago' ? (so.paymentDate ?? now) : so.paymentDate,
+      startedAt,
+      finishedAt,
+      totalMinutes: startedAt && finishedAt
+        ? Math.max(0, Math.round((new Date(finishedAt).getTime() - new Date(startedAt).getTime()) / 60000)) || undefined
+        : so.totalMinutes,
     });
     if (outOfStock.size) toast('Alguns produtos foram usados além do estoque disponível — sinalizado na OS.', { tone: 'warning' });
     logChange('alteração', 'ordem de serviço', `OS #${so.number} corrigida em campo por ${techName} em ${new Date(now).toLocaleString('pt-BR')}`, so.id);
@@ -708,6 +740,11 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
   const [signature, setSignature] = useState<string | undefined>(appt.technicianSignature ?? storedSig);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(linkedOs?.paymentStatus ?? 'pendente');
   const [productRows, setProductRows] = useState<AppliedProductRow[]>(() => defaultProductRows(appt, linkedOs));
+  // Horário real do serviço, informado pelo técnico. O relógio do sistema
+  // marca quando ele apertou o botão — que raramente é a hora em que o
+  // serviço de fato começou ou terminou.
+  const [startTime, setStartTime] = useState(() => hhmm(linkedOs?.startedAt));
+  const [endTime, setEndTime] = useState(() => hhmm(linkedOs?.finishedAt));
 
   // Ao trocar de visita ativa, repopula os estados locais a partir da OS dela.
   useEffect(() => {
@@ -715,8 +752,17 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
     setConfirming(false);
     setPaymentStatus(linkedOs?.paymentStatus ?? 'pendente');
     setProductRows(defaultProductRows(appt, linkedOs));
+    setStartTime(hhmm(linkedOs?.startedAt));
+    setEndTime(hhmm(linkedOs?.finishedAt));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appt.id]);
+
+  // Ao iniciar, já sugere a hora atual como início — o técnico corrige se
+  // começou antes de abrir o app.
+  useEffect(() => {
+    if (started && !startTime) setStartTime(hhmm(new Date().toISOString()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [started]);
 
   // "Fechar ordem de serviço" pelo menu Gerenciar abre a confirmação daqui.
   useEffect(() => {
@@ -843,6 +889,36 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
           )}
           {canEditNow && (
             <>
+              {/* Horário real do serviço — sai na Ordem de Serviço */}
+              <div className="rounded-xl border border-border bg-muted/30 p-2.5">
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">Horário do serviço</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-[11px] text-muted-foreground">
+                    Início
+                    <input
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      onFocus={(e) => e.currentTarget.showPicker?.()}
+                      className="mt-0.5 w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-foreground focus:border-brand focus:outline-none"
+                    />
+                  </label>
+                  <label className="text-[11px] text-muted-foreground">
+                    Término
+                    <input
+                      type="time"
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      onFocus={(e) => e.currentTarget.showPicker?.()}
+                      className="mt-0.5 w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-foreground focus:border-brand focus:outline-none"
+                    />
+                  </label>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Em branco, o sistema usa a hora em que você finalizar.
+                </p>
+              </div>
+
               {/* Marcadores de pagamento — o técnico confirma após passar a máquina */}
               {hasPayableValue && (
                 <div className="rounded-xl border border-border bg-muted/30 p-2.5">
@@ -861,7 +937,7 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
                   <Button variant="outline" size="sm" onClick={() => setEditingAfterFinish(false)}>Cancelar</Button>
                   <Button
                     variant="primary" size="sm" leftIcon={<CheckCircle2 size={15} />}
-                    onClick={() => { onEditSave({ products: productRows, paymentStatus }); setEditingAfterFinish(false); }}
+                    onClick={() => { onEditSave({ products: productRows, paymentStatus, startTime, endTime }); setEditingAfterFinish(false); }}
                   >Salvar alterações</Button>
                 </div>
               ) : confirming ? (
@@ -872,7 +948,7 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
                     <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>Voltar</Button>
                     <Button
                       variant="primary" size="sm" leftIcon={<CheckCircle2 size={15} />}
-                      onClick={() => { onFinish({ signature, products: productRows, paymentStatus }); setConfirming(false); }}
+                      onClick={() => { onFinish({ signature, products: productRows, paymentStatus, startTime, endTime }); setConfirming(false); }}
                     >Confirmar</Button>
                   </div>
                 </div>

@@ -16,8 +16,9 @@ import { recurrenceSummaryLabel } from './recurrence';
 import {
   esc, fmtDate, fmtDateTime, header, licensesBlock, warrantyText, pestWarrantyText,
   pestValidityDate, responsibleSignatureLine, clientTechSignatures,
-  openPrint, serviceNames, osPests,
+  openPrint, serviceNames, osPests, appliedProducts, productReportLabel,
 } from './printDocuments';
+import { fmtTime } from './date';
 
 /** Valor do serviço — usa o valor explicitamente informado na OS; só recorre
  *  à soma do preço padrão dos serviços selecionados para OS antigas, criadas
@@ -37,6 +38,8 @@ export function printServiceOrder(so: ServiceOrder): void {
   const helperName = techIds[1] ? getUser(techIds[1])?.name : undefined;
   const sellerName = so.sellerId ? getUser(so.sellerId)?.name : undefined;
   const dataHora = fmtDateTime(so.startedAt ?? so.executionDate ?? so.createdAt);
+  const inicio = so.startedAt ? fmtTime(so.startedAt) : '—';
+  const termino = so.finishedAt ? fmtTime(so.finishedAt) : '—';
   const validade = so.validityDate ? fmtDate(so.validityDate) : '—';
   const recorrencia = recurrenceSummaryLabel(so.recurrence);
   const proximaVisita = so.recurrence?.enabled && so.nextVisitDate ? fmtDate(so.nextVisitDate) : undefined;
@@ -44,12 +47,12 @@ export function printServiceOrder(so: ServiceOrder): void {
   const pests = osPests(so);
   const valor = serviceValue(so);
 
-  const productRows = so.products.map((p) => {
+  const productRows = appliedProducts(so).map((p) => {
     const prod = getProduct(p.productId);
     const batch = currentBatch(prod);
     return `<tr>
       <td>${esc(prod?.chemicalGroup ?? '—')}</td>
-      <td>${esc(prod?.name)}</td>
+      <td>${esc(productReportLabel(prod))}</td>
       <td>${esc(prod?.activeIngredient ?? '—')}</td>
       <td>${esc(batch?.code ?? '—')}</td>
       <td>${esc(batch?.expiresAt ? fmtDate(batch.expiresAt) : '—')}</td>
@@ -84,6 +87,8 @@ export function printServiceOrder(so: ServiceOrder): void {
     <div class="cesrow">
       <span><strong>OS:</strong> #${esc(so.number)}</span>
       <span><strong>Data/Hora Execução:</strong> ${esc(dataHora)}</span>
+      <span><strong>Início:</strong> ${esc(inicio)}</span>
+      <span><strong>Término:</strong> ${esc(termino)}</span>
       <span><strong>Técnico:</strong> ${esc(techName)}</span>
       <span><strong>Ajudante:</strong> ${esc(helperName ?? '—')}</span>
       ${sellerName ? `<span><strong>Vendedor:</strong> ${esc(sellerName)}</span>` : ''}

@@ -577,18 +577,27 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     return [...map.entries()].map(([productId, qty]) => ({ productId, qty }));
   }, [serviceTypeIds, serviceTypes]);
 
-  // Produtos sugeridos entram automaticamente (união dos padrões dos serviços
-  // selecionados), mas o usuário pode ajustar quantidade, remover ou adicionar
-  // outro — não sobrescreve o que já foi editado manualmente, só acrescenta
-  // sugestões novas que ainda não estão na lista.
+  // Produtos sugeridos (união dos padrões dos serviços selecionados) entram
+  // automaticamente só enquanto o usuário não mexeu na lista.
+  //
+  // Antes a sugestão era reaplicada a cada recálculo, e isso corrompia a OS:
+  // ao reabrir para editar uma OS já executada — em que o técnico marcou em
+  // campo apenas os produtos que realmente usou — todos os produtos padrão do
+  // serviço voltavam para a lista e passavam a constar no Laudo/Certificado
+  // como aplicados. Depois que alguém edita (ou quando a OS já existe), a
+  // lista é do usuário e ninguém acrescenta nada por conta própria.
+  const productsTouched = useRef(false);
   useEffect(() => {
-    if (!suggestedProducts.length) return;
+    if (initial) productsTouched.current = true;
+  }, [initial]);
+  useEffect(() => {
+    if (productsTouched.current || !suggestedProducts.length) return;
     setProducts((prev) => {
       const existingIds = new Set(prev.map((p) => p.productId));
       const additions = suggestedProducts.filter((p) => !existingIds.has(p.productId));
       return additions.length ? [...prev, ...additions.map((p) => ({ productId: p.productId, qty: p.qty }))] : prev;
     });
-  }, [suggestedProducts]);
+  }, [suggestedProducts, initial]);
 
   // Preço padrão somado dos serviços selecionados — origem explícita da sugestão
   // de valor; o usuário sempre pode sobrescrever no campo "Valor do Serviço".
@@ -945,11 +954,11 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
         <Field label="Produtos previstos" hint="Sugeridos automaticamente pelos serviços selecionados — ajuste a quantidade, remova ou adicione outro">
           <MultiCombobox
             values={products.map((p) => p.productId)}
-            onChange={(ids) => setProducts((prev) => {
+            onChange={(ids) => { productsTouched.current = true; setProducts((prev) => {
               const kept = prev.filter((p) => ids.includes(p.productId));
               const addedIds = ids.filter((id) => !prev.some((p) => p.productId === id));
               return [...kept, ...addedIds.map((id) => ({ productId: id, qty: 1 }))];
-            })}
+            }); }}
             placeholder="Buscar produto…"
             options={allProducts.map((p) => ({ value: p.id, label: p.name, sub: p.unit }))}
           />

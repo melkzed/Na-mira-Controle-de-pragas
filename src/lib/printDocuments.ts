@@ -189,6 +189,18 @@ export function openPrint(title: string, body: string): void {
   w.document.open(); w.document.write(html); w.document.close();
 }
 
+/**
+ * Produtos que de fato entraram no atendimento.
+ *
+ * `ServiceOrder.products` guarda tudo que foi lançado na OS, incluindo o que
+ * veio do padrão do serviço e acabou não sendo aplicado (quantidade zerada).
+ * Documento entregue ao cliente só pode listar o que foi usado — declarar
+ * produto que não foi aplicado é informação errada num documento técnico.
+ */
+export function appliedProducts(so: ServiceOrder): ServiceOrder['products'] {
+  return so.products.filter((p) => Number(p.usedQty) > 0);
+}
+
 /** Como o produto é identificado no Laudo/Certificado — nome comercial ou
  *  princípio ativo, conforme configurado no cadastro (Product.reportLabel).
  *  Sem preferência definida ou sem princípio ativo cadastrado, cai no nome. */
@@ -223,7 +235,7 @@ export function printCertificate(so: ServiceOrder): void {
   const validade = certificateValidityText(so);
   const pests = osPests(so);
 
-  const productRows = so.products.map((p) => {
+  const productRows = appliedProducts(so).map((p) => {
     const prod = getProduct(p.productId);
     return `<tr><td>${esc(productReportLabel(prod))}</td><td>${esc(prod?.chemicalGroup ?? '—')}</td><td>${esc(prod?.registrationCode ?? '—')}</td><td class="r">${esc(p.usedQty)} ${esc(prod?.unit ?? '')}</td><td>${esc(prod?.dosage ?? '—')}</td></tr>`;
   }).join('');
@@ -272,7 +284,7 @@ export function printLaudo(so: ServiceOrder): void {
   const validade = so.validityDate ? fmtDate(so.validityDate) : '—';
   const pests = osPests(so);
 
-  const productRows = so.products.map((p) => {
+  const productRows = appliedProducts(so).map((p) => {
     const prod = getProduct(p.productId);
     const batch = currentBatch(prod);
     return `<tr>
