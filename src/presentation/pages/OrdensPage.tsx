@@ -706,7 +706,13 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       finishedAt: status === 'concluida' ? (initial?.finishedAt ?? now) : undefined,
       pestIds,
       pestValidity: pestIds.length ? pestIds.map((id) => ({ pestId: id, validityDate: pestValidity[id] ? dateInputToIso(pestValidity[id]) : undefined })) : undefined,
-      products: products.map((p) => ({ productId: p.productId, usedQty: p.qty })),
+      // Preserva o que o formulário não edita: `outOfStock` é marcado em campo
+      // quando o técnico usa além do saldo, e salvar a OS aqui não pode apagar
+      // esse alerta.
+      products: products.map((p) => {
+        const anterior = initial?.products.find((x) => x.productId === p.productId);
+        return { ...anterior, productId: p.productId, usedQty: p.qty };
+      }),
       paymentMethod: paymentMethod || undefined,
       serviceValue: serviceValue ? Number(serviceValue) : undefined,
       serviceValueConfirmed: serviceValue ? valueConfirmed : undefined,
