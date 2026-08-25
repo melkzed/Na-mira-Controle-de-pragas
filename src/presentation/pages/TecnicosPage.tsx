@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, ClipboardList, Package, PackageCheck, Plus, Trash2, Upload, Wrench } from 'lucide-react';
+import { Check, ClipboardList, Eye, EyeOff, KeyRound, Package, PackageCheck, Plus, Trash2, Upload, Wrench } from 'lucide-react';
 import { PageHeader, Stagger } from '../components/ui/misc';
 import { StatCard } from '../components/StatCard';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
@@ -22,6 +22,7 @@ import { SignaturePad } from '../components/SignaturePad';
 import { ImportDrawer } from '../components/ImportDrawer';
 import { techniciansImport } from '@/lib/importModules';
 import { toast } from '@/store/toastStore';
+import { setLocalPassword } from '@/store/localPasswords';
 import { functionErrorMessage, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { getProduct, appointmentsHistoryForTechnician, getCustomer, getServiceType, serviceOrdersForTechnician } from '@/application/repository';
 import { isEquipmentOverdue } from './EquipamentosPage';
@@ -30,26 +31,35 @@ import type { User, Equipment } from '@/domain/types';
 import type { EquipmentStatus } from '@/domain/enums';
 import { dateInputToIso, fmtDate } from '@/lib/date';
 
+/** Mínimo aceito pelo Supabase Auth — mesma regra da Edge Function. */
+const MIN_PASSWORD = 6;
+
 /**
  * Cria o técnico de verdade — usado tanto pelo formulário quanto pela
  * importação por planilha.
  *
  * Com o Supabase ligado, criar um LOGIN exige a Service Role Key, que nunca
  * pode ficar no navegador: quem cria é a Edge Function `convidar-tecnico`,
- * que convida a pessoa por e-mail e devolve o cadastro já gravado (ver
- * docs/ARCHITECTURE.md §3.4). Sem Supabase, grava só o cadastro local.
- * Lança erro com a mensagem que o usuário precisa ler.
+ * que devolve o cadastro já gravado (ver docs/ARCHITECTURE.md §3.4). A senha
+ * definida pelo administrador vai no corpo da requisição e é guardada só pelo
+ * Supabase Auth (que salva apenas o hash) — nada dela fica no navegador. Sem
+ * senha, a função cai no convite por e-mail.
+ *
+ * Sem Supabase, grava só o cadastro local (a senha fica no `localPasswords`,
+ * que existe apenas na demonstração). Lança erro com a mensagem que o usuário
+ * precisa ler.
  */
 async function createTechnician(input: {
-  id: string; name: string; email: string; phone?: string; isActive?: boolean; fieldAppAccess?: boolean;
+  id: string; name: string; email: string; phone?: string; password?: string;
+  isActive?: boolean; fieldAppAccess?: boolean;
 }): Promise<string> {
-  const { name, email, phone, isActive = true, fieldAppAccess = true } = input;
+  const { name, email, phone, password, isActive = true, fieldAppAccess = true } = input;
   if (supabaseEnabled && supabase) {
     const { data, error } = await supabase.functions.invoke('convidar-tecnico', {
-      body: { name, email, phone, fieldAppAccess, redirectTo: `${window.location.origin}/definir-senha` },
+      body: { name, email, phone, password, fieldAppAccess, redirectTo: `${window.location.origin}/definir-senha` },
     });
     if (error || data?.error) {
-      throw new Error(await functionErrorMessage(error, data, 'Não foi possível convidar o técnico — tente novamente.'));
+      throw new Error(await functionErrorMessage(error, data, 'Não foi possível cadastrar o técnico — tente novamente.'));
     }
     const id = String(data?.user?.id ?? input.id);
     // Estoque próprio do técnico — sem isso ele fica sem onde guardar
@@ -60,8 +70,23 @@ async function createTechnician(input: {
   useUsersStore.getState().add({
     id: input.id, orgId: currentOrgId(), name, email, phone, role: 'tecnico', isActive, fieldAppAccess,
   });
+  if (password) setLocalPassword(email, password);
   ensureTechnicianStockLocation(input.id, name);
   return input.id;
+}
+
+/** Troca a senha de um técnico já cadastrado (o administrador define a nova). */
+async function resetTechnicianPassword(user: User, password: string): Promise<void> {
+  if (supabaseEnabled && supabase) {
+    const { data, error } = await supabase.functions.invoke('convidar-tecnico', {
+      body: { action: 'redefinir_senha', userId: user.id, password },
+    });
+    if (error || data?.error) {
+      throw new Error(await functionErrorMessage(error, data, 'Não foi possível alterar a senha — tente novamente.'));
+    }
+    return;
+  }
+  setLocalPassword(user.email, password);
 }
 
 const fmtDateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
@@ -247,6 +272,9 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
   const [isActive, setIsActive] = useState(true);
   const [fieldAppAccess, setFieldAppAccess] = useState(true);
   const [signature, setSignature] = useState<string | undefined>();
+  const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -256,16 +284,39 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
     setName(editing?.name ?? ''); setEmail(editing?.email ?? ''); setPhone(editing?.phone ?? '');
     setIsActive(editing?.isActive ?? true); setFieldAppAccess(editing?.fieldAppAccess ?? true); setTouched(false);
     setSignature(editing ? savedSignatures[editing.id] : undefined);
+    setPassword(''); setPasswordConfirm(''); setShowPassword(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing]);
 
+  // Na edição a senha é opcional (só preenche quem quer trocar); no cadastro
+  // novo é o administrador quem define a senha de acesso do técnico.
+  const passwordTooShort = password.length > 0 && password.length < MIN_PASSWORD;
+  const passwordMismatch = password !== passwordConfirm;
+  const passwordError = (!editing && !password.trim() && 'Defina a senha de acesso do técnico.')
+    || (passwordTooShort && `A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.`)
+    || (password && passwordMismatch && 'As senhas não coincidem.')
+    || '';
+
   const submit = async () => {
     setTouched(true);
-    if (!name.trim() || !email.trim()) return;
+    if (!name.trim() || !email.trim() || passwordError) return;
     if (editing) {
       update(editing.id, { name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, isActive, fieldAppAccess });
       setUserSignature(editing.id, signature);
-      toast('Técnico atualizado.', { tone: 'success' });
+      if (password) {
+        setSaving(true);
+        try {
+          await resetTechnicianPassword(editing, password);
+          toast('Técnico atualizado e senha alterada. Avise a nova senha ao técnico.', { tone: 'success' });
+        } catch (e) {
+          toast(e instanceof Error ? e.message : 'Não foi possível alterar a senha.', { tone: 'danger', duration: 9000 });
+          setSaving(false);
+          return;
+        }
+        setSaving(false);
+      } else {
+        toast('Técnico atualizado.', { tone: 'success' });
+      }
       onClose();
       return;
     }
@@ -276,17 +327,13 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim() || undefined,
+        password,
         isActive,
         fieldAppAccess,
       });
       // Só depois de criado existe o id para vincular a assinatura do formulário.
       if (signature) setUserSignature(newId, signature);
-      toast(
-        supabaseEnabled
-          ? 'Convite enviado! O técnico recebe um e-mail para escolher a própria senha.'
-          : 'Técnico cadastrado. Login com a senha demo (namira123).',
-        { tone: 'success' },
-      );
+      toast('Técnico cadastrado! Passe para ele o e-mail e a senha que você definiu.', { tone: 'success' });
       onClose();
     } catch (e) {
       // A função explica o motivo (sem cadastro, papel sem permissão,
@@ -317,13 +364,47 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
           <input type="checkbox" checked={fieldAppAccess} onChange={(e) => setFieldAppAccess(e.target.checked)} className="h-4 w-4 rounded border-border" id="tec-acesso" />
           <label htmlFor="tec-acesso" className="text-sm text-foreground">Permitir acesso ao aplicativo de campo</label>
         </div>
-        {!editing && (
-          <p className="text-xs text-muted-foreground">
-            {supabaseEnabled
-              ? 'Ao cadastrar, o técnico recebe um e-mail para escolher a própria senha e acessar o sistema.'
-              : 'Senha de acesso: demonstração (namira123), a mesma dos demais usuários de exemplo.'}
+        <div className="rounded-xl border border-border bg-muted/30 p-3">
+          <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+            <KeyRound size={13} /> Senha de acesso
           </p>
-        )}
+          <p className="mb-3 text-xs text-muted-foreground">
+            {editing
+              ? 'Preencha só se quiser trocar a senha deste técnico. Deixe em branco para manter a atual.'
+              : 'Você define a senha; passe-a ao técnico para ele entrar no aplicativo de campo. Para trocá-la depois, basta editar o cadastro dele aqui.'}
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={editing ? 'Nova senha' : 'Senha'} required={!editing}>
+              <div className="relative">
+                <Input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
+                  placeholder={`Mínimo de ${MIN_PASSWORD} caracteres`}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </Field>
+            <Field label="Confirmar senha" required={!editing}>
+              <Input
+                type={showPassword ? 'text' : 'password'}
+                value={passwordConfirm}
+                onChange={(e) => setPasswordConfirm(e.target.value)}
+                autoComplete="new-password"
+              />
+            </Field>
+          </div>
+          {touched && passwordError && <span className="mt-1 block text-xs text-danger">{passwordError}</span>}
+        </div>
 
         <div className="border-t border-border pt-4">
           <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Assinatura do técnico</p>

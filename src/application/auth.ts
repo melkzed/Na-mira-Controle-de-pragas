@@ -10,6 +10,7 @@
 import type { User } from '@/domain/types';
 import type { UserRole } from '@/domain/enums';
 import { useUsersStore } from '@/store/entityStores';
+import { localPassword } from '@/store/localPasswords';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 
 /** Senha única de demonstração — vale só no modo standalone (sem Supabase). */
@@ -80,7 +81,10 @@ export async function authenticate(email: string, password: string): Promise<Aut
   // Modo standalone (sem Supabase configurado): valida contra o seed local.
   const found = useUsersStore.getState().items.find((u) => u.email.toLowerCase() === normalized && u.isActive);
   if (!found) return { user: null, error: 'invalid_email' };
-  if (password !== DEMO_PASSWORD) return { user: null, error: 'invalid_password' };
+  // Técnico cadastrado com senha definida pelo administrador usa a senha
+  // dele; os usuários de exemplo continuam na senha de demonstração.
+  const expected = localPassword(normalized) ?? DEMO_PASSWORD;
+  if (password !== expected) return { user: null, error: 'invalid_password' };
   return { user: found };
 }
 

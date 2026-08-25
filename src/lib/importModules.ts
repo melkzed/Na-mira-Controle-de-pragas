@@ -404,7 +404,7 @@ export const techniciansImport: ImportSpec<User> = {
   requiredFields: ['name', 'email'],
   matchField: 'email',
   keyOf: (u) => u.email,
-  note: 'Com o sistema conectado ao banco, cada técnico importado recebe um e-mail para criar a própria senha — por isso o e-mail é obrigatório.',
+  note: 'A planilha não traz senha: cada técnico importado recebe um e-mail para criar a própria senha (por isso o e-mail é obrigatório). Para definir a senha você mesmo, cadastre pelo botão "Novo técnico".',
   fields: [
     { key: 'name', label: 'Nome', aliases: ['nome', 'tecnico', 'funcionario', 'nome completo'], sample: ['Diego Martins', 'Ana Ribeiro'] },
     { key: 'email', label: 'E-mail', aliases: ['email', 'e mail'], sample: ['diego@namira.com', 'ana@namira.com'] },
