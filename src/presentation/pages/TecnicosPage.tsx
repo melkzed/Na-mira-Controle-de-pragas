@@ -20,7 +20,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { centralStockLocationId, ensureTechnicianStockLocation } from '@/store/stockLocations';
 import { SignaturePad } from '../components/SignaturePad';
 import { toast } from '@/store/toastStore';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { functionErrorMessage, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { getProduct, appointmentsHistoryForTechnician, getCustomer, getServiceType, serviceOrdersForTechnician } from '@/application/repository';
 import { isEquipmentOverdue } from './EquipamentosPage';
 import { EQUIPMENT_STATUS_META as statusMeta } from '@/domain/equipmentMeta';
@@ -235,7 +235,13 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
       });
       setSaving(false);
       if (error || data?.error) {
-        toast(data?.error ?? 'Não foi possível convidar o técnico — tente novamente.', { tone: 'danger' });
+        // A função explica o motivo (sem cadastro, papel sem permissão,
+        // e-mail repetido…) no corpo da resposta — mostra isso, não um
+        // "non-2xx status code" genérico.
+        toast(await functionErrorMessage(error, data, 'Não foi possível convidar o técnico — tente novamente.'), {
+          tone: 'danger',
+          duration: 9000,
+        });
         return;
       }
       // A função devolve o cadastro já criado — só aí existe o id para
