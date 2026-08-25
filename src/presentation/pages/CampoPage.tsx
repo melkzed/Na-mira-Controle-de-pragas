@@ -31,6 +31,7 @@ import { fmtTime } from '@/lib/date';
 import { cn, formatDocument } from '@/lib/utils';
 import { formatAddress, googleMapsRoute, googleMapsRouteToAddress } from '@/lib/geo';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
+import { VisitActionsMenu } from '../components/field/VisitActions';
 import { ensureTechnicianStockLocation, technicianStockLocationId } from '@/store/stockLocations';
 
 /** Linha de produto aplicado em campo — quantidade e se foi de fato usado. */
@@ -150,6 +151,9 @@ export function CampoPage() {
 
   const [detailAppt, setDetailAppt] = useState<Appointment | null>(null);
   const [navAppt, setNavAppt] = useState<Appointment | null>(null);
+  // "Fechar ordem de serviço" no menu Gerenciar abre o mesmo fluxo de
+  // finalização que vive no cartão da visita — o contador é o gatilho.
+  const [finishSignal, setFinishSignal] = useState(0);
 
   const doneCount = appts.filter((a) => a.status === 'finalizado').length;
 
@@ -174,6 +178,9 @@ export function CampoPage() {
     updateAppt(active.id, { technicianSignature: signature });
     setStatus(active.id, 'finalizado');
     if (so) {
+      // A assinatura do cliente é colhida no menu Gerenciar; é ela que sai
+      // no PDF da OS, então precisa ser copiada para lá ao fechar.
+      const customerSignature = active.customerSignature ?? so.customerSignature;
       const technicianIds = so.technicianIds?.length ? so.technicianIds : [so.technicianId ?? techId];
       const outOfStock = reconcileTechStock(technicianIds, techId, so.products, products);
       updateOs(so.id, {
@@ -182,6 +189,9 @@ export function CampoPage() {
         products: products.filter((p) => p.used).map((p) => ({ productId: p.productId, usedQty: p.qty, outOfStock: outOfStock.has(p.productId) || undefined })),
         paymentStatus,
         paymentDate: paymentStatus === 'pago' ? now : so.paymentDate,
+        technicianSignature: signature,
+        customerSignature,
+        hasCustomerSignature: !!customerSignature,
       });
       if (outOfStock.size) toast('Alguns produtos foram usados além do estoque disponível — sinalizado na OS.', { tone: 'warning' });
       logChange('conclusão', 'ordem de serviço', `OS #${so.number} finalizada em campo por ${techName} em ${new Date(now).toLocaleString('pt-BR')}`, so.id);
@@ -247,6 +257,19 @@ export function CampoPage() {
             onFinish={handleFinish}
             onEditSave={handleEditSave}
             onPhotosChange={(photos) => updateAppt(active.id, { photos })}
+            finishSignal={finishSignal}
+            actions={
+              <VisitActionsMenu
+                appt={active}
+                techId={techId}
+                techName={techName}
+                onFinishRequest={() => {
+                  if (active.status === 'finalizado') { toast('Esta visita já foi finalizada.', { tone: 'info' }); return; }
+                  if (active.status !== 'em_atendimento') { toast('Inicie o atendimento antes de fechar a ordem de serviço.', { tone: 'warning' }); return; }
+                  setFinishSignal((n) => n + 1);
+                }}
+              />
+            }
           />
         )}
 
@@ -659,7 +682,7 @@ function HeaderStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEditSave, onPhotosChange }: {
+function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEditSave, onPhotosChange, finishSignal, actions }: {
   appt: Appointment;
   techId: string;
   onNavigate: () => void;
@@ -668,6 +691,9 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
   onFinish: (data: FieldSaveData) => void;
   onEditSave: (data: FieldSaveData) => void;
   onPhotosChange: (photos: ServiceOrderPhoto[]) => void;
+  /** Muda quando o menu Gerenciar pede para fechar a OS. */
+  finishSignal: number;
+  actions: React.ReactNode;
 }) {
   const cust = getCustomer(appt.customerId);
   const st = getServiceType(appt.serviceTypeId);
@@ -692,6 +718,11 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appt.id]);
 
+  // "Fechar ordem de serviço" pelo menu Gerenciar abre a confirmação daqui.
+  useEffect(() => {
+    if (finishSignal > 0) setConfirming(true);
+  }, [finishSignal]);
+
   // Antes de "Iniciar atendimento" tudo fica travado; depois de finalizado,
   // só volta a ficar editável se o técnico entrar no modo de edição — as
   // fotos servem de "check" de que o atendimento realmente está em curso.
@@ -701,9 +732,12 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
 
   return (
     <Card hover className="overflow-hidden border-brand/30">
-      <div className="flex items-center justify-between border-b border-border bg-brand-soft/30 px-4 py-2">
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-brand-soft/30 px-4 py-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-brand">Próxima visita</p>
-        <PriorityBadge priority={appt.priority} />
+        <div className="flex items-center gap-2">
+          <PriorityBadge priority={appt.priority} />
+          {actions}
+        </div>
       </div>
       <CardBody className="space-y-4">
         <div className="flex items-start justify-between gap-3">

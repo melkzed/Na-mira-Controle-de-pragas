@@ -212,6 +212,16 @@ export interface TrapInspection {
   notes?: string;
 }
 
+/** Um ponto conferido pelo técnico na verificação do local (MIP) — o que foi
+ *  olhado no imóvel e como estava. Fica na visita, junto com fotos e
+ *  assinaturas, e alimenta a conferência antes de fechar a OS. */
+export interface VerificationItem {
+  /** Ponto verificado (ex.: "Cozinha", "Ralos e caixas de gordura"). */
+  point: string;
+  result: 'conforme' | 'nao_conforme' | 'nao_aplica';
+  notes?: string;
+}
+
 // ── Não conformidade ────────────────────────────────────────────────────────
 export type NonConformityCategory =
   | 'fresta'
@@ -467,6 +477,11 @@ export interface Appointment {
   photos?: ServiceOrderPhoto[];
   /** Assinatura eletrônica do técnico, capturada ao finalizar a visita. */
   technicianSignature?: string;
+  /** Assinatura eletrônica de quem recebeu o serviço, capturada em campo.
+   *  Ao fechar a OS é copiada para ela (é o que sai no PDF). */
+  customerSignature?: string;
+  /** Verificação do local feita em campo — ver `VerificationItem`. */
+  verification?: VerificationItem[];
   routeOrder?: number;
   products: AppointmentProduct[];
   /** Agrupa as ocorrências de uma mesma recorrência (cada uma é independente). */
