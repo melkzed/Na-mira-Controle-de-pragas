@@ -13,3 +13,31 @@ export const supabase: SupabaseClient | null = supabaseEnabled
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
     })
   : null;
+
+/**
+ * Mensagem de erro real de uma Edge Function.
+ *
+ * `supabase.functions.invoke` devolve `data: null` sempre que a função
+ * responde com status fora do 2xx — ou seja, justamente quando ela explicou
+ * o motivo (403 "sem permissão", 409 "e-mail já cadastrado"…). O corpo da
+ * resposta fica escondido em `error.context`, que é o `Response` original.
+ * Sem isso o usuário só vê "Edge Function returned a non-2xx status code" e
+ * ninguém descobre o que houve de verdade.
+ */
+export async function functionErrorMessage(error: unknown, data: unknown, fallback: string): Promise<string> {
+  const fromData = (data as { error?: string } | null)?.error;
+  if (fromData) return fromData;
+  const context = (error as { context?: unknown } | null)?.context;
+  if (context instanceof Response) {
+    try {
+      const body = await context.clone().json();
+      if (body?.error) return String(body.error);
+    } catch {
+      try {
+        const text = await context.clone().text();
+        if (text.trim()) return text.trim();
+      } catch { /* corpo já consumido — cai no fallback */ }
+    }
+  }
+  return fallback;
+}

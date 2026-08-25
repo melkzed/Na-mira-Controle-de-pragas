@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Award, Building2, Download, ExternalLink, FileText, Mail, MapPin, Pencil, Phone, Plus, Search, Trash2, User } from 'lucide-react';
+import { Award, Building2, Download, ExternalLink, FileText, Mail, MapPin, Pencil, Phone, Plus, Search, Trash2, Upload, User } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -10,6 +10,7 @@ import { Avatar } from '../components/ui/Avatar';
 import { Drawer } from '../components/ui/Drawer';
 import { Input } from '../components/ui/Field';
 import { CustomerForm } from '../components/CustomerForm';
+import { ImportDrawer } from '../components/ImportDrawer';
 import { ServiceOrderStatusBadge } from '../components/StatusBadge';
 import { TrapsPanel } from '../components/client/TrapsPanel';
 import { useCustomersStore } from '@/store/customersStore';
@@ -19,6 +20,7 @@ import { getPest, getProduct, getServiceType, getUser, serviceOrdersForCustomer 
 import type { Customer, ContractStatus } from '@/domain/types';
 import { formatDocument } from '@/lib/utils';
 import { downloadCsv } from '@/lib/export';
+import { customersImport } from '@/lib/importModules';
 import { fmtDate } from '@/lib/date';
 import { printServiceOrder } from '@/lib/printOrder';
 import { printCertificate, printLaudo } from '@/lib/printDocuments';
@@ -29,12 +31,13 @@ const CONTRACT_STATUS_LABEL: Record<ContractStatus, string> = {
 
 export function ClientesPage() {
   const [params] = useSearchParams();
-  const { customers, remove } = useCustomersStore();
+  const { customers, add, update, remove } = useCustomersStore();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Customer | null>(
     params.get('id') ? customers.find((c) => c.id === params.get('id')) ?? null : null,
   );
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
 
   const filtered = useMemo(
@@ -66,6 +69,7 @@ export function ClientesPage() {
         description={`${customers.length} clientes cadastrados`}
         actions={
           <>
+            <Button variant="outline" leftIcon={<Upload size={16} />} onClick={() => setImportOpen(true)}>Importar planilha</Button>
             <Button variant="outline" leftIcon={<Download size={16} />} onClick={exportCsv}>Exportar CSV</Button>
             <Button leftIcon={<Plus size={16} />} onClick={openNew}>Novo cliente</Button>
           </>
@@ -126,6 +130,15 @@ export function ClientesPage() {
         initial={editing}
         onClose={() => setFormOpen(false)}
         onSaved={(c, isNew) => { setFormOpen(false); setSelected(c); logChange(isNew ? 'criação' : 'alteração', 'cliente', `${isNew ? 'Cliente cadastrado' : 'Cadastro alterado'} · ${c.name}`, c.id); }}
+      />
+
+      <ImportDrawer
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        spec={customersImport}
+        items={customers}
+        add={(c) => { const saved = add(c); logChange('criação', 'cliente', `Cliente importado de planilha · ${saved.name}`, saved.id); }}
+        update={update}
       />
     </div>
   );

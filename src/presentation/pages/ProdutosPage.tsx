@@ -14,10 +14,9 @@ import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
 import type { Batch, Product } from '@/domain/types';
 import { formatCurrency, formatNumber } from '@/lib/utils';
-import { downloadCsv, downloadTextFile } from '@/lib/export';
-import { normalizeHeader, parseSheet, readSheetFile } from '@/lib/importSheet';
-import { previewProductImport, productTemplateCsv, toProductPatch, PRODUCT_FIELD_LABEL, type ProductField, type ProductImportPreview } from '@/lib/importProducts';
-import { toast } from '@/store/toastStore';
+import { downloadCsv } from '@/lib/export';
+import { ImportDrawer } from '../components/ImportDrawer';
+import { productsImport } from '@/lib/importModules';
 import { currentBatch, expiryLevel } from '@/lib/batches';
 import { fmtDate } from '@/lib/date';
 
@@ -151,218 +150,16 @@ export function ProdutosPage() {
         onSave={(p, isNew) => { if (isNew) add(p); else update(p.id, p); setFormOpen(false); }}
       />
 
-      <ImportProductsDrawer open={importOpen} onClose={() => setImportOpen(false)} />
+      <ImportDrawer
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        spec={productsImport}
+        items={products}
+        // Categoria padrão para o produto importado — a planilha não traz essa coluna.
+        add={(p) => add({ ...p, categoryId: p.categoryId ?? seed.productCategories[0]?.id })}
+        update={update}
+      />
     </div>
-  );
-}
-
-/**
- * Importação de produtos por planilha. Lê o arquivo, mostra o que entendeu
- * (colunas reconhecidas, ignoradas, quantos produtos são novos e quantos já
- * existem) e só grava depois da confirmação — nada é alterado antes disso.
- */
-function ImportProductsDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { items: products, add, update } = useProductsStore();
-  const [fileName, setFileName] = useState('');
-  const [preview, setPreview] = useState<ProductImportPreview | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [updateExisting, setUpdateExisting] = useState(true);
-
-  useEffect(() => {
-    if (!open) { setFileName(''); setPreview(null); setError(null); setUpdateExisting(true); }
-  }, [open]);
-
-  const pick = async (file: File) => {
-    setError(null); setPreview(null); setFileName(file.name);
-    try {
-      const sheet = parseSheet(await readSheetFile(file));
-      if (!sheet || !sheet.rows.length) {
-        setError('Não foi possível ler a planilha. Se for um .xlsx do Excel, salve como CSV e tente de novo.');
-        return;
-      }
-      const p = previewProductImport(sheet, products);
-      if (!p.mappedFields.includes('name')) {
-        setError('A planilha precisa ter uma coluna "Produto" (ou "Nome") com o nome de cada produto.');
-        return;
-      }
-      setPreview(p);
-    } catch {
-      setError('Falha ao ler o arquivo. Verifique se é uma planilha (.xls exportado, .csv) e tente novamente.');
-    }
-  };
-
-  /** Corrige um valor lido da planilha antes de gravar. Mexer no nome refaz a
-   *  checagem de duplicado — o produto casado passa a ser outro (ou nenhum). */
-  const editCell = (rowIdx: number, field: ProductField, value: string) => {
-    setPreview((prev) => {
-      if (!prev) return prev;
-      const rows = prev.rows.map((r, i) => {
-        if (i !== rowIdx) return r;
-        const values = { ...r.values, [field]: value };
-        if (field !== 'name') return { ...r, values };
-        const match = products.find((p) => normalizeHeader(p.name) === normalizeHeader(value));
-        return { ...r, values, existingId: match?.id };
-      });
-      return { ...prev, rows };
-    });
-  };
-
-  const removeRow = (rowIdx: number) =>
-    setPreview((prev) => (prev ? { ...prev, rows: prev.rows.filter((_, i) => i !== rowIdx) } : prev));
-
-  const downloadTemplate = () => downloadTextFile('modelo-produtos.csv', productTemplateCsv());
-
-  // Linhas sem nome (apagado na edição) não podem ser gravadas.
-  const validRows = preview?.rows.filter((r) => (r.values.name ?? '').trim()) ?? [];
-  const novos = validRows.filter((r) => !r.existingId).length;
-  const existentes = validRows.filter((r) => r.existingId).length;
-  const totalGravar = novos + (updateExisting ? existentes : 0);
-
-  const confirm = () => {
-    if (!preview) return;
-    let criados = 0;
-    let atualizados = 0;
-    validRows.forEach((r) => {
-      const patch = toProductPatch(r.values);
-      if (r.existingId) {
-        if (!updateExisting) return;
-        update(r.existingId, patch);
-        atualizados += 1;
-      } else {
-        add({
-          id: uid('prod'), orgId: currentOrgId(),
-          name: patch.name ?? '', unit: patch.unit ?? 'un', minQuantity: 0, price: patch.price ?? 0,
-          isRegulated: false, isActive: true, reportLabel: 'principio_ativo',
-          categoryId: seed.productCategories[0]?.id,
-          ...patch,
-        });
-        criados += 1;
-      }
-    });
-    toast(`Importação concluída: ${criados} produto(s) criado(s)${atualizados ? `, ${atualizados} atualizado(s)` : ''}.`, { tone: 'success' });
-    onClose();
-  };
-
-  return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      title="Importar produtos de planilha"
-      subtitle="Confira o que será importado antes de confirmar"
-      wide
-      footer={
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">
-            {preview ? `${totalGravar} produto(s) serão gravados` : 'Selecione um arquivo para começar'}
-          </span>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button onClick={confirm} disabled={!preview || totalGravar === 0} leftIcon={<Check size={15} />}>Importar</Button>
-          </div>
-        </div>
-      }
-    >
-      <div className="space-y-4">
-        <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 p-8 text-center transition hover:border-brand/50 hover:bg-brand-soft/20">
-          <Upload size={22} className="text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">{fileName || 'Escolher planilha'}</span>
-          <span className="text-xs text-muted-foreground">Planilha exportada (.xls), .csv ou .txt — colunas em qualquer ordem</span>
-          <input
-            type="file"
-            accept=".xls,.xlsx,.csv,.txt,.html,text/csv,text/html,application/vnd.ms-excel"
-            className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) pick(f); e.target.value = ''; }}
-          />
-        </label>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/20 p-3">
-          <p className="text-xs text-muted-foreground">
-            Não tem uma planilha pronta? Baixe o modelo, preencha e importe aqui.
-          </p>
-          <Button variant="outline" size="sm" leftIcon={<Download size={14} />} onClick={downloadTemplate}>Baixar planilha modelo</Button>
-        </div>
-
-        {error && <div className="rounded-xl border border-danger/30 bg-danger-soft/30 p-3 text-sm text-danger">{error}</div>}
-
-        {preview && (
-          <>
-            <div className="grid grid-cols-3 gap-3">
-              <Info label="Novos produtos" value={String(novos)} />
-              <Info label="Já cadastrados" value={String(existentes)} />
-              <Info label="Linhas ignoradas" value={String(preview.skipped)} />
-            </div>
-
-            <div className="rounded-xl border border-border bg-muted/30 p-3 text-xs">
-              <p className="text-foreground"><span className="font-semibold">Colunas reconhecidas:</span> {preview.mappedFields.map((f) => PRODUCT_FIELD_LABEL[f]).join(', ')}</p>
-              {preview.ignoredHeaders.length > 0 && (
-                <p className="mt-1 text-muted-foreground"><span className="font-semibold">Ignoradas:</span> {preview.ignoredHeaders.join(', ')}</p>
-              )}
-            </div>
-
-            {existentes > 0 && (
-              <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3">
-                <input type="checkbox" checked={updateExisting} onChange={(e) => setUpdateExisting(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-border" />
-                <span>
-                  <span className="block text-sm font-medium text-foreground">Atualizar produtos já cadastrados</span>
-                  <span className="block text-xs text-muted-foreground">{existentes} produto(s) da planilha já existem (mesmo nome). Desmarque para importar somente os novos.</span>
-                </span>
-              </label>
-            )}
-
-            <div>
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Pré-visualização</p>
-                <p className="text-xs text-muted-foreground">Clique em qualquer campo para corrigir antes de importar.</p>
-              </div>
-              <div className="max-h-80 overflow-auto rounded-xl border border-border">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-muted">
-                    <tr>
-                      <th className="px-2 py-1.5 text-left font-semibold text-muted-foreground">Situação</th>
-                      {preview.mappedFields.map((f) => <th key={f} className="px-2 py-1.5 text-left font-semibold text-muted-foreground">{PRODUCT_FIELD_LABEL[f]}</th>)}
-                      <th className="w-8 px-2 py-1.5" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.rows.map((r, i) => (
-                      <tr key={i} className="border-t border-border/60">
-                        <td className="px-2 py-1.5">
-                          <Badge tone={r.existingId ? 'warning' : 'success'} className="text-[10px]">{r.existingId ? 'Atualiza' : 'Novo'}</Badge>
-                        </td>
-                        {preview.mappedFields.map((f) => (
-                          <td key={f} className="px-1 py-1">
-                            <input
-                              value={r.values[f] ?? ''}
-                              onChange={(e) => editCell(i, f, e.target.value)}
-                              aria-label={`${PRODUCT_FIELD_LABEL[f]} da linha ${i + 1}`}
-                              className="w-full min-w-24 rounded border border-transparent bg-transparent px-1.5 py-1 text-foreground transition hover:border-border focus:border-brand focus:bg-surface focus:outline-none"
-                            />
-                          </td>
-                        ))}
-                        <td className="px-1 py-1">
-                          <button
-                            type="button"
-                            onClick={() => removeRow(i)}
-                            aria-label={`Remover a linha ${i + 1} da importação`}
-                            title="Não importar esta linha"
-                            className="rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-danger"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {preview.rows.length === 0 && (
-                <p className="mt-2 text-xs text-muted-foreground">Nenhuma linha restante — escolha outra planilha.</p>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-    </Drawer>
   );
 }
 

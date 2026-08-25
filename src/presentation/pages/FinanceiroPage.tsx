@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   ArrowLeftRight, Banknote, Check, CheckCheck, Clock, Landmark, Lock, Paperclip,
-  PiggyBank, Plus, Repeat, ThumbsDown, ThumbsUp, Trash2, TriangleAlert,
+  PiggyBank, Plus, Repeat, ThumbsDown, ThumbsUp, Trash2, TriangleAlert, Upload,
 } from 'lucide-react';
 import { PageHeader, Stagger } from '../components/ui/misc';
 import { StatCard } from '../components/StatCard';
@@ -21,6 +21,8 @@ import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
 import { toast } from '@/store/toastStore';
 import { Drawer } from '../components/ui/Drawer';
+import { ImportDrawer } from '../components/ImportDrawer';
+import { bankAccountsImport, financeImport } from '@/lib/importModules';
 import { Field, Input, Select } from '../components/ui/Field';
 import type { BankAccount, Check as CheckEntity, FinanceEntry, LoanInvestment, PaymentMethodKind, RecurringPayable, TaxKind } from '@/domain/types';
 import { FinanceEntryStatus, RECURRENCE_FREQ_LABEL, type FinanceEntryType, type RecurrenceFreq } from '@/domain/enums';
@@ -153,6 +155,7 @@ function VisaoGeralTab() {
   const { items: entries, add, update } = useFinanceStore();
   const [subTab, setSubTab] = useState<'receber' | 'pagar'>('receber');
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [payDialogEntries, setPayDialogEntries] = useState<FinanceEntry[] | null>(null);
 
@@ -329,6 +332,7 @@ function VisaoGeralTab() {
             {subTab === 'pagar' && payableSelected.length > 0 && (
               <Button size="sm" leftIcon={<CheckCheck size={14} />} onClick={() => setPayDialogEntries(payableSelected)}>Pagar selecionados ({payableSelected.length})</Button>
             )}
+            <Button variant="outline" leftIcon={<Upload size={16} />} onClick={() => setImportOpen(true)}>Importar planilha</Button>
             <Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Novo lançamento</Button>
           </div>
         </div>
@@ -338,6 +342,9 @@ function VisaoGeralTab() {
       <RecurringPayablesPanel />
 
       <FinanceForm open={formOpen} defaultType={subTab === 'receber' ? 'receita' : 'despesa'} onClose={() => setFormOpen(false)} onSave={(e) => { add(e); setFormOpen(false); }} />
+      {/* Lançamento não tem chave natural (a mesma despesa se repete todo mês),
+          então a importação sempre cria — nunca sobrescreve o que já existe. */}
+      <ImportDrawer open={importOpen} onClose={() => setImportOpen(false)} spec={financeImport} items={entries} add={add} update={update} createOnly />
       <PaymentDialog
         entries={payDialogEntries}
         onClose={() => { setPayDialogEntries(null); setSelectedIds([]); }}
@@ -659,8 +666,10 @@ function SummaryRow({ label, value, tone, bold }: { label: string; value: number
 function BancosTab() {
   const accounts = useBankAccountsStore((s) => s.items);
   const addAccount = useBankAccountsStore((s) => s.add);
+  const updateAccount = useBankAccountsStore((s) => s.update);
   const transactions = useBankTransactionsStore((s) => s.transactions);
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [statementAccount, setStatementAccount] = useState<BankAccount | null>(null);
   const [depositAccount, setDepositAccount] = useState<BankAccount | null>(null);
   const [transferAccount, setTransferAccount] = useState<BankAccount | null>(null);
@@ -676,7 +685,8 @@ function BancosTab() {
         <StatCard label="Movimentações não conciliadas" value={naoConciliados} icon="ArrowLeftRight" tone={naoConciliados > 0 ? 'warning' : 'success'} />
       </Stagger>
 
-      <div className="mb-3 flex justify-end">
+      <div className="mb-3 flex justify-end gap-2">
+        <Button variant="outline" leftIcon={<Upload size={16} />} onClick={() => setImportOpen(true)}>Importar planilha</Button>
         <Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Nova conta bancária</Button>
       </div>
 
@@ -707,6 +717,7 @@ function BancosTab() {
       <DepositDialog account={depositAccount} onClose={() => setDepositAccount(null)} />
       <TransferDialog account={transferAccount} accounts={accounts} onClose={() => setTransferAccount(null)} />
       <StatementDrawer account={statementAccount} onClose={() => setStatementAccount(null)} />
+      <ImportDrawer open={importOpen} onClose={() => setImportOpen(false)} spec={bankAccountsImport} items={accounts} add={addAccount} update={updateAccount} />
     </div>
   );
 }

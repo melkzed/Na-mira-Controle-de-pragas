@@ -6,9 +6,12 @@
  *    sistemas web exporta quando o botão diz "Excel"; o arquivo não é um
  *    binário do Excel, é um `<table>`. Foi o caso da planilha de produtos.
  *  - **CSV / TSV / texto separado por `;`** — separador detectado sozinho.
+ *  - **XML** — tanto o "XML Planilha 2003" do Excel (SpreadsheetML: Workbook →
+ *    Worksheet → Table → Row → Cell) quanto XML genérico de sistema, em que
+ *    cada registro é um elemento repetido e cada campo, um filho dele.
  *
  * `.xlsx` de verdade (binário ZIP) NÃO é lido aqui: exigiria uma biblioteca
- * pesada só para isso. A tela de importação orienta a salvar como CSV.
+ * pesada só para isso. A tela de importação orienta a salvar como CSV ou XML.
  */
 
 /** Uma planilha lida: primeira linha = cabeçalho, demais = dados. */
@@ -77,11 +80,111 @@ function parseDelimited(text: string): SheetTable | null {
   return { headers, rows };
 }
 
+/**
+ * "XML Planilha 2003" do Excel (SpreadsheetML) — é o formato que o Excel
+ * gera em "Salvar como → Planilha XML 2003" e que muitos sistemas exportam
+ * como `.xml`. A estrutura é Worksheet → Table → Row → Cell → Data, e uma
+ * célula pode declarar `ss:Index` para pular colunas vazias.
+ */
+function parseSpreadsheetMl(doc: Document): SheetTable | null {
+  const rowEls = Array.from(doc.getElementsByTagName('*')).filter((el) => local(el) === 'row');
+  if (!rowEls.length) return null;
+  const all: string[][] = [];
+  rowEls.forEach((tr) => {
+    const cells: string[] = [];
+    Array.from(tr.children)
+      .filter((el) => local(el) === 'cell')
+      .forEach((td) => {
+        // ss:Index é 1-based e vale para a célula em que aparece.
+        const idx = Number(attr(td, 'index'));
+        if (Number.isFinite(idx) && idx > 0) while (cells.length < idx - 1) cells.push('');
+        cells.push(cleanCell(td.textContent ?? ''));
+      });
+    if (cells.some((c) => c !== '')) all.push(cells);
+  });
+  if (!all.length) return null;
+  const [headers, ...rows] = all;
+  return { headers, rows };
+}
+
+/**
+ * XML genérico de sistema: um elemento se repete (o registro) e cada filho
+ * dele é um campo. Ex.: `<produtos><produto><nome>…</nome>…</produto>…`.
+ * O cabeçalho vira a união dos nomes de campo encontrados, na ordem em que
+ * aparecem — assim registros com campos faltando continuam alinhados.
+ */
+function parseRecordXml(doc: Document): SheetTable | null {
+  const root = doc.documentElement;
+  if (!root) return null;
+  // Candidato a "registro": a tag que mais se repete como irmã e cujos
+  // elementos têm filhos (os campos). Agrupa por nome da tag, somando as
+  // ocorrências sob pais diferentes.
+  const groups = new Map<string, Element[]>();
+  const visit = (parent: Element) => {
+    const byTag = new Map<string, Element[]>();
+    Array.from(parent.children).forEach((el) => {
+      const list = byTag.get(local(el)) ?? [];
+      list.push(el);
+      byTag.set(local(el), list);
+    });
+    byTag.forEach((list, tag) => {
+      if (list.length > 1 && list.every((el) => el.children.length > 0)) {
+        groups.set(tag, [...(groups.get(tag) ?? []), ...list]);
+      }
+      list.forEach(visit);
+    });
+  };
+  visit(root);
+  if (!groups.size) return null;
+  const records = [...groups.values()].sort((a, b) => b.length - a.length)[0];
+
+  const headers: string[] = [];
+  records.forEach((rec) => {
+    Array.from(rec.children).forEach((f) => {
+      const tag = local(f);
+      if (!headers.includes(tag)) headers.push(tag);
+    });
+  });
+  const rows = records.map((rec) =>
+    headers.map((h) => {
+      const field = Array.from(rec.children).find((f) => local(f) === h);
+      return cleanCell(field?.textContent ?? '');
+    }),
+  );
+  return { headers, rows: rows.filter((r) => r.some((c) => c !== '')) };
+}
+
+/** Nome da tag sem o prefixo de namespace (`ss:Row` → `row`), minúsculo. */
+function local(el: Element): string {
+  return (el.localName || el.tagName).replace(/^.*:/, '').toLowerCase();
+}
+
+/** Atributo ignorando o prefixo de namespace (`ss:Index` → `index`). */
+function attr(el: Element, name: string): string | null {
+  const found = Array.from(el.attributes).find(
+    (a) => a.name.replace(/^.*:/, '').toLowerCase() === name,
+  );
+  return found ? found.value : null;
+}
+
+function parseXml(text: string): SheetTable | null {
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  if (doc.querySelector('parsererror')) return null;
+  return parseSpreadsheetMl(doc) ?? parseRecordXml(doc);
+}
+
 /** Lê o conteúdo de um arquivo de planilha, detectando o formato pelo conteúdo
  *  (não pela extensão — o `.xls` da planilha de produtos era HTML). */
 export function parseSheet(text: string): SheetTable | null {
-  if (/<\s*table[\s>]/i.test(text)) return parseHtmlTable(text);
+  const head = text.slice(0, 2000);
   if (text.startsWith('PK')) return null; // .xlsx/.ods de verdade (ZIP) — não suportado
+  // XML vem antes do HTML porque o SpreadsheetML também tem <Table>, e o
+  // parser de HTML transformaria as tags do Excel em algo irreconhecível.
+  if (/^\s*<\?xml/i.test(head) || /<\s*(\w+:)?Workbook[\s>]/i.test(head)) {
+    const xml = parseXml(text);
+    if (xml && xml.rows.length) return xml;
+  }
+  if (/<\s*table[\s>]/i.test(text)) return parseHtmlTable(text);
   return parseDelimited(text);
 }
 
@@ -98,27 +201,37 @@ export async function readSheetFile(file: File): Promise<string> {
  * Casa os cabeçalhos da planilha com os campos do sistema.
  *
  * `aliases` mapeia cada campo aos nomes de coluna aceitos (comparados já
- * normalizados). Retorna, para cada campo encontrado, o índice da coluna —
- * então a ordem das colunas na planilha não importa, e colunas desconhecidas
- * são simplesmente ignoradas.
+ * normalizados). Retorna, para cada campo encontrado, os índices de TODAS as
+ * colunas que servem — então a ordem das colunas não importa, colunas
+ * desconhecidas são ignoradas, e um campo que aceita vários nomes aproveita
+ * qualquer um deles. Isso importa quando a planilha traz as duas colunas
+ * (CPF e CNPJ, telefone e celular): cada linha preenche uma e deixa a outra
+ * vazia, e prender o campo à primeira coluna encontrada perderia metade dos
+ * dados. Os índices vêm na ordem dos aliases (o mais provável primeiro).
  */
 export function mapColumns<K extends string>(
   headers: string[],
   aliases: Record<K, string[]>,
-): Partial<Record<K, number>> {
+): Partial<Record<K, number[]>> {
   const norm = headers.map(normalizeHeader);
-  const out: Partial<Record<K, number>> = {};
+  const out: Partial<Record<K, number[]>> = {};
   (Object.keys(aliases) as K[]).forEach((field) => {
-    const wanted = aliases[field].map(normalizeHeader);
-    const idx = norm.findIndex((h) => wanted.includes(h));
-    if (idx >= 0) out[field] = idx;
+    const found: number[] = [];
+    aliases[field].map(normalizeHeader).forEach((wanted) => {
+      norm.forEach((h, i) => { if (h === wanted && !found.includes(i)) found.push(i); });
+    });
+    if (found.length) out[field] = found;
   });
   return out;
 }
 
-/** Valor de uma coluna mapeada nesta linha (string vazia vira undefined). */
-export function cellAt(row: string[], idx?: number): string | undefined {
-  if (idx == null) return undefined;
-  const v = row[idx];
-  return v && v.trim() ? v.trim() : undefined;
+/** Primeiro valor preenchido entre as colunas mapeadas para um campo
+ *  (string vazia ou coluna ausente viram undefined). */
+export function cellAt(row: string[], idxs?: number[]): string | undefined {
+  if (!idxs) return undefined;
+  for (const idx of idxs) {
+    const v = row[idx];
+    if (v && v.trim()) return v.trim();
+  }
+  return undefined;
 }

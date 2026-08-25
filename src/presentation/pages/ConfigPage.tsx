@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bug, Building2, ImageUp, MapPin, Plus, Radar, Trash2, Wrench, X } from 'lucide-react';
+import { Bug, Building2, ImageUp, MapPin, Plus, Radar, Trash2, Upload, Wrench, X } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -18,6 +18,8 @@ import { cn, daysUntil, formatCurrency } from '@/lib/utils';
 import { maskDocument, maskCep, maskPhone } from '@/lib/validation';
 import { dateInputToIso } from '@/lib/date';
 import { SignaturePad } from '../components/SignaturePad';
+import { ImportDrawer } from '../components/ImportDrawer';
+import { areasImport, pestsImport, serviceTypesImport, trapTypesImport, type ImportSpec } from '@/lib/importModules';
 import { ROLE_META, MODULE_META, ALL_MODULES, type PermissionModule } from '@/domain/enums';
 import type { Department, User } from '@/domain/types';
 
@@ -519,6 +521,23 @@ function EmergencyPanel() {
 /** Cadastro de pragas — alimenta a Ordem de Serviço (nome, categoria, validade
  *  do combate). Inativas somem da seleção em novas OS, mas ficam preservadas
  *  em OS/documentos já existentes (getPest continua as resolvendo). */
+/** Botão "Importar" no cabeçalho de um cadastro — abre a tela de importação
+ *  por planilha do módulo (a mesma de Produtos, Clientes etc.). */
+function PanelImport<T extends { id: string }>({ spec, items, add, update }: {
+  spec: ImportSpec<T>;
+  items: T[];
+  add: (entity: T) => unknown;
+  update: (id: string, patch: Partial<T>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button variant="outline" size="sm" leftIcon={<Upload size={14} />} onClick={() => setOpen(true)}>Importar</Button>
+      <ImportDrawer open={open} onClose={() => setOpen(false)} spec={spec} items={items} add={add} update={update} />
+    </>
+  );
+}
+
 function PestsPanel() {
   const { items, add, update, remove } = usePestsStore();
   const [name, setName] = useState('');
@@ -535,7 +554,9 @@ function PestsPanel() {
 
   return (
     <Card>
-      <CardHeader title={<span className="flex items-center gap-2"><Bug size={16} className="text-brand" /> Pragas</span>} subtitle={`${items.length} cadastradas · validade do combate alimenta a OS`} />
+      <CardHeader title={<span className="flex items-center gap-2"><Bug size={16} className="text-brand" /> Pragas</span>} subtitle={`${items.length} cadastradas · validade do combate alimenta a OS`}
+        action={<PanelImport spec={pestsImport} items={items} add={add} update={update} />}
+      />
       <CardBody className="space-y-3">
         <div className="grid grid-cols-2 gap-2">
           <Field label="Nome"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Percevejos" onKeyDown={(e) => e.key === 'Enter' && create()} /></Field>
@@ -596,7 +617,9 @@ function AreasPanel() {
 
   return (
     <Card>
-      <CardHeader title={<span className="flex items-center gap-2"><MapPin size={16} className="text-brand" /> Áreas tratadas</span>} subtitle={`${items.length} cadastradas · selecionáveis (com quantidade) na OS`} />
+      <CardHeader title={<span className="flex items-center gap-2"><MapPin size={16} className="text-brand" /> Áreas tratadas</span>} subtitle={`${items.length} cadastradas · selecionáveis (com quantidade) na OS`}
+        action={<PanelImport spec={areasImport} items={items} add={add} update={update} />}
+      />
       <CardBody className="space-y-3">
         <div className="flex gap-2">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Refeitório" onKeyDown={(e) => e.key === 'Enter' && create()} />
@@ -637,7 +660,9 @@ function TrapTypesPanel() {
 
   return (
     <Card>
-      <CardHeader title={<span className="flex items-center gap-2"><Radar size={16} className="text-brand" /> Armadilhas</span>} subtitle={`${items.length} tipos cadastrados · alimenta o cadastro de armadilhas do cliente`} />
+      <CardHeader title={<span className="flex items-center gap-2"><Radar size={16} className="text-brand" /> Armadilhas</span>} subtitle={`${items.length} tipos cadastrados · alimenta o cadastro de armadilhas do cliente`}
+        action={<PanelImport spec={trapTypesImport} items={items} add={add} update={update} />}
+      />
       <CardBody className="space-y-3">
         <div className="flex gap-2">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Placa de cola" onKeyDown={(e) => e.key === 'Enter' && create()} />
@@ -695,7 +720,9 @@ function ServicesPanel() {
 
   return (
     <Card>
-      <CardHeader title={<span className="flex items-center gap-2"><Wrench size={16} className="text-brand" /> Serviços</span>} subtitle={`${serviceTypes.length} cadastrados · valor padrão sugere o valor da OS`} />
+      <CardHeader title={<span className="flex items-center gap-2"><Wrench size={16} className="text-brand" /> Serviços</span>} subtitle={`${serviceTypes.length} cadastrados · valor padrão sugere o valor da OS`}
+        action={<PanelImport spec={serviceTypesImport} items={serviceTypes} add={add} update={update} />}
+      />
       <CardBody className="space-y-4">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <Field label="Nome" className="sm:col-span-2"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Dedetização" onKeyDown={(e) => e.key === 'Enter' && create()} /></Field>
