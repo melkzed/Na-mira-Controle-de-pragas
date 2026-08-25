@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Check, Plus, Trash2, TriangleAlert, X } from 'lucide-react';
+import { Check, Plus, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Drawer } from '../components/ui/Drawer';
 import { Field, Input, Select } from '../components/ui/Field';
 import { Table, type Column } from '../components/ui/Table';
+import { ImportDrawer } from '../components/ImportDrawer';
+import { equipmentImport } from '@/lib/importModules';
 import { getUser } from '@/application/repository';
 import { useEquipmentStore, useUsersStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
@@ -50,6 +52,7 @@ const fmtDateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString('pt-BR
 export function EquipamentosPage() {
   const { items, add, update, remove } = useEquipmentStore();
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const emUso = items.filter((e) => e.status === 'em_uso');
   const atrasados = items.filter(isEquipmentOverdue);
@@ -80,7 +83,12 @@ export function EquipamentosPage() {
 
   return (
     <div>
-      <PageHeader title="Equipamentos" description={`${items.length} itens · pulverizadores, bombas, EPIs e ferramentas`} actions={<Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Novo equipamento</Button>} />
+      <PageHeader title="Equipamentos" description={`${items.length} itens · pulverizadores, bombas, EPIs e ferramentas`} actions={
+        <>
+          <Button variant="outline" leftIcon={<Upload size={16} />} onClick={() => setImportOpen(true)}>Importar planilha</Button>
+          <Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Novo equipamento</Button>
+        </>
+      } />
 
       <div className="mb-4 grid grid-cols-3 gap-4">
         <StatMini label="Em uso" value={emUso.length} tone="brand" />
@@ -97,6 +105,7 @@ export function EquipamentosPage() {
 
       <Table columns={columns} rows={items} keyField={(e) => e.id} />
       <EquipmentForm open={formOpen} onClose={() => setFormOpen(false)} onSave={(e) => { add(e); setFormOpen(false); }} />
+      <ImportDrawer open={importOpen} onClose={() => setImportOpen(false)} spec={equipmentImport} items={items} add={add} update={update} />
     </div>
   );
 }

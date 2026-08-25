@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Check, Pencil, Plus, Trash2, Truck } from 'lucide-react';
+import { Check, Pencil, Plus, Trash2, Truck, Upload } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
+import { ImportDrawer } from '../components/ImportDrawer';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -13,19 +14,26 @@ import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
 import { toast } from '@/store/toastStore';
 import type { Vehicle } from '@/domain/types';
+import { vehiclesImport } from '@/lib/importModules';
 import { formatNumber } from '@/lib/utils';
 
 export function VeiculosPage() {
   const { items, add, update, remove } = useVehiclesStore();
   const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico' && u.isActive));
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Vehicle | null>(null);
   const openNew = () => { setEditing(null); setFormOpen(true); };
   const openEdit = (v: Vehicle) => { setEditing(v); setFormOpen(true); };
 
   return (
     <div>
-      <PageHeader title="Veículos" description={`${items.length} veículos · frota, abastecimentos e manutenções`} actions={<Button leftIcon={<Plus size={16} />} onClick={openNew}>Novo veículo</Button>} />
+      <PageHeader title="Veículos" description={`${items.length} veículos · frota, abastecimentos e manutenções`} actions={
+        <>
+          <Button variant="outline" leftIcon={<Upload size={16} />} onClick={() => setImportOpen(true)}>Importar planilha</Button>
+          <Button leftIcon={<Plus size={16} />} onClick={openNew}>Novo veículo</Button>
+        </>
+      } />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((v) => {
           const driver = getUser(v.driverId);
@@ -81,6 +89,7 @@ export function VeiculosPage() {
           setFormOpen(false);
         }}
       />
+      <ImportDrawer open={importOpen} onClose={() => setImportOpen(false)} spec={vehiclesImport} items={items} add={add} update={update} />
     </div>
   );
 }

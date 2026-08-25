@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { Check, ChevronRight, Plus, Trash2, Upload } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
+import { ImportDrawer } from '../components/ImportDrawer';
+import { leadsImport } from '@/lib/importModules';
 import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
 import { Badge } from '../components/ui/Badge';
@@ -18,8 +20,9 @@ const STAGES: CrmStage[] = ['novo_contato', 'orcamento', 'negociacao', 'follow_u
 const STAGE_ORDER = STAGES;
 
 export function CrmPage() {
-  const { leads, add, setStage, remove } = useLeadsStore();
+  const { leads, add, update, setStage, remove } = useLeadsStore();
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [selected, setSelected] = useState<CrmLead | null>(null);
 
   const totalPipeline = leads
@@ -36,7 +39,12 @@ export function CrmPage() {
       <PageHeader
         title="CRM · Funil de vendas"
         description={`Pipeline ativo: ${formatCompactCurrency(totalPipeline)} · ${leads.length} leads`}
-        actions={<Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Novo lead</Button>}
+        actions={
+          <>
+            <Button variant="outline" leftIcon={<Upload size={16} />} onClick={() => setImportOpen(true)}>Importar planilha</Button>
+            <Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Novo lead</Button>
+          </>
+        }
       />
 
       <div className="space-y-4">
@@ -102,6 +110,7 @@ export function CrmPage() {
       </div>
 
       <LeadForm open={formOpen} onClose={() => setFormOpen(false)} onSave={(input) => { add(input); setFormOpen(false); }} />
+      <ImportDrawer open={importOpen} onClose={() => setImportOpen(false)} spec={leadsImport} items={leads} add={add} update={update} />
       <LeadDetail
         lead={selected}
         onClose={() => setSelected(null)}

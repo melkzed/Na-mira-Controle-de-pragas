@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, ClipboardList, Package, PackageCheck, Plus, Trash2, Wrench } from 'lucide-react';
+import { Check, ClipboardList, Package, PackageCheck, Plus, Trash2, Upload, Wrench } from 'lucide-react';
 import { PageHeader, Stagger } from '../components/ui/misc';
 import { StatCard } from '../components/StatCard';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
@@ -19,6 +19,8 @@ import { currentOrgId, useAppStore } from '@/store/appStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { centralStockLocationId, ensureTechnicianStockLocation } from '@/store/stockLocations';
 import { SignaturePad } from '../components/SignaturePad';
+import { ImportDrawer } from '../components/ImportDrawer';
+import { techniciansImport } from '@/lib/importModules';
 import { toast } from '@/store/toastStore';
 import { functionErrorMessage, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { getProduct, appointmentsHistoryForTechnician, getCustomer, getServiceType, serviceOrdersForTechnician } from '@/application/repository';
@@ -27,6 +29,40 @@ import { EQUIPMENT_STATUS_META as statusMeta } from '@/domain/equipmentMeta';
 import type { User, Equipment } from '@/domain/types';
 import type { EquipmentStatus } from '@/domain/enums';
 import { dateInputToIso, fmtDate } from '@/lib/date';
+
+/**
+ * Cria o técnico de verdade — usado tanto pelo formulário quanto pela
+ * importação por planilha.
+ *
+ * Com o Supabase ligado, criar um LOGIN exige a Service Role Key, que nunca
+ * pode ficar no navegador: quem cria é a Edge Function `convidar-tecnico`,
+ * que convida a pessoa por e-mail e devolve o cadastro já gravado (ver
+ * docs/ARCHITECTURE.md §3.4). Sem Supabase, grava só o cadastro local.
+ * Lança erro com a mensagem que o usuário precisa ler.
+ */
+async function createTechnician(input: {
+  id: string; name: string; email: string; phone?: string; isActive?: boolean; fieldAppAccess?: boolean;
+}): Promise<string> {
+  const { name, email, phone, isActive = true, fieldAppAccess = true } = input;
+  if (supabaseEnabled && supabase) {
+    const { data, error } = await supabase.functions.invoke('convidar-tecnico', {
+      body: { name, email, phone, fieldAppAccess, redirectTo: `${window.location.origin}/definir-senha` },
+    });
+    if (error || data?.error) {
+      throw new Error(await functionErrorMessage(error, data, 'Não foi possível convidar o técnico — tente novamente.'));
+    }
+    const id = String(data?.user?.id ?? input.id);
+    // Estoque próprio do técnico — sem isso ele fica sem onde guardar
+    // produto e aparece com saldo zero para sempre.
+    ensureTechnicianStockLocation(id, name);
+    return id;
+  }
+  useUsersStore.getState().add({
+    id: input.id, orgId: currentOrgId(), name, email, phone, role: 'tecnico', isActive, fieldAppAccess,
+  });
+  ensureTechnicianStockLocation(input.id, name);
+  return input.id;
+}
 
 const fmtDateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 
@@ -37,12 +73,14 @@ const fmtDateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString('pt-BR
  */
 export function TecnicosPage() {
   const users = useUsersStore((s) => s.items);
+  const updateUser = useUsersStore((s) => s.update);
   const equipment = useEquipmentStore((s) => s.items);
   const { requests: equipRequests } = useEquipmentRequestsStore();
   const { requests: stockRequests } = useStockRequestsStore();
 
   const technicians = users.filter((u) => u.role === 'tecnico');
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
   const [selected, setSelected] = useState<User | null>(null);
 
@@ -63,7 +101,12 @@ export function TecnicosPage() {
       <PageHeader
         title="Técnicos"
         description="Equipe de campo, ferramentas/equipamentos e solicitações"
-        actions={<Button leftIcon={<Plus size={16} />} onClick={() => { setEditing(null); setFormOpen(true); }}>Novo técnico</Button>}
+        actions={
+          <>
+            <Button variant="outline" leftIcon={<Upload size={16} />} onClick={() => setImportOpen(true)}>Importar planilha</Button>
+            <Button leftIcon={<Plus size={16} />} onClick={() => { setEditing(null); setFormOpen(true); }}>Novo técnico</Button>
+          </>
+        }
       />
 
       <Stagger className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-5">
@@ -96,6 +139,15 @@ export function TecnicosPage() {
         tech={selected}
         onClose={() => setSelected(null)}
         onEdit={(u) => { setSelected(null); setEditing(u); setFormOpen(true); }}
+      />
+
+      <ImportDrawer
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        spec={techniciansImport}
+        items={technicians}
+        add={(u) => createTechnician({ id: u.id, name: u.name, email: u.email, phone: u.phone, isActive: u.isActive, fieldAppAccess: u.fieldAppAccess })}
+        update={updateUser}
       />
     </div>
   );
@@ -186,7 +238,6 @@ function PendingRequestsPanel() {
 
 /** Cadastro/edição de técnico. */
 function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: User | null; onClose: () => void }) {
-  const add = useUsersStore((s) => s.add);
   const update = useUsersStore((s) => s.update);
   const savedSignatures = useSettingsStore((s) => s.signatures);
   const setUserSignature = useSettingsStore((s) => s.setUserSignature);
@@ -218,51 +269,32 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
       onClose();
       return;
     }
-    if (supabaseEnabled && supabase) {
-      // Login de verdade: a função convida por e-mail via Supabase Auth (o
-      // próprio Supabase manda o e-mail com o link pra pessoa escolher a
-      // senha) e já grava public.users vinculado — nada de id/org_id
-      // improvisado no cliente aqui (ver docs/ARCHITECTURE.md §3.4).
-      setSaving(true);
-      const { data, error } = await supabase.functions.invoke('convidar-tecnico', {
-        body: {
-          name: name.trim(),
-          email: email.trim(),
-          phone: phone.trim() || undefined,
-          fieldAppAccess,
-          redirectTo: `${window.location.origin}/definir-senha`,
-        },
+    setSaving(true);
+    try {
+      const newId = await createTechnician({
+        id: crypto.randomUUID(),
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim() || undefined,
+        isActive,
+        fieldAppAccess,
       });
-      setSaving(false);
-      if (error || data?.error) {
-        // A função explica o motivo (sem cadastro, papel sem permissão,
-        // e-mail repetido…) no corpo da resposta — mostra isso, não um
-        // "non-2xx status code" genérico.
-        toast(await functionErrorMessage(error, data, 'Não foi possível convidar o técnico — tente novamente.'), {
-          tone: 'danger',
-          duration: 9000,
-        });
-        return;
-      }
-      // A função devolve o cadastro já criado — só aí existe o id para
-      // vincular a assinatura enviada no formulário.
-      if (data?.user?.id) {
-        if (signature) setUserSignature(data.user.id, signature);
-        // Estoque próprio do técnico — sem isso ele fica sem onde guardar
-        // produto e aparece com saldo zero para sempre.
-        ensureTechnicianStockLocation(data.user.id, name.trim());
-      }
-      toast('Convite enviado! O técnico recebe um e-mail para escolher a própria senha.', { tone: 'success' });
+      // Só depois de criado existe o id para vincular a assinatura do formulário.
+      if (signature) setUserSignature(newId, signature);
+      toast(
+        supabaseEnabled
+          ? 'Convite enviado! O técnico recebe um e-mail para escolher a própria senha.'
+          : 'Técnico cadastrado. Login com a senha demo (namira123).',
+        { tone: 'success' },
+      );
       onClose();
-      return;
+    } catch (e) {
+      // A função explica o motivo (sem cadastro, papel sem permissão,
+      // e-mail repetido…) — mostra isso, não um "non-2xx status code" genérico.
+      toast(e instanceof Error ? e.message : 'Não foi possível cadastrar o técnico.', { tone: 'danger', duration: 9000 });
+    } finally {
+      setSaving(false);
     }
-    // Modo standalone: sem Supabase Auth de verdade, só o cadastro local.
-    const newId = crypto.randomUUID();
-    add({ id: newId, orgId: currentOrgId(), name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, role: 'tecnico', isActive, fieldAppAccess });
-    if (signature) setUserSignature(newId, signature);
-    ensureTechnicianStockLocation(newId, name.trim());
-    toast('Técnico cadastrado. Login com a senha demo (namira123).', { tone: 'success' });
-    onClose();
   };
 
   return (

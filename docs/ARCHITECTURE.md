@@ -165,7 +165,14 @@ Function `supabase/functions/convidar-tecnico`:
 1. O navegador chama `supabase.functions.invoke('convidar-tecnico', {...})`,
    passando o JWT do usuário logado (automático).
 2. A função confirma que quem está chamando é `admin`/`supervisor` da própria
-   organização (consulta `public.users` pelo `auth_user_id` do token).
+   organização (consulta `public.users` pelo `auth_user_id` do token; se não
+   achar, tenta pelo e-mail do login e vincula o `auth_user_id` na hora —
+   cadastro feito à mão no painel costuma vir sem esse vínculo). Cada recusa
+   tem uma mensagem própria dizendo o que fazer, e o cliente a exibe via
+   `functionErrorMessage` (`lib/supabaseClient.ts`): `functions.invoke`
+   devolve `data: null` em qualquer status fora do 2xx, então sem ler
+   `error.context` o usuário só veria "non-2xx status code".
+   `db/diagnose_convite_tecnico.sql` confere no banco quem pode convidar.
 3. Com a service role, chama `auth.admin.inviteUserByEmail` — o próprio
    Supabase Auth manda o e-mail de convite (usa o SMTP já configurado no
    projeto), com um link para a pessoa **escolher a própria senha** no
@@ -225,6 +232,36 @@ para sempre e não tinha onde guardar produto próprio.
 
 Migration: `db/migrate_stock_locations_cadastro.sql` (habilita Realtime e
 cria de uma vez os locais que faltam para os técnicos já cadastrados).
+
+### 3.7 Importação por planilha (todos os módulos)
+
+Todo módulo de cadastro aceita importação em massa por planilha, com a mesma
+tela e o mesmo fluxo: escolher o arquivo → conferir/corrigir o que o sistema
+entendeu → confirmar. Nada é gravado antes da confirmação.
+
+Três camadas, para acrescentar um módulo sem escrever tela:
+
+- `lib/importSheet.ts` — abre o arquivo, **sem dependência externa**.
+  Detecta o formato pelo conteúdo, não pela extensão: tabela HTML salva como
+  `.xls` (o que a maioria dos sistemas do setor exporta), CSV/TSV, e XML —
+  tanto o "XML Planilha 2003" do Excel (SpreadsheetML, respeitando `ss:Index`)
+  quanto XML genérico de sistema (registro = elemento repetido, campo =
+  filho). `.xlsx` de verdade (ZIP) não é lido; a tela orienta salvar como CSV
+  ou XML. Texto é lido em UTF-8 com fallback para ISO-8859-1.
+- `lib/importModules.ts` — o que muda de módulo para módulo (`ImportSpec`):
+  nomes de coluna aceitos por campo (comparação sem acento/caixa e sem
+  depender da ordem das colunas), campos obrigatórios, campo usado para
+  detectar registro já cadastrado, e como a linha vira entidade
+  (`create`/`patch`). É também a fonte da planilha modelo para download.
+- `components/ImportDrawer.tsx` — a tela, genérica sobre a `ImportSpec`. A
+  página passa a store (`items`/`add`/`update`); `add` pode ser assíncrono
+  (Técnicos importa passando pelo convite da §3.4, que manda o e-mail de
+  senha para cada pessoa).
+
+Colunas desconhecidas são listadas como ignoradas em vez de derrubar a
+importação. Linhas que casam com um registro existente aparecem como
+"Atualiza" e podem ser deixadas de fora com um checkbox; em Financeiro, onde
+o mesmo lançamento se repete todo mês, o drawer roda em `createOnly`.
 
 ## 4. Fluxos principais
 

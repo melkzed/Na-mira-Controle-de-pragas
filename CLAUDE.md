@@ -29,7 +29,9 @@ npm run preview    # serve o build (vite preview)
   `pages/` (uma página por módulo). `AppLayout` (staff) e `FieldLayout` (técnico).
 - `src/store/` — Zustand, persistido no `localStorage`.
 - `src/lib/` — utilitários: `geo.ts` (projeção + distância Haversine),
-  `route.ts` (otimização de rota com janelas de horário), `date.ts`, PDF (`print*.ts`).
+  `route.ts` (otimização de rota com janelas de horário), `date.ts`, PDF (`print*.ts`),
+  importação de planilha (`importSheet.ts` lê o arquivo, `importModules.ts` diz
+  o que cada módulo aceita — ver docs/ARCHITECTURE.md §3.7).
 
 ## Modelo de dados standalone (IMPORTANTE)
 
