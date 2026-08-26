@@ -11,7 +11,7 @@ import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
 import { ServiceOrderStatusBadge } from '../components/StatusBadge';
 import { appointmentsForCustomer, getCustomer, getPest, getProduct, getServiceType, getUser, lastOrderForCustomer } from '@/application/repository';
-import type { Pest, PaymentStatus, RecurrencePhase, ServiceOrder, ServiceType, TreatedArea } from '@/domain/types';
+import type { Pest, PaymentStatus, RecurrencePhase, ServiceOrder, ServiceType } from '@/domain/types';
 import type { AppointmentStatus, RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
 import { PAYMENT_METHODS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
 import { computeRecurrenceOccurrences, recurrenceSummaryLabel, totalOccurrences } from '@/lib/recurrence';
@@ -35,6 +35,8 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { computeTaxes } from '@/application/fiscal/tax';
 import { providerLabel } from '@/application/fiscal/providers';
 import { cn, formatCurrency } from '@/lib/utils';
+import { canSeeFinancialValues } from '@/application/permissions';
+import { useAppStore } from '@/store/appStore';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { Award, FileCode, FileText, Receipt } from 'lucide-react';
 import { uid } from '@/store/createEntityStore';
@@ -60,6 +62,9 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 
 export function OrdensPage() {
   const orders = useServiceOrdersStore((s) => s.orders);
+  // Um usuário pode ter a OS liberada e ainda assim não poder ver quanto foi
+  // cobrado (Configurações → Departamento → "Ocultar valores em dinheiro").
+  const verValores = canSeeFinancialValues(useAppStore((s) => s.currentUser));
   const auditEntries = useAuditStore((s) => s.entries);
   const [selected, setSelected] = useState<ServiceOrder | null>(null);
   // Edição acontece dentro do próprio painel de detalhe (mesma janela, sem
@@ -198,7 +203,7 @@ export function OrdensPage() {
                   <Info label="Áreas tratadas" value={selected.areaTreated ?? '—'} />
                   <Info label="Garantia" value={selected.warranty?.has ? `${selected.warranty.value ?? ''} ${selected.warranty.unit ?? ''}${selected.warranty.type ? ` · ${WARRANTY_TYPE_LABEL[selected.warranty.type]}` : ''}`.trim() : 'Sem garantia'} />
                   <Info label="Recorrência" value={recurrenceSummaryLabel(selected.recurrence)} />
-                  <Info label="Valor do Serviço" value={selected.serviceValue != null ? formatCurrency(selected.serviceValue) : '—'} />
+                  <Info label="Valor do Serviço" value={verValores ? (selected.serviceValue != null ? formatCurrency(selected.serviceValue) : '—') : 'restrito'} />
                   <Info label="Pagamento" value={selected.paymentStatus ? PAYMENT_STATUS_LABEL[selected.paymentStatus] : 'Pendente'} />
                   <Info label="Forma de pagamento" value={selected.paymentMethod ?? '—'} />
                   <Info label="Duração" value={selected.totalMinutes ? `${selected.totalMinutes} min` : 'em aberto'} />
@@ -301,7 +306,6 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   const pests = usePestsStore((s) => s.items);
   const addPest = usePestsStore((s) => s.add);
   const areas = useAreasStore((s) => s.items);
-  const addArea = useAreasStore((s) => s.add);
   const equipment = useEquipmentStore((s) => s.items);
   const checkoutEquipment = useEquipmentStore((s) => s.update);
   const allProducts = useProductsStore((s) => s.items);
@@ -316,6 +320,10 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   const [sellerId, setSellerId] = useState('');
   const [status, setStatus] = useState<ServiceOrderStatus>('em_andamento');
   const [areaQty, setAreaQty] = useState<Record<string, number>>({});
+  // Áreas escritas na hora pelo usuário (botão +). Valem só nesta OS: não
+  // entram no catálogo global, senão "Câmara fria do estoque" de um cliente
+  // apareceria como opção para todos os outros.
+  const [customAreas, setCustomAreas] = useState<{ name: string; qty: number }[]>([]);
   const [pestIds, setPestIds] = useState<string[]>([]);
   const [pestValidity, setPestValidity] = useState<Record<string, string>>({});
   const [duration, setDuration] = useState('');
@@ -394,6 +402,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       setTechnicianIds(initial.technicianIds?.length ? initial.technicianIds : (initial.technicianId ? [initial.technicianId] : []));
       setSellerId(initial.sellerId ?? '');
       setStatus(initial.status);
+      setCustomAreas(initial.customAreas ?? []);
       const initialAreaQty = initial.areaQty && Object.keys(initial.areaQty).length ? initial.areaQty : Object.fromEntries((initial.areaIds ?? []).map((id) => [id, 1]));
       setAreaQty(initialAreaQty);
       // OS antigas guardavam "áreas tratadas" como texto livre, sem ids — preserva
@@ -498,12 +507,16 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     setPestIds((arr) => [...arr, p.id]);
     toast(`Praga "${name}" cadastrada.`, { tone: 'success' });
   };
+  /** Área específica desta OS — fica registrada só aqui (ver `customAreas`). */
   const quickAddArea = (name: string) => {
-    const a: TreatedArea = { id: uid('area'), orgId: currentOrgId(), name };
-    addArea(a);
-    setAreaQty((m) => ({ ...m, [a.id]: 1 }));
-    toast(`Área "${name}" cadastrada.`, { tone: 'success' });
+    const limpo = name.trim();
+    if (!limpo) return;
+    if (customAreas.some((a) => a.name.toLowerCase() === limpo.toLowerCase())) return;
+    setCustomAreas((prev) => [...prev, { name: limpo, qty: 1 }]);
+    toast(`Área "${limpo}" adicionada a esta OS.`, { tone: 'success' });
   };
+  const setCustomQty = (name: string, qty: number) =>
+    setCustomAreas((prev) => (qty <= 0 ? prev.filter((a) => a.name !== name) : prev.map((a) => (a.name === name ? { ...a, qty } : a))));
 
   // Validade sugerida da OS — maior validade entre os serviços e pragas selecionados.
   const suggestedValidityDays = useMemo(() => {
@@ -698,7 +711,11 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       status,
       areaIds,
       areaQty: Object.keys(areaQty).length ? areaQty : undefined,
-      areaTreated: areaIds.map((id) => { const a = areas.find((x) => x.id === id); return a ? `${areaQty[id] ?? 1} ${a.name}` : null; }).filter(Boolean).join(', ') || legacyAreaText || undefined,
+      customAreas: customAreas.length ? customAreas : undefined,
+      areaTreated: [
+        ...areaIds.map((id) => { const a = areas.find((x) => x.id === id); return a ? `${areaQty[id] ?? 1} ${a.name}` : null; }),
+        ...customAreas.map((a) => `${a.qty} ${a.name}`),
+      ].filter(Boolean).join(', ') || legacyAreaText || undefined,
       procedures: procedures.trim() || undefined,
       technicianMessage: technicianMessage.trim() || undefined,
       totalMinutes: duration ? Number(duration) : undefined,
@@ -953,8 +970,22 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
                 )}
               </div>
             ))}
+            {customAreas.map((a) => (
+              <div key={a.name} className="flex items-center gap-1 rounded-full border border-brand bg-brand-soft px-2 py-1 text-xs text-brand">
+                <span title="Área específica desta OS">{a.name}</span>
+                <span className="flex items-center gap-1 border-l border-brand/30 pl-1">
+                  <button type="button" aria-label={`Diminuir quantidade de ${a.name}`} onClick={() => setCustomQty(a.name, a.qty - 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">−</button>
+                  <span className="w-3.5 text-center font-semibold">{a.qty}</span>
+                  <button type="button" aria-label={`Aumentar quantidade de ${a.name}`} onClick={() => setCustomQty(a.name, a.qty + 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">+</button>
+                </span>
+              </div>
+            ))}
             <QuickAddChip label="área" onAdd={quickAddArea} />
           </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            O <span className="font-medium">+</span> cria uma área específica desta OS (ex.: "Câmara fria do estoque").
+            Ela fica registrada só aqui — para virar opção fixa de todos os clientes, cadastre em Configurações → Cadastro.
+          </p>
         </Field>
 
         <Field label="Produtos previstos" hint="Sugeridos automaticamente pelos serviços selecionados — ajuste a quantidade, remova ou adicione outro">

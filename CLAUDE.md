@@ -26,7 +26,9 @@ npm run preview    # serve o build (vite preview)
   as telas nunca leem o seed direto; chamam o repository.
 - `src/infrastructure/seed/data.ts` — dataset de exemplo (datas relativas a hoje).
 - `src/presentation/` — `components/ui` (design system), `components/layout`,
-  `pages/` (uma página por módulo). `AppLayout` (staff) e `FieldLayout` (técnico).
+  `pages/` (uma página por módulo). Três áreas: `AppLayout` (escritório),
+  `FieldLayout` (técnico, `/campo`) e `PortalLayout` (cliente, `/portal` —
+  papel `cliente`, isolado; ver docs/ARCHITECTURE.md §3.8).
 - `src/store/` — Zustand, persistido no `localStorage`.
 - `src/lib/` — utilitários: `geo.ts` (projeção + distância Haversine),
   `route.ts` (otimização de rota com janelas de horário), `date.ts`, PDF (`print*.ts`),

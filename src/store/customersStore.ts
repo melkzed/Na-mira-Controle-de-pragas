@@ -83,6 +83,9 @@ interface CustomerRow {
   notes: string | null;
   permanent_notes: string | null;
   monitoring_contracted: boolean;
+  portal_access: boolean | null;
+  portal_password_hash: string | null;
+  portal_password_set_at: string | null;
   registration_status: string | null;
   economic_activity: string | null;
   tags: string[] | null;
@@ -123,6 +126,9 @@ function fromRow(row: CustomerRow): Customer {
     notes: row.notes ?? undefined,
     permanentNotes: row.permanent_notes ?? undefined,
     monitoringContracted: row.monitoring_contracted,
+    portalAccess: row.portal_access ?? undefined,
+    portalPasswordHash: row.portal_password_hash ?? undefined,
+    portalPasswordSetAt: row.portal_password_set_at ?? undefined,
     registrationStatus: row.registration_status ?? undefined,
     economicActivity: row.economic_activity ?? undefined,
     tags: row.tags ?? [],
@@ -164,6 +170,9 @@ function toRow(c: Customer): CustomerRow {
     notes: c.notes ?? null,
     permanent_notes: c.permanentNotes ?? null,
     monitoring_contracted: c.monitoringContracted ?? false,
+    portal_access: c.portalAccess ?? false,
+    portal_password_hash: c.portalPasswordHash ?? null,
+    portal_password_set_at: c.portalPasswordSetAt ?? null,
     registration_status: c.registrationStatus ?? null,
     economic_activity: c.economicActivity ?? null,
     tags: c.tags ?? [],

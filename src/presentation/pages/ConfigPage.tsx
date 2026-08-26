@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bug, Building2, ImageUp, MapPin, Plus, Radar, Trash2, Upload, Wrench, X } from 'lucide-react';
+import { Bug, Building2, Check, ImageUp, KeyRound, MapPin, Plus, Radar, Trash2, Upload, UserPlus, Wrench, X } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -19,8 +19,11 @@ import { maskDocument, maskCep, maskPhone } from '@/lib/validation';
 import { dateInputToIso } from '@/lib/date';
 import { SignaturePad } from '../components/SignaturePad';
 import { ImportDrawer } from '../components/ImportDrawer';
+import { Drawer } from '../components/ui/Drawer';
+import { MIN_PASSWORD, createEmployee, resetEmployeePassword } from '@/application/employees';
+import { suggestPassword } from '@/lib/password';
 import { areasImport, pestsImport, serviceTypesImport, trapTypesImport, type ImportSpec } from '@/lib/importModules';
-import { ROLE_META, MODULE_META, ALL_MODULES, type PermissionModule } from '@/domain/enums';
+import { ROLE_META, MODULE_META, ALL_MODULES, STAFF_ROLES, type PermissionModule, type UserRole } from '@/domain/enums';
 import type { Department, User } from '@/domain/types';
 
 type Tab = 'empresa' | 'departamento' | 'cadastro' | 'operacional';
@@ -197,6 +200,8 @@ function DepartamentoTab() {
   const addDept = useDepartmentsStore((s) => s.add);
   const updateDept = useDepartmentsStore((s) => s.update);
   const removeDept = useDepartmentsStore((s) => s.remove);
+  const [userFormOpen, setUserFormOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
 
   const columns: Column<User>[] = [
     { key: 'name', header: 'Usuário', render: (u) => (
@@ -225,14 +230,189 @@ function DepartamentoTab() {
       <DepartmentsPanel departments={departments} onAdd={addDept} onUpdate={updateDept} onRemove={removeDept} />
 
       <Card>
-        <CardHeader title="Usuários e equipe" subtitle={`${users.length} usuários · defina o departamento de cada um`} />
+        <CardHeader
+          title="Usuários e equipe"
+          subtitle={`${users.length} usuários · defina o departamento de cada um`}
+          action={
+            <Button size="sm" leftIcon={<UserPlus size={14} />} onClick={() => { setEditingUser(null); setUserFormOpen(true); }}>
+              Novo funcionário
+            </Button>
+          }
+        />
         <CardBody className="p-0">
-          <div className="px-4 pb-4"><Table columns={columns} rows={users} keyField={(u) => u.id} /></div>
+          <div className="px-4 pb-4"><Table columns={columns} rows={users} keyField={(u) => u.id} onRowClick={(u) => { setEditingUser(u); setUserFormOpen(true); }} /></div>
         </CardBody>
       </Card>
 
       <UserOverridesPanel users={users} departments={departments} onUpdateUser={updateUser} />
+
+      <EmployeeForm
+        open={userFormOpen}
+        editing={editingUser}
+        departments={departments}
+        onClose={() => setUserFormOpen(false)}
+      />
     </div>
+  );
+}
+
+/**
+ * Cadastro de funcionário da equipe interna — qualquer departamento, não só
+ * técnico. O login é e-mail + senha definida aqui pelo administrador; o
+ * departamento define as permissões padrão, e as exceções individuais ficam
+ * no painel logo abaixo (ver application/permissions.ts).
+ */
+function EmployeeForm({ open, editing, departments, onClose }: {
+  open: boolean;
+  editing: User | null;
+  departments: Department[];
+  onClose: () => void;
+}) {
+  const update = useUsersStore((s) => s.update);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [role, setRole] = useState<UserRole>('atendimento');
+  const [departmentId, setDepartmentId] = useState('');
+  const [isActive, setIsActive] = useState(true);
+  const [hideValues, setHideValues] = useState(false);
+  const [password, setPassword] = useState('');
+  const [touched, setTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setName(editing?.name ?? ''); setEmail(editing?.email ?? ''); setPhone(editing?.phone ?? '');
+    setRole(editing?.role && editing.role !== 'cliente' ? editing.role : 'atendimento');
+    setDepartmentId(editing?.departmentId ?? '');
+    setIsActive(editing?.isActive ?? true);
+    setHideValues(editing?.hideFinancialValues ?? false);
+    setPassword(''); setTouched(false);
+  }, [open, editing]);
+
+  const senhaCurta = password.length > 0 && password.length < MIN_PASSWORD;
+  const erro = (!name.trim() && 'Informe o nome.')
+    || (!email.trim() && 'Informe o e-mail.')
+    || (!editing && !password.trim() && 'Defina a senha de acesso.')
+    || (senhaCurta && `A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.`)
+    || '';
+
+  const submit = async () => {
+    setTouched(true);
+    if (erro) return;
+    setSaving(true);
+    try {
+      if (editing) {
+        update(editing.id, {
+          name: name.trim(), email: email.trim(), phone: phone.trim() || undefined,
+          role, departmentId: departmentId || undefined, isActive, hideFinancialValues: hideValues,
+        });
+        if (password) await resetEmployeePassword(editing, password);
+        toast(password ? 'Funcionário atualizado e senha alterada.' : 'Funcionário atualizado.', { tone: 'success' });
+      } else {
+        await createEmployee({
+          id: crypto.randomUUID(),
+          name: name.trim(), email: email.trim(), phone: phone.trim() || undefined,
+          password, role, departmentId: departmentId || undefined, isActive,
+          hideFinancialValues: hideValues,
+        });
+        toast('Funcionário cadastrado! Passe para ele o e-mail e a senha que você definiu.', { tone: 'success' });
+      }
+      onClose();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Não foi possível salvar.', { tone: 'danger', duration: 9000 });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const dept = departments.find((d) => d.id === departmentId);
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title={editing ? 'Editar funcionário' : 'Novo funcionário'}
+      subtitle="Acesso à área administrativa"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button onClick={submit} disabled={saving} leftIcon={<Check size={15} />}>
+            {saving ? 'Salvando…' : editing ? 'Salvar' : 'Cadastrar'}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Nome completo" required><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
+          <Field label="E-mail (login)" required><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+          <Field label="Telefone"><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-0000" /></Field>
+          <Field label="Perfil de acesso" required>
+            <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
+              {STAFF_ROLES.concat('tecnico').map((r) => <option key={r} value={r}>{ROLE_META[r].label}</option>)}
+            </Select>
+          </Field>
+          <Field label="Departamento" hint="Define os módulos que ele acessa por padrão">
+            <Select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+              <option value="">— sem departamento —</option>
+              {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </Select>
+          </Field>
+        </div>
+
+        {dept && (
+          <div className="rounded-xl border border-border bg-muted/30 p-3">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Acesso do departamento {dept.name}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {dept.modules.map((m) => <Badge key={m} tone="neutral" className="text-[10px]">{MODULE_META[m].label}</Badge>)}
+              {dept.modules.length === 0 && <span className="text-xs text-muted-foreground">Nenhum módulo liberado ainda.</span>}
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">Para abrir ou fechar um módulo só para esta pessoa, use "Exceções por usuário".</p>
+          </div>
+        )}
+        {role === 'admin' && (
+          <p className="rounded-xl border border-warning/30 bg-warning-soft/50 p-3 text-xs text-foreground">
+            Administrador tem acesso total a todos os módulos, independente de departamento.
+          </p>
+        )}
+
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 rounded-xl border border-border bg-muted/30 p-3">
+            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="h-4 w-4 rounded border-border" />
+            <span className="text-sm text-foreground">Acesso ativo</span>
+          </label>
+          <label className="flex items-start gap-2 rounded-xl border border-border bg-muted/30 p-3">
+            <input type="checkbox" checked={hideValues} onChange={(e) => setHideValues(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-border" disabled={role === 'admin'} />
+            <span>
+              <span className="block text-sm text-foreground">Ocultar valores em dinheiro</span>
+              <span className="block text-xs text-muted-foreground">
+                A pessoa continua abrindo as telas liberadas, mas não vê preços, valores de OS nem totais. Não vale para Administrador.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <div className="rounded-xl border border-border bg-muted/30 p-3">
+          <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+            <KeyRound size={13} /> Senha de acesso
+          </p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            {editing
+              ? 'Preencha só se quiser trocar a senha. Deixe em branco para manter a atual.'
+              : 'Você define a senha; entregue-a ao funcionário junto com o e-mail.'}
+          </p>
+          <div className="flex items-end gap-2">
+            <Field label={editing ? 'Nova senha' : 'Senha'} className="flex-1">
+              <Input type="text" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" placeholder={`Mínimo de ${MIN_PASSWORD} caracteres`} />
+            </Field>
+            <Button variant="outline" onClick={() => setPassword(suggestPassword())}>Gerar</Button>
+          </div>
+        </div>
+
+        {touched && erro && <span className="block text-xs text-danger">{erro}</span>}
+      </div>
+    </Drawer>
   );
 }
 

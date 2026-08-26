@@ -9,7 +9,9 @@ import { MODULE_META } from '@/domain/enums';
 
 /**
  * Guarda de rota. Redireciona para /login se não autenticado.
- * `requireStaff` bloqueia técnicos em rotas administrativas (vão para /campo).
+ * `requireStaff` bloqueia técnicos (vão para /campo) e clientes (vão para
+ * /portal) em rotas administrativas. `requireCliente` faz o inverso: só o
+ * papel `cliente` entra no Portal — nenhum usuário interno cai lá dentro.
  * `module`, quando informado, bloqueia o acesso à rota se o usuário (pelo
  * departamento + exceções individuais) não tiver esse módulo liberado — a
  * mesma checagem que já esconde o item do Sidebar/⌘K, agora também na URL
@@ -18,10 +20,12 @@ import { MODULE_META } from '@/domain/enums';
 export function RequireAuth({
   children,
   requireStaff = false,
+  requireCliente = false,
   module,
 }: {
   children: ReactNode;
   requireStaff?: boolean;
+  requireCliente?: boolean;
   module?: PermissionModule;
 }) {
   const user = useAppStore((s) => s.currentUser);
@@ -44,6 +48,14 @@ export function RequireAuth({
   }
   if (requireStaff && user.role === 'tecnico') {
     return <Navigate to="/campo" replace />;
+  }
+  // Cliente nunca entra no sistema administrativo nem no app de campo: seja
+  // qual for a rota interna, volta para o Portal.
+  if (user.role === 'cliente' && !requireCliente) {
+    return <Navigate to="/portal" replace />;
+  }
+  if (requireCliente && user.role !== 'cliente') {
+    return <Navigate to={user.role === 'tecnico' ? '/campo' : '/'} replace />;
   }
   if (module && !hasModuleAccess(user, module, departments)) {
     return (

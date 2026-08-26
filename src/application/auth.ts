@@ -10,7 +10,9 @@
 import type { User } from '@/domain/types';
 import type { UserRole } from '@/domain/enums';
 import { useUsersStore } from '@/store/entityStores';
+import { useCustomersStore } from '@/store/customersStore';
 import { localPassword } from '@/store/localPasswords';
+import { documentDigits, looksLikeDocument, verifyPassword } from '@/lib/password';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 
 /** Senha única de demonstração — vale só no modo standalone (sem Supabase). */
@@ -62,8 +64,53 @@ async function fetchAppUser(authUserId: string): Promise<User | null> {
   return rowToUser(data as UsersRow);
 }
 
+/**
+ * Login do cliente no Portal: CPF/CNPJ + senha definida pelo administrador.
+ *
+ * O cliente não é um usuário de `public.users` — é um `Customer`. Para o resto
+ * do app (rotas, guardas, cabeçalho) enxergar sempre a mesma coisa, montamos
+ * um `User` sintético de papel `cliente` apontando para o cadastro dele em
+ * `customerId`; é por esse campo que o Portal filtra tudo.
+ */
+async function authenticateCustomer(login: string, password: string): Promise<AuthResult> {
+  const digits = documentDigits(login);
+  const customer = useCustomersStore
+    .getState()
+    .customers.find((c) => documentDigits(c.document ?? '') === digits);
+  if (!customer || !customer.portalAccess || !customer.isActive) return { user: null, error: 'invalid_email' };
+  if (!(await verifyPassword(password, customer.portalPasswordHash))) return { user: null, error: 'invalid_password' };
+  return {
+    user: {
+      id: `cliente-${customer.id}`,
+      orgId: customer.orgId,
+      name: customer.name,
+      email: customer.email ?? '',
+      phone: customer.phone,
+      role: 'cliente',
+      isActive: true,
+      customerId: customer.id,
+    },
+  };
+}
+
+/** Reconstrói o usuário sintético do cliente a partir do cadastro — usado
+ *  para reidratar a sessão do Portal ao recarregar a página. */
+export function customerSessionUser(customerId: string): User | null {
+  const c = useCustomersStore.getState().customers.find((x) => x.id === customerId);
+  if (!c || !c.portalAccess || !c.isActive) return null;
+  return {
+    id: `cliente-${c.id}`, orgId: c.orgId, name: c.name, email: c.email ?? '',
+    phone: c.phone, role: 'cliente', isActive: true, customerId: c.id,
+  };
+}
+
 export async function authenticate(email: string, password: string): Promise<AuthResult> {
   const normalized = email.trim().toLowerCase();
+
+  // CPF/CNPJ no lugar do e-mail = tentativa de login do Portal do Cliente.
+  // Vale nos dois modos: o acesso do cliente é do cadastro dele, não do
+  // Supabase Auth (que só conhece a equipe interna).
+  if (looksLikeDocument(normalized)) return authenticateCustomer(normalized, password);
 
   if (supabaseEnabled && supabase) {
     const { data, error } = await supabase.auth.signInWithPassword({ email: normalized, password });
@@ -115,5 +162,6 @@ export const demoAccounts: { email: string; role: string; label: string }[] = su
 
 /** Rota inicial após o login, conforme o papel. */
 export function landingPathFor(user: User): string {
+  if (user.role === 'cliente') return '/portal';
   return user.role === 'tecnico' ? '/campo' : '/';
 }

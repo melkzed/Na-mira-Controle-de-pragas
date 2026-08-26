@@ -15,79 +15,20 @@ import { useUsersStore, useEquipmentStore, useVehiclesStore } from '@/store/enti
 import { useEquipmentRequestsStore } from '@/store/equipmentRequestsStore';
 import { useStockRequestsStore } from '@/store/stockRequestsStore';
 import { useStockStore } from '@/store/stockStore';
-import { currentOrgId, useAppStore } from '@/store/appStore';
+import { useAppStore } from '@/store/appStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { centralStockLocationId, ensureTechnicianStockLocation } from '@/store/stockLocations';
+import { centralStockLocationId } from '@/store/stockLocations';
 import { SignaturePad } from '../components/SignaturePad';
+import { MIN_PASSWORD, createEmployee, resetEmployeePassword } from '@/application/employees';
 import { ImportDrawer } from '../components/ImportDrawer';
 import { techniciansImport } from '@/lib/importModules';
 import { toast } from '@/store/toastStore';
-import { setLocalPassword } from '@/store/localPasswords';
-import { functionErrorMessage, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { getProduct, appointmentsHistoryForTechnician, getCustomer, getServiceType, serviceOrdersForTechnician } from '@/application/repository';
 import { isEquipmentOverdue } from './EquipamentosPage';
 import { EQUIPMENT_STATUS_META as statusMeta } from '@/domain/equipmentMeta';
 import type { User, Equipment } from '@/domain/types';
 import type { EquipmentStatus } from '@/domain/enums';
 import { dateInputToIso, fmtDate } from '@/lib/date';
-
-/** Mínimo aceito pelo Supabase Auth — mesma regra da Edge Function. */
-const MIN_PASSWORD = 6;
-
-/**
- * Cria o técnico de verdade — usado tanto pelo formulário quanto pela
- * importação por planilha.
- *
- * Com o Supabase ligado, criar um LOGIN exige a Service Role Key, que nunca
- * pode ficar no navegador: quem cria é a Edge Function `convidar-tecnico`,
- * que devolve o cadastro já gravado (ver docs/ARCHITECTURE.md §3.4). A senha
- * definida pelo administrador vai no corpo da requisição e é guardada só pelo
- * Supabase Auth (que salva apenas o hash) — nada dela fica no navegador. Sem
- * senha, a função cai no convite por e-mail.
- *
- * Sem Supabase, grava só o cadastro local (a senha fica no `localPasswords`,
- * que existe apenas na demonstração). Lança erro com a mensagem que o usuário
- * precisa ler.
- */
-async function createTechnician(input: {
-  id: string; name: string; email: string; phone?: string; password?: string;
-  isActive?: boolean; fieldAppAccess?: boolean;
-}): Promise<string> {
-  const { name, email, phone, password, isActive = true, fieldAppAccess = true } = input;
-  if (supabaseEnabled && supabase) {
-    const { data, error } = await supabase.functions.invoke('convidar-tecnico', {
-      body: { name, email, phone, password, fieldAppAccess, redirectTo: `${window.location.origin}/definir-senha` },
-    });
-    if (error || data?.error) {
-      throw new Error(await functionErrorMessage(error, data, 'Não foi possível cadastrar o técnico — tente novamente.'));
-    }
-    const id = String(data?.user?.id ?? input.id);
-    // Estoque próprio do técnico — sem isso ele fica sem onde guardar
-    // produto e aparece com saldo zero para sempre.
-    ensureTechnicianStockLocation(id, name);
-    return id;
-  }
-  useUsersStore.getState().add({
-    id: input.id, orgId: currentOrgId(), name, email, phone, role: 'tecnico', isActive, fieldAppAccess,
-  });
-  if (password) setLocalPassword(email, password);
-  ensureTechnicianStockLocation(input.id, name);
-  return input.id;
-}
-
-/** Troca a senha de um técnico já cadastrado (o administrador define a nova). */
-async function resetTechnicianPassword(user: User, password: string): Promise<void> {
-  if (supabaseEnabled && supabase) {
-    const { data, error } = await supabase.functions.invoke('convidar-tecnico', {
-      body: { action: 'redefinir_senha', userId: user.id, password },
-    });
-    if (error || data?.error) {
-      throw new Error(await functionErrorMessage(error, data, 'Não foi possível alterar a senha — tente novamente.'));
-    }
-    return;
-  }
-  setLocalPassword(user.email, password);
-}
 
 const fmtDateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 
@@ -171,7 +112,7 @@ export function TecnicosPage() {
         onClose={() => setImportOpen(false)}
         spec={techniciansImport}
         items={technicians}
-        add={(u) => createTechnician({ id: u.id, name: u.name, email: u.email, phone: u.phone, isActive: u.isActive, fieldAppAccess: u.fieldAppAccess })}
+        add={(u) => createEmployee({ id: u.id, name: u.name, email: u.email, phone: u.phone, role: 'tecnico', isActive: u.isActive, fieldAppAccess: u.fieldAppAccess })}
         update={updateUser}
       />
     </div>
@@ -306,7 +247,7 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
       if (password) {
         setSaving(true);
         try {
-          await resetTechnicianPassword(editing, password);
+          await resetEmployeePassword(editing, password);
           toast('Técnico atualizado e senha alterada. Avise a nova senha ao técnico.', { tone: 'success' });
         } catch (e) {
           toast(e instanceof Error ? e.message : 'Não foi possível alterar a senha.', { tone: 'danger', duration: 9000 });
@@ -322,12 +263,13 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
     }
     setSaving(true);
     try {
-      const newId = await createTechnician({
+      const newId = await createEmployee({
         id: crypto.randomUUID(),
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim() || undefined,
         password,
+        role: 'tecnico',
         isActive,
         fieldAppAccess,
       });

@@ -13,11 +13,16 @@ import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useStockStore } from '@/store/stockStore';
 import { centralStockLocationId } from '@/store/stockLocations';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
+import { useFinanceStore } from '@/store/entityStores';
+import { useTrapsStore } from '@/store/trapsStore';
 import { RELEASED_TO_TECH_STATUSES } from '@/lib/confirmation';
 import type {
   Appointment,
   Customer,
   Equipment,
+  FinanceEntry,
+  TrapDevice,
+  TrapInspection,
   Pest,
   Product,
   ServiceOrder,
@@ -130,6 +135,35 @@ export function appointmentsForCustomer(customerId: string): Appointment[] {
   return useAppointmentsStore.getState().appointments
     .filter((a) => a.customerId === customerId && a.status !== 'cancelado')
     .sort((a, b) => b.scheduledStart.localeCompare(a.scheduledStart));
+}
+
+/**
+ * Consultas do Portal do Cliente — sempre com o `customerId` do próprio
+ * cliente logado. Ficam aqui, e não nas telas, para o recorte ser um só:
+ * quando o Portal passar pelo Supabase, é aqui que a RLS entra.
+ */
+
+/** Lançamentos do cliente. Só receitas: contas a pagar e custos internos da
+ *  empresa não são assunto do cliente. */
+export function financeEntriesForCustomer(customerId: string): FinanceEntry[] {
+  return useFinanceStore.getState().items
+    .filter((e) => e.customerId === customerId && e.type === 'receita' && e.status !== 'cancelado')
+    .sort((a, b) => (b.dueDate ?? b.createdAt).localeCompare(a.dueDate ?? a.createdAt));
+}
+
+/** Armadilhas instaladas no cliente. */
+export function trapsForCustomer(customerId: string): TrapDevice[] {
+  return useTrapsStore.getState().traps
+    .filter((t) => t.customerId === customerId)
+    .sort((a, b) => a.code.localeCompare(b.code, 'pt-BR', { numeric: true }));
+}
+
+/** Inspeções das armadilhas do cliente, da mais recente para a mais antiga. */
+export function trapInspectionsForCustomer(customerId: string): TrapInspection[] {
+  const ids = new Set(trapsForCustomer(customerId).map((t) => t.id));
+  return useTrapsStore.getState().inspections
+    .filter((i) => ids.has(i.trapId))
+    .sort((a, b) => b.date.localeCompare(a.date));
 }
 
 export function appointmentsForTechnician(

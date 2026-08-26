@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Cloud, Loader2, Plus, Search, Trash2 } from 'lucide-react';
+import { Check, Cloud, KeyRound, Loader2, Plus, Search, Trash2 } from 'lucide-react';
 import { Drawer } from './ui/Drawer';
 import { Button } from './ui/Button';
 import { Field, Input, Select, Textarea } from './ui/Field';
@@ -13,7 +13,9 @@ import type { CustomerType } from '@/domain/enums';
 import { isEmail, isValidDocument, maskCep, maskDocument, maskPhone } from '@/lib/validation';
 import { lookupCnpj } from '@/lib/cnpj';
 import { lookupCep } from '@/lib/cep';
-import { dateInputToIso, fmtDate } from '@/lib/date';
+import { dateInputToIso, fmtDate, fmtDateLong } from '@/lib/date';
+import { documentDigits, hashPassword, suggestPassword } from '@/lib/password';
+import { toast } from '@/store/toastStore';
 
 const DRAFT_KEY = 'namira-cliente-draft';
 
@@ -192,6 +194,13 @@ export function CustomerForm({
   const [contactNotes, setContactNotes] = useState('');
   const [contracts, setContracts] = useState<ServiceContract[]>([]);
   const [complementary, setComplementary] = useState<string[]>([]);
+  // Acesso do cliente ao Portal. A senha nunca é guardada nem relida em texto:
+  // o que fica no cadastro é só o hash (lib/password.ts). Aqui ela existe só
+  // enquanto o formulário está aberto, para o administrador copiar e entregar.
+  const [portalAccess, setPortalAccess] = useState(false);
+  const [portalPassword, setPortalPassword] = useState('');
+  const [portalHash, setPortalHash] = useState<string | undefined>();
+  const [portalSetAt, setPortalSetAt] = useState<string | undefined>();
 
   // Inicializa o formulário quando abre.
   useEffect(() => {
@@ -211,7 +220,12 @@ export function CustomerForm({
       setContactNotes(initial.contactSchedule?.notes ?? '');
       setContracts(initial.contracts ?? []);
       setComplementary(initial.complementaryServices ?? []);
+      setPortalAccess(initial.portalAccess ?? false);
+      setPortalHash(initial.portalPasswordHash);
+      setPortalSetAt(initial.portalPasswordSetAt);
+      setPortalPassword('');
     } else {
+      setPortalAccess(false); setPortalHash(undefined); setPortalSetAt(undefined); setPortalPassword('');
       // restaura rascunho (auto-save) de um cadastro não finalizado
       try {
         const raw = localStorage.getItem(DRAFT_KEY);
@@ -336,6 +350,9 @@ export function CustomerForm({
         : undefined,
       contracts: tier === 'completo' && contracts.length ? contracts : undefined,
       complementaryServices: tier === 'completo' && complementary.length ? complementary : undefined,
+      portalAccess,
+      portalPasswordHash: portalHash,
+      portalPasswordSetAt: portalSetAt,
     };
     if (initial) {
       update(initial.id, input);
@@ -532,6 +549,30 @@ export function CustomerForm({
             </div>
           </>
         )}
+
+        <div className="border-t border-border pt-4">
+          <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+            <KeyRound size={13} /> Acesso do cliente
+          </p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Com o acesso ativo, o cliente entra no Portal com o CPF/CNPJ deste cadastro e a senha que você definir.
+            Ele vê só os próprios atendimentos, documentos e pagamentos.
+          </p>
+          <PortalAccessPanel
+            document={form.document}
+            enabled={portalAccess}
+            onEnabledChange={setPortalAccess}
+            password={portalPassword}
+            onPasswordChange={setPortalPassword}
+            hasPassword={!!portalHash}
+            setAt={portalSetAt}
+            onDefine={async (senha: string) => {
+              setPortalHash(await hashPassword(senha));
+              setPortalSetAt(new Date().toISOString());
+              toast('Senha definida. Ela vale depois de salvar o cadastro.', { tone: 'success' });
+            }}
+          />
+        </div>
       </div>
     </Drawer>
   );
@@ -635,6 +676,93 @@ function ContractsPanel({ value, onChange }: { value: ServiceContract[]; onChang
         <Field label="Situação"><Select value={status} onChange={(e) => setStatus(e.target.value as ContractStatus)}>{(Object.keys(CONTRACT_STATUS_LABEL) as ContractStatus[]).map((s) => <option key={s} value={s}>{CONTRACT_STATUS_LABEL[s]}</option>)}</Select></Field>
       </div>
       <Button type="button" size="sm" variant="outline" leftIcon={<Plus size={14} />} onClick={add}>Adicionar contrato</Button>
+    </div>
+  );
+}
+
+/**
+ * Acesso do cliente ao Portal.
+ *
+ * O administrador liga o acesso e define a senha; a senha em si nunca volta a
+ * aparecer — o cadastro guarda só o hash (ver `lib/password.ts`), então a
+ * única operação possível depois é redefinir. O login é o CPF/CNPJ do
+ * próprio cadastro, por isso o painel avisa quando o documento está em
+ * branco: sem ele o cliente não tem como entrar.
+ */
+function PortalAccessPanel({
+  document: doc, enabled, onEnabledChange, password, onPasswordChange,
+  hasPassword, setAt, onDefine,
+}: {
+  document: string;
+  enabled: boolean;
+  onEnabledChange: (v: boolean) => void;
+  password: string;
+  onPasswordChange: (v: string) => void;
+  hasPassword: boolean;
+  setAt?: string;
+  onDefine: (senha: string) => Promise<void>;
+}) {
+  const [erro, setErro] = useState('');
+  const semDocumento = documentDigits(doc).length !== 11 && documentDigits(doc).length !== 14;
+
+  const definir = async () => {
+    if (password.trim().length < 6) { setErro('A senha precisa ter pelo menos 6 caracteres.'); return; }
+    setErro('');
+    await onDefine(password.trim());
+  };
+
+  return (
+    <div className="space-y-3">
+      <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onEnabledChange(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-border"
+        />
+        <span>
+          <span className="block text-sm font-medium text-foreground">Permitir acesso ao Portal do Cliente</span>
+          <span className="block text-xs text-muted-foreground">
+            {hasPassword
+              ? `Senha definida${setAt ? ` em ${fmtDateLong(setAt)}` : ''}.`
+              : 'Ainda sem senha — defina uma abaixo para o acesso funcionar.'}
+          </span>
+        </span>
+      </label>
+
+      {enabled && semDocumento && (
+        <p className="rounded-xl border border-warning/30 bg-warning-soft/50 p-3 text-xs text-foreground">
+          O login do Portal é o CPF/CNPJ. Preencha o documento no cadastro, senão o cliente não consegue entrar.
+        </p>
+      )}
+
+      {enabled && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
+          <Field label={hasPassword ? 'Nova senha' : 'Senha de acesso'}>
+            <Input
+              type="text"
+              value={password}
+              onChange={(e) => onPasswordChange(e.target.value)}
+              placeholder="Mínimo de 6 caracteres"
+              autoComplete="off"
+            />
+          </Field>
+          <div className="flex items-end">
+            <Button type="button" variant="outline" onClick={() => onPasswordChange(suggestPassword())}>Gerar</Button>
+          </div>
+          <div className="flex items-end">
+            <Button type="button" onClick={definir} disabled={!password.trim()} leftIcon={<Check size={15} />}>
+              {hasPassword ? 'Redefinir' : 'Definir senha'}
+            </Button>
+          </div>
+        </div>
+      )}
+      {erro && <span className="block text-xs text-danger">{erro}</span>}
+      {enabled && (
+        <p className="text-xs text-muted-foreground">
+          Anote e entregue a senha ao cliente agora: depois de salva, ela não pode mais ser lida — só redefinida.
+        </p>
+      )}
     </div>
   );
 }
