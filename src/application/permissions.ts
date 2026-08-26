@@ -8,19 +8,26 @@
 import type { Department, User } from '@/domain/types';
 import { type PermissionModule } from '@/domain/enums';
 import { useDepartmentsStore } from '@/store/entityStores';
-import { navItems, CAMPO_ITEM, legacyModulesForRole, type NavItem } from './navigation';
+import { navItems, CAMPO_ITEM, allModules, type NavItem } from './navigation';
 
-/** Módulos que o usuário acessa hoje, já considerando departamento + exceções. */
+/**
+ * Módulos que o usuário acessa hoje.
+ *
+ * Uma fonte de verdade só: o **setor** (departamento). O papel decide apenas
+ * por qual porta a pessoa entra — admin passa por cima de tudo, técnico e
+ * cliente vivem fora do sistema de módulos. Funcionário sem setor atribuído
+ * fica só com o Dashboard: é proposital, para o acesso nunca ser um padrão
+ * implícito que ninguém configurou (a tela de Configurações avisa quando
+ * alguém está nessa situação).
+ */
 export function modulesForUser(user: User, departments?: Department[]): PermissionModule[] {
-  if (user.role === 'admin') return legacyModulesForRole('admin');
+  if (user.role === 'admin') return allModules();
   if (user.role === 'tecnico') return []; // técnico só usa o App de Campo (/campo), fora deste controle
   if (user.role === 'cliente') return []; // cliente só usa o Portal (/portal), fora deste controle
 
   const depts = departments ?? useDepartmentsStore.getState().items;
   const dept = user.departmentId ? depts.find((d) => d.id === user.departmentId && d.isActive !== false) : undefined;
-  // Sem departamento atribuído: mantém o comportamento anterior (baseado só
-  // no papel), pra não trancar usuários existentes ao ativar esta função.
-  const base = dept ? dept.modules : legacyModulesForRole(user.role);
+  const base: PermissionModule[] = dept ? dept.modules : ['dashboard'];
 
   const overrides = user.permissionOverrides ?? {};
   const set = new Set(base);

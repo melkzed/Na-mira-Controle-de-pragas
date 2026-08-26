@@ -155,8 +155,8 @@ export async function signOut(): Promise<void> {
  *  conta e este atalho não aparece. */
 export const demoAccounts: { email: string; role: string; label: string }[] = supabaseEnabled ? [] : [
   { email: 'marina@namira.com', role: 'admin', label: 'Administrador' },
-  { email: 'rafael@namira.com', role: 'supervisor', label: 'Supervisor' },
-  { email: 'camila@namira.com', role: 'financeiro', label: 'Financeiro' },
+  { email: 'rafael@namira.com', role: 'funcionario', label: 'Funcionário · Supervisão' },
+  { email: 'camila@namira.com', role: 'funcionario', label: 'Funcionário · Contabilidade' },
   { email: 'diego@namira.com', role: 'tecnico', label: 'Técnico' },
 ];
 

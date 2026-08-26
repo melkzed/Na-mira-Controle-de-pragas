@@ -70,8 +70,8 @@ export const departments: Department[] = [
 export const users: User[] = [
   { id: 'u-owner', orgId: ORG, name: 'Vanessa · Na Mira', email: 'namiracomercial@gmail.com', role: 'admin', isActive: true, phone: '(11) 99999-0000', departmentId: 'dept-adm' },
   { id: 'u-admin', orgId: ORG, name: 'Marina Duarte', email: 'marina@namira.com', role: 'admin', isActive: true, phone: '(11) 99999-0001', departmentId: 'dept-adm' },
-  { id: 'u-sup', orgId: ORG, name: 'Rafael Nunes', email: 'rafael@namira.com', role: 'supervisor', isActive: true, phone: '(11) 99999-0002', departmentId: 'dept-sup' },
-  { id: 'u-fin', orgId: ORG, name: 'Camila Reis', email: 'camila@namira.com', role: 'financeiro', isActive: true, phone: '(11) 99999-0003', departmentId: 'dept-cont' },
+  { id: 'u-sup', orgId: ORG, name: 'Rafael Nunes', email: 'rafael@namira.com', role: 'funcionario', isActive: true, phone: '(11) 99999-0002', departmentId: 'dept-sup' },
+  { id: 'u-fin', orgId: ORG, name: 'Camila Reis', email: 'camila@namira.com', role: 'funcionario', isActive: true, phone: '(11) 99999-0003', departmentId: 'dept-cont' },
   { id: 'u-t1', orgId: ORG, name: 'Diego Almeida', email: 'diego@namira.com', role: 'tecnico', isActive: true, phone: '(11) 98888-1001', departmentId: 'dept-tec' },
   { id: 'u-t2', orgId: ORG, name: 'Bruno Carvalho', email: 'bruno@namira.com', role: 'tecnico', isActive: true, phone: '(11) 98888-1002', departmentId: 'dept-tec' },
   { id: 'u-t3', orgId: ORG, name: 'Paula Freitas', email: 'paula@namira.com', role: 'tecnico', isActive: true, phone: '(11) 98888-1003', departmentId: 'dept-tec' },

@@ -48,8 +48,15 @@ function preflight(req: Request): Response {
   });
 }
 
-const ALLOWED_ROLES = ['admin', 'supervisor', 'financeiro', 'atendimento', 'estoque', 'tecnico'];
-const CAN_INVITE = ['admin', 'supervisor'];
+// Papéis existentes: quem entra por qual porta. O que a pessoa acessa dentro
+// do escritório vem do SETOR (public.departments.modules), não daqui.
+const ALLOWED_ROLES = ['admin', 'funcionario', 'tecnico'];
+
+// Quem pode cadastrar gente: o administrador sempre, e o funcionário cujo
+// setor tenha o módulo "configuracoes" liberado — que é exatamente onde a
+// tela de cadastrar funcionário vive. Antes isso era um papel fixo
+// ('supervisor'), que deixou de existir.
+const MODULO_CADASTRO = 'configuracoes';
 
 /** Mínimo do Supabase Auth. Mantido aqui para a mensagem sair em português. */
 const MIN_PASSWORD = 6;
@@ -59,7 +66,7 @@ const senhaCurta = () => `A senha precisa ter pelo menos ${MIN_PASSWORD} caracte
  *  para a mesma pessoa (cadastro duplicado: convidada como técnica e depois
  *  promovida por SQL, por exemplo). Quem manda é o papel mais permissivo. */
 const ROLE_RANK: Record<string, number> = {
-  admin: 6, supervisor: 5, financeiro: 4, atendimento: 3, estoque: 2, tecnico: 1,
+  admin: 4, funcionario: 3, tecnico: 2, cliente: 1,
 };
 
 interface CallerRow {
@@ -69,6 +76,7 @@ interface CallerRow {
   is_active: boolean;
   email: string | null;
   auth_user_id: string | null;
+  department_id: string | null;
 }
 
 function bestRow(rows: CallerRow[]): CallerRow | null {
@@ -113,7 +121,7 @@ serve(async (req) => {
     // erro). Agora busca pelos dois caminhos e escolhe a melhor linha.
     const byAuth = await admin
       .from('users')
-      .select('id, org_id, role, is_active, email, auth_user_id')
+      .select('id, org_id, role, is_active, email, auth_user_id, department_id')
       .eq('auth_user_id', authId);
 
     let rows = (byAuth.data ?? []) as CallerRow[];
@@ -121,7 +129,7 @@ serve(async (req) => {
     if (rows.length === 0 && authEmail) {
       const byEmail = await admin
         .from('users')
-        .select('id, org_id, role, is_active, email, auth_user_id')
+        .select('id, org_id, role, is_active, email, auth_user_id, department_id')
         .ilike('email', authEmail);
       rows = (byEmail.data ?? []) as CallerRow[];
       matchedByEmail = rows.length > 0;
@@ -137,9 +145,11 @@ serve(async (req) => {
     if (!callerRow.is_active) {
       return json({ error: 'Seu cadastro está inativo — peça a um administrador para reativá-lo.', code: 'caller_inactive' }, 403);
     }
-    if (!CAN_INVITE.includes(callerRow.role)) {
+    if (!(await podeCadastrar(admin, callerRow))) {
       return json({
-        error: `Seu acesso é "${callerRow.role}" e só admin ou supervisor podem cadastrar técnicos. Peça a um administrador para alterar o seu papel.`,
+        error: callerRow.role === 'funcionario'
+          ? 'O seu setor não tem "Configurações" liberado, e é ele que permite cadastrar pessoas. Peça a um administrador para liberar esse módulo no seu setor.'
+          : `Seu acesso é "${callerRow.role}" e não permite cadastrar pessoas. Peça a um administrador.`,
         code: 'caller_role',
       }, 403);
     }
@@ -250,6 +260,23 @@ serve(async (req) => {
     return json({ error: e instanceof Error ? e.message : 'Erro interno.', code: 'exception' }, 500);
   }
 });
+
+/** Administrador sempre pode; funcionário só se o setor dele liberar o
+ *  módulo de Configurações. Sem setor atribuído, não pode. */
+async function podeCadastrar(
+  admin: ReturnType<typeof createClient>,
+  caller: CallerRow,
+): Promise<boolean> {
+  if (caller.role === 'admin') return true;
+  if (caller.role !== 'funcionario' || !caller.department_id) return false;
+  const { data } = await admin
+    .from('departments')
+    .select('modules, is_active')
+    .eq('id', caller.department_id)
+    .maybeSingle();
+  if (!data || data.is_active === false) return false;
+  return Array.isArray(data.modules) && data.modules.includes(MODULO_CADASTRO);
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });

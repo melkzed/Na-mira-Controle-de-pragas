@@ -3,19 +3,29 @@
  * Camada de domínio: sem dependências de framework/infra.
  */
 
-export type UserRole =
-  | 'admin'
-  | 'supervisor'
-  | 'financeiro'
-  | 'atendimento'
-  | 'estoque'
-  | 'tecnico'
-  /** Cliente da empresa, no Portal do Cliente (`/portal`). Isolado dos papéis
-   *  internos: só enxerga o próprio cadastro e nunca o sistema administrativo. */
-  | 'cliente';
+/**
+ * Papel do usuário — decide **por qual porta a pessoa entra**, não o que ela
+ * abre depois. Existem só quatro, e cada um tem comportamento próprio no
+ * código (por isso não é um cadastro editável, ao contrário do setor):
+ *
+ * - `admin`      — dono da conta: acessa tudo, sem depender de setor.
+ * - `funcionario`— equipe do escritório: **todo** o acesso vem do setor
+ *                  (Configurações → Departamento), sem nenhum padrão embutido.
+ * - `tecnico`    — só o App do Técnico (`/campo`).
+ * - `cliente`    — só o Portal do Cliente (`/portal`).
+ *
+ * Os papéis antigos (supervisor/financeiro/atendimento/estoque) viraram
+ * `funcionario` + setor: eles não abriam nem fechavam tela nenhuma por si,
+ * só serviam de padrão de reserva, e duplicavam o que o setor já decide.
+ */
+export type UserRole = 'admin' | 'funcionario' | 'tecnico' | 'cliente';
 
-/** Papéis da equipe interna — tudo que não é técnico nem cliente. */
-export const STAFF_ROLES: UserRole[] = ['admin', 'supervisor', 'financeiro', 'atendimento', 'estoque'];
+/** Papéis da equipe interna — quem trabalha no escritório. */
+export const STAFF_ROLES: UserRole[] = ['admin', 'funcionario'];
+
+/** Papéis que o administrador pode atribuir ao cadastrar alguém da equipe.
+ *  `cliente` não entra: o acesso do cliente é criado no cadastro dele. */
+export const ASSIGNABLE_ROLES: UserRole[] = ['admin', 'funcionario', 'tecnico'];
 
 export type CustomerType = 'pf' | 'pj';
 
@@ -116,14 +126,11 @@ export const CRM_STAGE_META: Record<CrmStage, { label: string; color: string }> 
   perdido: { label: 'Perdido', color: '#ef4444' },
 };
 
-export const ROLE_META: Record<UserRole, { label: string }> = {
-  admin: { label: 'Administrador' },
-  supervisor: { label: 'Supervisor' },
-  financeiro: { label: 'Financeiro' },
-  atendimento: { label: 'Atendimento' },
-  estoque: { label: 'Estoque' },
-  tecnico: { label: 'Técnico' },
-  cliente: { label: 'Cliente' },
+export const ROLE_META: Record<UserRole, { label: string; hint: string }> = {
+  admin: { label: 'Administrador', hint: 'Acessa tudo, sem depender de setor' },
+  funcionario: { label: 'Funcionário', hint: 'Acessa o que o setor dele permitir' },
+  tecnico: { label: 'Técnico', hint: 'Usa o App do Técnico' },
+  cliente: { label: 'Cliente', hint: 'Usa o Portal do Cliente' },
 };
 
 /** Módulos administrativos que podem ser liberados/restringidos por
