@@ -20,6 +20,18 @@ export interface NavItem {
 
 const ADMIN: UserRole[] = ['admin', 'supervisor'];
 
+/** Módulos agrupados como aparecem no menu — usado também na tela de
+ *  permissões por setor, para o admin reconhecer o que está liberando. */
+export function modulesByGroup(): { group: NavItem['group']; modules: PermissionModule[] }[] {
+  const ordem: NavItem['group'][] = ['Operação', 'Comercial', 'Recursos', 'Gestão'];
+  return ordem
+    .map((group) => ({
+      group,
+      modules: navItems.filter((n) => n.group === group).map((n) => n.module) as PermissionModule[],
+    }))
+    .filter((g) => g.modules.length > 0);
+}
+
 export const navItems: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: 'LayoutDashboard', module: 'dashboard', roles: ['admin', 'supervisor', 'financeiro', 'atendimento', 'estoque'], group: 'Operação' },
   { to: '/agenda', label: 'Agenda', icon: 'CalendarDays', module: 'agenda', roles: ['admin', 'supervisor', 'atendimento'], group: 'Operação' },
