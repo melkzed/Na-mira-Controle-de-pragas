@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bug, Building2, Check, ImageUp, KeyRound, MapPin, Plus, Radar, Trash2, Upload, UserPlus, Wrench, X } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
@@ -24,6 +24,7 @@ import { MIN_PASSWORD, createEmployee, resetEmployeePassword } from '@/applicati
 import { suggestPassword } from '@/lib/password';
 import { areasImport, pestsImport, serviceTypesImport, trapTypesImport, type ImportSpec } from '@/lib/importModules';
 import { ROLE_META, MODULE_META, ALL_MODULES, STAFF_ROLES, type PermissionModule, type UserRole } from '@/domain/enums';
+import { modulesByGroup } from '@/application/navigation';
 import type { Department, User } from '@/domain/types';
 
 type Tab = 'empresa' | 'departamento' | 'cadastro' | 'operacional';
@@ -417,6 +418,18 @@ function EmployeeForm({ open, editing, departments, onClose }: {
 }
 
 /** Departamentos e os módulos que cada um acessa por padrão. */
+/**
+ * Setores e o que cada um acessa.
+ *
+ * A tela é um seletor, não uma parede de caixas: escolhe-se o setor à
+ * esquerda e o que ele acessa aparece à direita, com os módulos agrupados na
+ * mesma ordem do menu lateral — assim o administrador reconhece o que está
+ * liberando.
+ *
+ * Desmarcar um módulo esconde a tela dele e bloqueia a rota (RequireAuth),
+ * mas não corta o dado: a OS continua sabendo o cliente, o produto continua
+ * ligado ao estoque. O que muda é só quem consegue abrir e mexer.
+ */
 function DepartmentsPanel({ departments, onAdd, onUpdate, onRemove }: {
   departments: Department[];
   onAdd: (d: Department) => void;
@@ -424,43 +437,185 @@ function DepartmentsPanel({ departments, onAdd, onUpdate, onRemove }: {
   onRemove: (id: string) => void;
 }) {
   const [name, setName] = useState('');
+  const [selectedId, setSelectedId] = useState('');
+  const grupos = useMemo(() => modulesByGroup(), []);
+
+  // Mantém sempre um setor selecionado, inclusive depois de criar ou excluir.
+  useEffect(() => {
+    if (departments.length === 0) { setSelectedId(''); return; }
+    if (!departments.some((d) => d.id === selectedId)) setSelectedId(departments[0].id);
+  }, [departments, selectedId]);
+
+  const selected = departments.find((d) => d.id === selectedId);
+
   const create = () => {
-    if (!name.trim()) return;
-    onAdd({ id: uid('dept'), orgId: currentOrgId(), name: name.trim(), modules: ['dashboard'] });
+    const limpo = name.trim();
+    if (!limpo) return;
+    if (departments.some((d) => d.name.toLowerCase() === limpo.toLowerCase())) {
+      toast('Já existe um setor com esse nome.', { tone: 'warning' });
+      return;
+    }
+    // Setor novo nasce só com o Dashboard: liberar acesso é decisão explícita.
+    const dept: Department = { id: uid('dept'), orgId: currentOrgId(), name: limpo, modules: ['dashboard'], isActive: true };
+    onAdd(dept);
+    setSelectedId(dept.id);
     setName('');
+    toast(`Setor "${limpo}" cadastrado. Marque abaixo o que ele acessa.`, { tone: 'success' });
   };
-  const toggleModule = (dept: Department, mod: PermissionModule) => {
-    const has = dept.modules.includes(mod);
-    onUpdate(dept.id, { modules: has ? dept.modules.filter((m) => m !== mod) : [...dept.modules, mod] });
+
+  const toggleModule = (mod: PermissionModule) => {
+    if (!selected) return;
+    const has = selected.modules.includes(mod);
+    onUpdate(selected.id, { modules: has ? selected.modules.filter((m) => m !== mod) : [...selected.modules, mod] });
+  };
+
+  const marcarGrupo = (mods: PermissionModule[], marcar: boolean) => {
+    if (!selected) return;
+    const set = new Set(selected.modules);
+    mods.forEach((m) => (marcar ? set.add(m) : set.delete(m)));
+    onUpdate(selected.id, { modules: [...set] });
+  };
+
+  const excluir = (d: Department) => {
+    onRemove(d.id);
+    toast(`Setor "${d.name}" excluído. Quem estava nele fica sem departamento até você atribuir outro.`, { tone: 'warning' });
   };
 
   return (
     <Card>
-      <CardHeader title="Departamentos" subtitle="Módulos que cada departamento acessa por padrão" />
+      <CardHeader
+        title="Setores e permissões"
+        subtitle="Cadastre o setor e marque os módulos que ele pode acessar"
+      />
       <CardBody className="space-y-4">
-        <div className="flex gap-2">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Novo departamento" onKeyDown={(e) => e.key === 'Enter' && create()} />
-          <Button leftIcon={<Plus size={15} />} onClick={create} disabled={!name.trim()}>Adicionar</Button>
+        <div className="flex flex-wrap gap-2">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Nome do novo setor (ex.: Contabilidade)"
+            className="min-w-56 flex-1"
+            aria-label="Nome do novo setor"
+            onKeyDown={(e) => e.key === 'Enter' && create()}
+          />
+          <Button leftIcon={<Plus size={15} />} onClick={create} disabled={!name.trim()}>Cadastrar setor</Button>
         </div>
-        <div className="space-y-3">
-          {departments.map((d) => (
-            <div key={d.id} className="rounded-xl border border-border p-3">
-              <div className="mb-2 flex items-center gap-2">
-                <Input value={d.name} onChange={(e) => onUpdate(d.id, { name: e.target.value })} className="h-8 w-48 text-sm font-medium" aria-label={`Nome do departamento ${d.name}`} />
-                <button onClick={() => onRemove(d.id)} aria-label={`Excluir ${d.name}`} className="ml-auto shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-danger"><Trash2 size={14} /></button>
-              </div>
-              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
-                {ALL_MODULES.map((m) => (
-                  <label key={m} className="flex items-center gap-1.5 text-xs text-foreground">
-                    <input type="checkbox" checked={d.modules.includes(m)} onChange={() => toggleModule(d, m)} className="h-3.5 w-3.5 rounded border-border" />
-                    {MODULE_META[m].label}
-                  </label>
-                ))}
-              </div>
+
+        {departments.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            Nenhum setor cadastrado ainda. Crie o primeiro no campo acima.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr]">
+            {/* Seletor de setor */}
+            <div className="space-y-1">
+              {departments.map((d) => {
+                const ativo = d.id === selectedId;
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() => setSelectedId(d.id)}
+                    className={cn(
+                      'flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left transition',
+                      ativo ? 'border-brand bg-brand-soft/50' : 'border-border hover:bg-muted/50',
+                    )}
+                  >
+                    <span className="min-w-0">
+                      <span className={cn('block truncate text-sm font-medium', ativo ? 'text-brand' : 'text-foreground')}>{d.name}</span>
+                      <span className="block text-[11px] text-muted-foreground">
+                        {d.modules.length} de {ALL_MODULES.length} módulos
+                      </span>
+                    </span>
+                    <Badge tone={ativo ? 'brand' : 'neutral'} className="shrink-0 text-[10px]">{d.modules.length}</Badge>
+                  </button>
+                );
+              })}
             </div>
-          ))}
-          {departments.length === 0 && <p className="text-xs text-muted-foreground">Nenhum departamento cadastrado.</p>}
-        </div>
+
+            {/* Módulos do setor selecionado */}
+            {selected && (
+              <div className="rounded-xl border border-border p-4">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <Input
+                    value={selected.name}
+                    onChange={(e) => onUpdate(selected.id, { name: e.target.value })}
+                    className="h-9 min-w-48 flex-1 text-sm font-semibold"
+                    aria-label={`Nome do setor ${selected.name}`}
+                  />
+                  <Button
+                    size="sm" variant="outline"
+                    onClick={() => onUpdate(selected.id, { modules: [...ALL_MODULES] })}
+                  >
+                    Marcar todos
+                  </Button>
+                  <Button
+                    size="sm" variant="outline"
+                    onClick={() => onUpdate(selected.id, { modules: [] })}
+                  >
+                    Limpar
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => excluir(selected)}
+                    aria-label={`Excluir setor ${selected.name}`}
+                    className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-danger"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {grupos.map(({ group, modules }) => {
+                    const todos = modules.every((m) => selected.modules.includes(m));
+                    return (
+                      <div key={group}>
+                        <div className="mb-1.5 flex items-center justify-between gap-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">{group}</p>
+                          <button
+                            type="button"
+                            onClick={() => marcarGrupo(modules, !todos)}
+                            className="text-[11px] font-medium text-brand hover:underline"
+                          >
+                            {todos ? 'Desmarcar grupo' : 'Marcar grupo'}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+                          {modules.map((m) => {
+                            const marcado = selected.modules.includes(m);
+                            return (
+                              <label
+                                key={m}
+                                className={cn(
+                                  'flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-sm transition',
+                                  marcado ? 'border-brand/50 bg-brand-soft/30 text-foreground' : 'border-border text-muted-foreground hover:bg-muted/40',
+                                )}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={marcado}
+                                  onChange={() => toggleModule(m)}
+                                  className="h-4 w-4 rounded border-border"
+                                />
+                                {MODULE_META[m].label}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <p className="mt-4 rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                  Os módulos desmarcados somem do menu e a rota fica bloqueada, mesmo digitando o endereço.
+                  Isso não desliga a ligação entre os dados — a OS continua sabendo o cliente e o produto continua
+                  ligado ao estoque; o que muda é quem consegue abrir e alterar cada tela.
+                  Para abrir ou fechar um módulo só para uma pessoa, use "Exceções por usuário" logo abaixo.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </CardBody>
     </Card>
   );
