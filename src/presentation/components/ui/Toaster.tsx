@@ -33,14 +33,18 @@ export function Toaster() {
               exit={{ opacity: 0, x: 24, scale: 0.96 }}
               transition={{ duration: 0.2 }}
               role="status"
-              className="pointer-events-auto flex items-start gap-3 rounded-xl border border-border bg-surface p-3 pr-2 shadow-elevated"
+              /* O cartão em si não recebe clique: ele aparece no canto inferior
+                 direito, exatamente sobre o rodapé dos formulários, e chegava a
+                 interceptar o clique no botão Salvar. Só os botões do próprio
+                 toast (ação e fechar) voltam a receber ponteiro. */
+              className="pointer-events-none flex items-start gap-3 rounded-xl border border-border bg-surface p-3 pr-2 shadow-elevated"
             >
               <Icon size={18} className={cn('mt-0.5 shrink-0', meta.ring)} />
               <p className="flex-1 pt-0.5 text-sm text-foreground">{t.message}</p>
               {t.action && (
                 <button
                   onClick={() => { t.action!.onClick(); dismiss(t.id); }}
-                  className="shrink-0 rounded-md px-2 py-1 text-sm font-semibold text-brand hover:bg-muted"
+                  className="pointer-events-auto shrink-0 rounded-md px-2 py-1 text-sm font-semibold text-brand hover:bg-muted"
                 >
                   {t.action.label}
                 </button>
@@ -48,7 +52,7 @@ export function Toaster() {
               <button
                 onClick={() => dismiss(t.id)}
                 aria-label="Fechar notificação"
-                className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="pointer-events-auto shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 <X size={15} />
               </button>

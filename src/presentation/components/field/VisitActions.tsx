@@ -36,6 +36,7 @@ import {
 import { useAreasStore } from '@/store/entityStores';
 import { NC_CATEGORY_LABEL } from '@/lib/printReports';
 import { fmtDate } from '@/lib/date';
+import { projectPoints } from '@/lib/geo';
 import type {
   Appointment, NonConformity, ServiceOrder, TrapDevice, VerificationItem,
 } from '@/domain/types';
@@ -54,23 +55,69 @@ const PONTOS_PADRAO = [
   'Sinais de infestação',
 ];
 
-export function VisitActionsMenu({ appt, techId, techName, onFinishRequest }: {
+/**
+ * Indicador de que o atendimento tem armadilhas a monitorar. Fica visível no
+ * cartão da visita, sem depender de abrir o menu — é a informação que muda o
+ * que o técnico leva e quanto tempo a visita dura.
+ */
+export function TrapsIndicator({ customerId, onOpen }: { customerId: string; onOpen: () => void }) {
+  const traps = useTrapsStore((s) => s.traps.filter((t) => t.customerId === customerId));
+  const inspections = useTrapsStore((s) => s.inspections);
+  if (traps.length === 0) return null;
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  const ids = new Set(traps.map((t) => t.id));
+  const feitasHoje = inspections.filter((i) => ids.has(i.trapId) && i.date.slice(0, 10) === hoje).length;
+  const completo = feitasHoje >= traps.length;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`flex w-full items-center gap-2.5 rounded-xl border p-3 text-left transition ${
+        completo ? 'border-success/40 bg-success-soft/40 hover:bg-success-soft/60' : 'border-brand/40 bg-brand-soft/30 hover:bg-brand-soft/50'
+      }`}
+    >
+      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${completo ? 'bg-success/15 text-success' : 'bg-brand/15 text-brand'}`}>
+        <Radar size={17} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-foreground">
+          Monitoramento de armadilhas — {traps.length}
+        </span>
+        <span className="block text-xs text-muted-foreground">
+          {completo ? 'Todas inspecionadas hoje' : `${feitasHoje} de ${traps.length} inspecionadas nesta visita`}
+        </span>
+      </span>
+      <Badge tone={completo ? 'success' : 'brand'} className="text-[10px]">{completo ? 'OK' : 'Pendente'}</Badge>
+    </button>
+  );
+}
+
+export function VisitActionsMenu({ appt, techId, techName, onFinishRequest, openTrapsSignal = 0 }: {
   appt: Appointment;
   techId: string;
   techName: string;
   /** Aciona o fluxo de finalização que vive no cartão da próxima visita. */
   onFinishRequest: () => void;
+  /** Muda quando o indicador do cartão pede para abrir as armadilhas. */
+  openTrapsSignal?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [action, setAction] = useState<ActionKey | null>(null);
+  const trapCount = useTrapsStore((s) => s.traps.filter((t) => t.customerId === appt.customerId).length);
 
-  const item = (key: ActionKey, icon: React.ReactNode, label: string) => (
+  useEffect(() => { if (openTrapsSignal > 0) setAction('armadilhas'); }, [openTrapsSignal]);
+
+  const item = (key: ActionKey, icon: React.ReactNode, label: string, badge?: number) => (
     <button
       type="button"
       onClick={() => { setAction(key); setOpen(false); }}
       className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-foreground transition hover:bg-muted"
     >
-      <span className="text-muted-foreground">{icon}</span>{label}
+      <span className="text-muted-foreground">{icon}</span>
+      <span className="flex-1">{label}</span>
+      {badge != null && <Badge tone="brand" className="text-[10px]">{badge}</Badge>}
     </button>
   );
 
@@ -98,7 +145,7 @@ export function VisitActionsMenu({ appt, techId, techName, onFinishRequest }: {
                 <span className="text-brand"><CheckCircle2 size={15} /></span>Fechar ordem de serviço
               </button>
               {item('servicos', <ClipboardList size={15} />, 'Serviços a executar')}
-              {item('armadilhas', <Radar size={15} />, 'Monitorar armadilhas')}
+              {item('armadilhas', <Radar size={15} />, 'Monitorar armadilhas', trapCount || undefined)}
               {item('nao_conformidade', <TriangleAlert size={15} />, 'Informar não conformidades')}
               {item('verificacao', <ClipboardCheck size={15} />, 'Monitoramento/verificação')}
               {item('assinar', <PenLine size={15} />, 'Capturar assinatura')}
@@ -220,11 +267,17 @@ function ArmadilhasDrawer({ open, onClose, appt, techId }: {
   const inspections = useTrapsStore((s) => s.inspections);
   const addInspection = useTrapsStore((s) => s.addInspection);
   const [selected, setSelected] = useState<TrapDevice | null>(null);
+  const [view, setView] = useState<'lista' | 'mapa'>('lista');
 
-  useEffect(() => { if (!open) setSelected(null); }, [open]);
+  useEffect(() => { if (!open) { setSelected(null); setView('lista'); } }, [open]);
 
   const lastOf = (trapId: string) =>
     inspections.filter((i) => i.trapId === trapId).sort((a, b) => b.date.localeCompare(a.date))[0];
+
+  // Só as armadilhas deste cliente entram no mapa, e só as que têm posição
+  // registrada — sem coordenadas, a lista por ponto de instalação é o que o
+  // técnico tem para se localizar.
+  const comCoordenadas = traps.filter((t) => t.latitude != null && t.longitude != null);
 
   return (
     <Drawer open={open} onClose={onClose} title="Monitorar armadilhas" subtitle={getCustomer(appt.customerId)?.name}>
@@ -240,9 +293,26 @@ function ArmadilhasDrawer({ open, onClose, appt, techId }: {
           }}
         />
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {traps.length === 0 && <Vazio>Este cliente não tem armadilhas cadastradas.</Vazio>}
-          {traps.map((t) => {
+
+          {traps.length > 0 && comCoordenadas.length > 0 && (
+            <Segmented
+              size="sm"
+              value={view}
+              onChange={(v) => setView(v as 'lista' | 'mapa')}
+              options={[
+                { value: 'lista', label: 'Lista' },
+                { value: 'mapa', label: `Mapa (${comCoordenadas.length})` },
+              ]}
+            />
+          )}
+
+          {view === 'mapa' && comCoordenadas.length > 0 && (
+            <TrapsMap traps={comCoordenadas} onSelect={setSelected} lastOf={lastOf} />
+          )}
+
+          {view === 'lista' && traps.map((t) => {
             const last = lastOf(t.id);
             return (
               <button
@@ -265,9 +335,70 @@ function ArmadilhasDrawer({ open, onClose, appt, techId }: {
               </button>
             );
           })}
+
+          {traps.length > 0 && comCoordenadas.length === 0 && (
+            <p className="rounded-xl border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+              As armadilhas deste cliente ainda não têm posição registrada, então não há mapa —
+              use o ponto de instalação de cada uma para se localizar. O escritório pode registrar a
+              posição no cadastro de armadilhas do cliente.
+            </p>
+          )}
         </div>
       )}
     </Drawer>
+  );
+}
+
+/**
+ * Mapa das armadilhas do cliente, em SVG — mesma projeção do mapa de rota
+ * (`lib/geo.ts`), sem depender de tiles externos (o CSP bloqueia hosts de
+ * fora, ver vercel.json). Toque num marcador abre a inspeção daquela
+ * armadilha.
+ */
+function TrapsMap({ traps, onSelect, lastOf }: {
+  traps: TrapDevice[];
+  onSelect: (t: TrapDevice) => void;
+  lastOf: (trapId: string) => { consumed: boolean; date: string } | undefined;
+}) {
+  const W = 320;
+  const H = 240;
+  const pontos = projectPoints(
+    traps.map((t) => ({ lat: t.latitude as number, lng: t.longitude as number, trap: t })),
+    W, H,
+  );
+
+  return (
+    <div className="rounded-xl border border-border bg-muted/20 p-2">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`Mapa das armadilhas · ${traps.length} pontos`}>
+        <rect x={0} y={0} width={W} height={H} rx={10} fill="rgb(var(--color-muted))" />
+        {pontos.map((p) => {
+          const ultima = lastOf(p.trap.id);
+          const cor = ultima?.consumed ? 'rgb(var(--color-warning))' : 'rgb(var(--color-brand))';
+          return (
+            <g
+              key={p.trap.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`Armadilha ${p.trap.code}${p.trap.location ? ` em ${p.trap.location}` : ''}`}
+              onClick={() => onSelect(p.trap)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(p.trap); } }}
+              className="cursor-pointer"
+            >
+              <circle cx={p.x} cy={p.y} r={9} fill={cor} opacity={0.9} />
+              <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize={9} fontWeight={700} fill="#fff">
+                {p.trap.code.replace(/\D/g, '').slice(-2) || '•'}
+              </text>
+              <text x={p.x} y={p.y + 22} textAnchor="middle" fontSize={8} fill="rgb(var(--color-muted-foreground))">
+                {p.trap.code}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+      <p className="mt-1 px-1 text-[11px] text-muted-foreground">
+        Toque num ponto para registrar a inspeção. Laranja = houve consumo na última visita.
+      </p>
+    </div>
   );
 }
 
@@ -542,12 +673,12 @@ function AssinaturasDrawer({ open, readOnly, onClose, appt, techId, techName }: 
   const os = serviceOrderForAppointment(appt.id);
   const customer = getCustomer(appt.customerId);
   const [customerSignature, setCustomerSignature] = useState<string | undefined>();
-  const [technicianSignature, setTechnicianSignature] = useState<string | undefined>();
+  // A do técnico não é desenhada aqui: vem do cadastro dele. Só é exibida.
+  const technicianSignature = appt.technicianSignature ?? storedSig;
 
   useEffect(() => {
     if (!open) return;
     setCustomerSignature(appt.customerSignature ?? os?.customerSignature);
-    setTechnicianSignature(appt.technicianSignature ?? storedSig);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, appt.id]);
 
@@ -563,7 +694,7 @@ function AssinaturasDrawer({ open, readOnly, onClose, appt, techId, techName }: 
     <Drawer
       open={open}
       onClose={onClose}
-      title={readOnly ? 'Assinaturas do atendimento' : 'Capturar assinatura'}
+      title={readOnly ? 'Assinaturas do atendimento' : 'Capturar assinatura do cliente'}
       subtitle={customer?.name}
       footer={readOnly ? undefined : (
         <div className="grid grid-cols-2 gap-2">
@@ -585,15 +716,15 @@ function AssinaturasDrawer({ open, readOnly, onClose, appt, techId, techName }: 
         </div>
         <div>
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Técnico · {techName}</p>
-          {readOnly ? (
-            <AssinaturaLida src={technicianSignature} vazio="Sem assinatura do técnico ainda." />
-          ) : (
-            <SignaturePad key={`tec-${appt.id}`} value={technicianSignature} onChange={setTechnicianSignature} height={140} label="Assinatura do técnico" />
-          )}
+          <AssinaturaLida
+            src={technicianSignature}
+            vazio="Você ainda não tem assinatura cadastrada. Peça ao escritório para registrá-la no seu perfil — ela é usada automaticamente em todos os atendimentos."
+          />
         </div>
         {!readOnly && (
           <p className="text-xs text-muted-foreground">
-            As assinaturas entram na Ordem de Serviço e saem no PDF entregue ao cliente.
+            Só a assinatura do cliente é colhida no atendimento. A sua vem do seu cadastro e já entra
+            na Ordem de Serviço e no PDF entregue ao cliente.
           </p>
         )}
       </div>

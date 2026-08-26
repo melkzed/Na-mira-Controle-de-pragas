@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { AppNotification, User } from '@/domain/types';
 import { useUsersStore } from '@/store/entityStores';
-import { authenticate, getSessionUser, signOut as authSignOut } from '@/application/auth';
+import { authenticate, customerSessionUser, getSessionUser, signOut as authSignOut } from '@/application/auth';
 import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { daysFromNowIso } from '@/lib/misc';
 
@@ -27,6 +27,7 @@ interface AppState {
 }
 
 const USER_KEY = 'namira-user';
+const CLIENTE_PREFIX = 'cliente-';
 
 const initialNotifications: AppNotification[] = [
   { id: 'n-1', title: 'Nova Ordem de Serviço', body: 'OS #1045 criada para Restaurante Sabor & Cia', tone: 'info', entityType: 'service_order', read: false, createdAt: daysFromNowIso(0) },
@@ -51,13 +52,21 @@ function initTheme(): Theme {
 function initUserStandalone(): User | null {
   const id = localStorage.getItem(USER_KEY);
   if (!id) return null;
+  if (id.startsWith(CLIENTE_PREFIX)) return customerSessionUser(id.slice(CLIENTE_PREFIX.length));
   return useUsersStore.getState().items.find((u) => u.id === id && u.isActive) ?? null;
+}
+
+/** A sessão salva é de um cliente do Portal? O acesso do cliente vem do
+ *  cadastro dele, não do Supabase Auth — então reidrata igual nos dois modos,
+ *  e não há sessão remota a esperar. */
+function hasCustomerSession(): boolean {
+  return (localStorage.getItem(USER_KEY) ?? '').startsWith(CLIENTE_PREFIX);
 }
 
 export const useAppStore = create<AppState>((set) => ({
   theme: initTheme(),
-  currentUser: supabaseEnabled ? null : initUserStandalone(),
-  authLoading: supabaseEnabled,
+  currentUser: supabaseEnabled && !hasCustomerSession() ? null : initUserStandalone(),
+  authLoading: supabaseEnabled && !hasCustomerSession(),
   notifications: initialNotifications,
   commandOpen: false,
   toggleTheme: () =>
@@ -70,13 +79,14 @@ export const useAppStore = create<AppState>((set) => ({
   login: async (email, password) => {
     const { user } = await authenticate(email, password);
     if (user) {
-      if (!supabaseEnabled) localStorage.setItem(USER_KEY, user.id);
+      // Cliente sempre persiste local: o Portal não passa pelo Supabase Auth.
+      if (!supabaseEnabled || user.role === 'cliente') localStorage.setItem(USER_KEY, user.id);
       set({ currentUser: user });
     }
     return user;
   },
   logout: () => {
-    if (!supabaseEnabled) localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(USER_KEY);
     set({ currentUser: null, commandOpen: false });
     void authSignOut();
   },
@@ -100,7 +110,7 @@ export const useAppStore = create<AppState>((set) => ({
 // carregar o app, e mantém currentUser sincronizado com logout/expiração de
 // sessão vindos de outra aba. "SIGNED_IN" não é tratado aqui — login() já
 // atualiza o estado diretamente, evitando uma segunda busca redundante.
-if (supabaseEnabled && supabase) {
+if (supabaseEnabled && supabase && !hasCustomerSession()) {
   getSessionUser()
     .then((user) => useAppStore.setState({ currentUser: user, authLoading: false }))
     .catch(() => useAppStore.setState({ currentUser: null, authLoading: false }));

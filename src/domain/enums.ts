@@ -9,7 +9,13 @@ export type UserRole =
   | 'financeiro'
   | 'atendimento'
   | 'estoque'
-  | 'tecnico';
+  | 'tecnico'
+  /** Cliente da empresa, no Portal do Cliente (`/portal`). Isolado dos papéis
+   *  internos: só enxerga o próprio cadastro e nunca o sistema administrativo. */
+  | 'cliente';
+
+/** Papéis da equipe interna — tudo que não é técnico nem cliente. */
+export const STAFF_ROLES: UserRole[] = ['admin', 'supervisor', 'financeiro', 'atendimento', 'estoque'];
 
 export type CustomerType = 'pf' | 'pj';
 
@@ -117,6 +123,7 @@ export const ROLE_META: Record<UserRole, { label: string }> = {
   atendimento: { label: 'Atendimento' },
   estoque: { label: 'Estoque' },
   tecnico: { label: 'Técnico' },
+  cliente: { label: 'Cliente' },
 };
 
 /** Módulos administrativos que podem ser liberados/restringidos por

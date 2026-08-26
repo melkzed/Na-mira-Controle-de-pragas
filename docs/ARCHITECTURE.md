@@ -277,6 +277,52 @@ importação. Linhas que casam com um registro existente aparecem como
 "Atualiza" e podem ser deixadas de fora com um checkbox; em Financeiro, onde
 o mesmo lançamento se repete todo mês, o drawer roda em `createOnly`.
 
+### 3.8 Portal do Cliente e o papel `cliente`
+
+O cliente da empresa tem acesso próprio (`/portal`), isolado do sistema
+administrativo e do app de campo.
+
+**Quem é o cliente.** Ele não é uma linha de `users` — é um `Customer`. Para o
+resto do app (rotas, guardas, cabeçalho) enxergar sempre a mesma coisa,
+`application/auth.ts` monta um `User` sintético de papel `cliente` apontando
+para o cadastro em `customerId`. É por esse campo que todo o Portal filtra.
+
+**Login.** CPF/CNPJ do cadastro + senha definida pelo administrador (Clientes →
+Acesso do cliente). O campo da tela de login aceita e-mail *ou* documento; o
+que separa os dois é `looksLikeDocument` (`lib/password.ts`). A senha nunca é
+guardada nem relida em texto: fica só o hash SHA-256 com sal por cliente, então
+a tela só oferece **redefinir**. Quando o Portal passar pelo Supabase Auth, a
+conferência sai de `lib/password.ts` e vai para o Auth — é o único ponto a
+trocar.
+
+**Isolamento.** Três camadas, todas necessárias:
+1. `RequireAuth` — `requireStaff` manda cliente para `/portal`; `requireCliente`
+   impede que usuário interno entre lá. Vale também para URL digitada à mão.
+2. `application/permissions.ts` — `modulesForUser` devolve `[]` e
+   `hasModuleAccess` devolve `false` para o papel `cliente`: nenhum módulo
+   administrativo existe para ele, nem no menu nem na rota.
+3. `pages/portal/portalData.ts` — todo dado do Portal passa por um recorte só,
+   pelo `customerId` do usuário logado. É esse recorte que a RLS do Supabase
+   vai reforçar no servidor; enquanto isso, ele é a fronteira.
+
+**O que o cliente vê.** Painel (próximos atendimentos, último serviço, contrato,
+validade do certificado, pendências), agendamentos (com confirmação e pedido de
+remarcação, que viram notificação para a equipe e entrada no histórico de
+alterações), histórico de serviços, documentos (OS/Certificado/Laudo abertos
+dentro do sistema), pagamentos e armadilhas. O financeiro do cliente mostra
+**só receitas dele** (`financeEntriesForCustomer`) — custo interno, margem,
+comissão e contas a pagar da empresa nunca chegam ali.
+
+**Permissões da equipe interna.** Continuam em duas camadas (§3.2 do RBAC):
+departamento define o padrão, exceções por usuário ajustam caso a caso. A elas
+soma-se `hideFinancialValues` (`canSeeFinancialValues`), para quem precisa
+abrir a OS sem ver quanto foi cobrado — acesso por módulo é tudo-ou-nada por
+tela, e esse caso não cabia nele. Administrador nunca é afetado.
+
+Migration: `db/migrate_campo_verificacao.sql` (colunas de acesso do cliente,
+pedido de reagendamento, áreas específicas da OS, coordenadas das armadilhas e
+os dois campos novos de `users`).
+
 ## 4. Fluxos principais
 
 ### 4.1 Do agendamento à Ordem de Serviço

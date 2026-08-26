@@ -110,6 +110,7 @@ interface AppointmentRow {
   recurrence_id: string | null;
   recurrence_rule: string | null;
   confirmed_at: string | null;
+  reschedule_request: Appointment['rescheduleRequest'] | null;
 }
 
 function fromRow(row: AppointmentRow): Appointment {
@@ -141,6 +142,7 @@ function fromRow(row: AppointmentRow): Appointment {
     recurrenceId: row.recurrence_id ?? undefined,
     recurrenceRule: row.recurrence_rule ?? undefined,
     confirmedAt: row.confirmed_at ?? undefined,
+    rescheduleRequest: row.reschedule_request ?? undefined,
   };
 }
 
@@ -173,6 +175,7 @@ function toRow(a: Appointment): AppointmentRow {
     recurrence_id: a.recurrenceId ?? null,
     recurrence_rule: a.recurrenceRule ?? null,
     confirmed_at: a.confirmedAt ?? null,
+    reschedule_request: a.rescheduleRequest ?? null,
   };
 }
 

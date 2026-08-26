@@ -114,15 +114,19 @@ export function LoginPage() {
 
           <h2 className="text-2xl font-bold tracking-tight text-foreground">Acessar o sistema</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Entre com seu e-mail e senha para continuar.
+            Equipe entra com o e-mail; cliente, com o CPF ou CNPJ do cadastro.
           </p>
 
           <form onSubmit={submit} className="mt-6 space-y-4">
-            <Field label="E-mail" required>
+            {/* type="text" de propósito: o mesmo campo aceita o e-mail da
+                equipe e o CPF/CNPJ do cliente (Portal). Com type="email" o
+                navegador barraria o documento antes de chegar ao envio. */}
+            <Field label="E-mail ou CPF/CNPJ" required>
               <Input
-                type="email"
+                type="text"
+                inputMode="text"
                 autoComplete="username"
-                placeholder="voce@namira.com"
+                placeholder="voce@namira.com ou 000.000.000-00"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required

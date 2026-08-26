@@ -31,7 +31,7 @@ import { fmtTime } from '@/lib/date';
 import { cn, formatDocument } from '@/lib/utils';
 import { formatAddress, googleMapsRoute, googleMapsRouteToAddress } from '@/lib/geo';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
-import { VisitActionsMenu } from '../components/field/VisitActions';
+import { TrapsIndicator, VisitActionsMenu } from '../components/field/VisitActions';
 import { ensureTechnicianStockLocation, technicianStockLocationId } from '@/store/stockLocations';
 
 /** Linha de produto aplicado em campo — quantidade e se foi de fato usado. */
@@ -39,7 +39,10 @@ interface AppliedProductRow { productId: string; qty: number; used: boolean }
 
 /** Dados que o técnico registra ao finalizar/editar o atendimento. */
 interface FieldSaveData {
+  /** Assinatura do técnico — vem do cadastro dele, não é desenhada na visita. */
   signature?: string;
+  /** Assinatura de quem recebeu o serviço, colhida no atendimento. */
+  customerSignature?: string;
   products: AppliedProductRow[];
   paymentStatus: PaymentStatus;
   /** Horário informado pelo técnico (`HH:MM`) — o relógio do sistema marca
@@ -175,6 +178,8 @@ export function CampoPage() {
   // "Fechar ordem de serviço" no menu Gerenciar abre o mesmo fluxo de
   // finalização que vive no cartão da visita — o contador é o gatilho.
   const [finishSignal, setFinishSignal] = useState(0);
+  // O indicador de armadilhas no cartão abre a mesma gaveta do menu Gerenciar.
+  const [trapsSignal, setTrapsSignal] = useState(0);
 
   const doneCount = appts.filter((a) => a.status === 'finalizado').length;
 
@@ -192,16 +197,16 @@ export function CampoPage() {
   /** Finaliza o atendimento: grava assinatura, produtos aplicados e pagamento
    *  na OS, dá baixa no estoque combinado dos técnicos da OS (ver
    *  reconcileTechStock) e registra o histórico da OS. */
-  const handleFinish = ({ signature, products, paymentStatus, startTime, endTime }: FieldSaveData) => {
+  const handleFinish = ({ signature, customerSignature: assinaturaCliente, products, paymentStatus, startTime, endTime }: FieldSaveData) => {
     if (!active) return;
     const so = serviceOrderForAppointment(active.id);
     const now = new Date().toISOString();
-    updateAppt(active.id, { technicianSignature: signature });
+    updateAppt(active.id, { technicianSignature: signature, customerSignature: assinaturaCliente ?? active.customerSignature });
     setStatus(active.id, 'finalizado');
     if (so) {
       // A assinatura do cliente é colhida no menu Gerenciar; é ela que sai
       // no PDF da OS, então precisa ser copiada para lá ao fechar.
-      const customerSignature = active.customerSignature ?? so.customerSignature;
+      const customerSignature = assinaturaCliente ?? active.customerSignature ?? so.customerSignature;
       const startedAt = withTime(active.scheduledStart, startTime) ?? so.startedAt ?? now;
       const finishedAt = withTime(active.scheduledStart, endTime) ?? now;
       const technicianIds = so.technicianIds?.length ? so.technicianIds : [so.technicianId ?? techId];
@@ -290,11 +295,13 @@ export function CampoPage() {
             onEditSave={handleEditSave}
             onPhotosChange={(photos) => updateAppt(active.id, { photos })}
             finishSignal={finishSignal}
+            onOpenTraps={() => setTrapsSignal((n) => n + 1)}
             actions={
               <VisitActionsMenu
                 appt={active}
                 techId={techId}
                 techName={techName}
+                openTrapsSignal={trapsSignal}
                 onFinishRequest={() => {
                   if (active.status === 'finalizado') { toast('Esta visita já foi finalizada.', { tone: 'info' }); return; }
                   if (active.status !== 'em_atendimento') { toast('Inicie o atendimento antes de fechar a ordem de serviço.', { tone: 'warning' }); return; }
@@ -714,7 +721,7 @@ function HeaderStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEditSave, onPhotosChange, finishSignal, actions }: {
+function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEditSave, onPhotosChange, finishSignal, actions, onOpenTraps }: {
   appt: Appointment;
   techId: string;
   onNavigate: () => void;
@@ -726,6 +733,8 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
   /** Muda quando o menu Gerenciar pede para fechar a OS. */
   finishSignal: number;
   actions: React.ReactNode;
+  /** Abre a gaveta de armadilhas a partir do indicador do cartão. */
+  onOpenTraps: () => void;
 }) {
   const cust = getCustomer(appt.customerId);
   const st = getServiceType(appt.serviceTypeId);
@@ -736,8 +745,12 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [confirming, setConfirming] = useState(false);
   const [editingAfterFinish, setEditingAfterFinish] = useState(false);
+  // A assinatura do técnico não é mais colhida no atendimento: vem do cadastro
+  // dele (Técnicos → assinatura), como o cliente pediu. Só a assinatura de
+  // quem recebeu o serviço é capturada aqui.
   const storedSig = useSettingsStore((s) => s.signatures[techId]);
-  const [signature, setSignature] = useState<string | undefined>(appt.technicianSignature ?? storedSig);
+  const signature = appt.technicianSignature ?? storedSig;
+  const [customerSignature, setCustomerSignature] = useState<string | undefined>(appt.customerSignature);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(linkedOs?.paymentStatus ?? 'pendente');
   const [productRows, setProductRows] = useState<AppliedProductRow[]>(() => defaultProductRows(appt, linkedOs));
   // Horário real do serviço, informado pelo técnico. O relógio do sistema
@@ -754,6 +767,7 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
     setProductRows(defaultProductRows(appt, linkedOs));
     setStartTime(hhmm(linkedOs?.startedAt));
     setEndTime(hhmm(linkedOs?.finishedAt));
+    setCustomerSignature(appt.customerSignature);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appt.id]);
 
@@ -799,6 +813,8 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
           <span className="flex-1 text-foreground">{appt.address}</span>
           <Info size={15} className="shrink-0 text-muted-foreground" />
         </button>
+
+        <TrapsIndicator customerId={appt.customerId} onOpen={onOpenTraps} />
 
         {cust?.permanentNotes && (
           <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft/60 p-3 text-sm">
@@ -942,13 +958,18 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
                 </div>
               ) : confirming ? (
                 <div className="rounded-xl border border-brand/40 bg-brand-soft/30 p-3">
-                  <p className="mb-2 text-sm font-medium text-foreground">Assine para finalizar. O sistema da empresa será atualizado.</p>
-                  <SignaturePad key={appt.id} value={signature} onChange={setSignature} height={120} label="Assinatura do técnico" />
+                  <p className="mb-1 text-sm font-medium text-foreground">Colha a assinatura do cliente para finalizar.</p>
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    {signature
+                      ? 'A sua assinatura vem do seu cadastro — não precisa assinar de novo.'
+                      : 'Você ainda não tem assinatura cadastrada; peça ao escritório para registrá-la no seu perfil.'}
+                  </p>
+                  <SignaturePad key={`cli-${appt.id}`} value={customerSignature} onChange={setCustomerSignature} height={120} label="Assinatura do cliente" />
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>Voltar</Button>
                     <Button
                       variant="primary" size="sm" leftIcon={<CheckCircle2 size={15} />}
-                      onClick={() => { onFinish({ signature, products: productRows, paymentStatus, startTime, endTime }); setConfirming(false); }}
+                      onClick={() => { onFinish({ signature, customerSignature, products: productRows, paymentStatus, startTime, endTime }); setConfirming(false); }}
                     >Confirmar</Button>
                   </div>
                 </div>

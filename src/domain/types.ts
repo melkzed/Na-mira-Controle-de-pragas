@@ -55,6 +55,13 @@ export interface User {
    *  módulo mesmo que o departamento não o inclua; false bloqueia mesmo que
    *  o departamento o inclua. Quem decide isso é o admin (dono da conta). */
   permissionOverrides?: Partial<Record<PermissionModule, boolean>>;
+  /** Esconde valores em dinheiro nas telas que este usuário acessa (ex.: um
+   *  atendente que precisa abrir a OS mas não deve ver quanto foi cobrado).
+   *  Complementa o acesso por módulo, que é tudo-ou-nada por tela. */
+  hideFinancialValues?: boolean;
+  /** Cliente vinculado, quando `role === 'cliente'` — é por ele que o Portal
+   *  do Cliente filtra tudo que a pessoa pode ver. Usuário interno não tem. */
+  customerId?: string;
 }
 
 export interface Team {
@@ -100,6 +107,16 @@ export interface Customer {
   permanentNotes?: string;
   /** Cliente possui contrato de monitoramento (habilita armadilhas/MIP). */
   monitoringContracted?: boolean;
+
+  // ── Acesso ao Portal do Cliente ────────────────────────────────────────
+  /** Cliente pode entrar no Portal (`/portal`) com CPF/CNPJ + senha. */
+  portalAccess?: boolean;
+  /** Hash da senha do Portal. Nunca guardamos nem exibimos a senha em texto:
+   *  o administrador define, o sistema guarda só o hash e, se a pessoa
+   *  esquecer, ele redefine. Ver `lib/password.ts`. */
+  portalPasswordHash?: string;
+  /** Quando a senha do Portal foi definida pela última vez. */
+  portalPasswordSetAt?: string;
   /** Situação cadastral e CNAE (preenchidos via consulta ao CNPJ). */
   registrationStatus?: string;
   economicActivity?: string;
@@ -199,6 +216,10 @@ export interface TrapDevice {
   nextInspectionAt?: string;
   /** Responsável fixo pela armadilha (normalmente o técnico da rota do cliente). */
   responsibleId?: string;
+  /** Posição da armadilha no imóvel, quando registrada — habilita o mapa de
+   *  armadilhas no app do técnico. Sem coordenadas, vale o `location`. */
+  latitude?: number;
+  longitude?: number;
   createdAt: string;
 }
 
@@ -490,6 +511,9 @@ export interface Appointment {
   recurrenceRule?: string;
   /** Data/hora em que a visita foi confirmada (pelo cliente/atendimento). */
   confirmedAt?: string;
+  /** Pedido de reagendamento feito pelo cliente no Portal. Fica registrado na
+   *  visita para o atendimento tratar — o cliente não remarca sozinho. */
+  rescheduleRequest?: { message?: string; createdAt: string };
 }
 
 export interface ServiceOrderProduct {
@@ -528,6 +552,10 @@ export interface ServiceOrder {
   serviceTypeIds?: string[];
   /** Áreas tratadas (cadastro). Complementa o texto livre areaTreated. */
   areaIds?: string[];
+  /** Áreas específicas desta OS, escritas na hora pelo usuário (ex.: "Câmara
+   *  fria do estoque"). Ficam só aqui — não entram no catálogo global de
+   *  áreas, para não poluir a lista de todos os outros clientes. */
+  customAreas?: { name: string; qty: number }[];
   /** Equipe: múltiplos técnicos e o vendedor responsável. */
   technicianIds?: string[];
   sellerId?: string;
