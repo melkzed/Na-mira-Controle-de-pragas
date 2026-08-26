@@ -16,8 +16,13 @@ create extension if not exists "pg_trgm";        -- busca textual
 -- ---------------------------------------------------------------------------
 -- ENUMs de domínio
 -- ---------------------------------------------------------------------------
+-- Papel = por qual porta a pessoa entra. O que ela acessa dentro do
+-- escritório vem do SETOR (departments.modules), não daqui.
 create type user_role as enum (
-  'admin', 'supervisor', 'financeiro', 'atendimento', 'estoque', 'tecnico'
+  'admin', 'funcionario', 'tecnico', 'cliente',
+  -- Mantidos só para bancos criados antes da consolidação dos papéis
+  -- (ver db/migrate_papeis.sql). Não usar em cadastro novo.
+  'supervisor', 'financeiro', 'atendimento', 'estoque'
 );
 
 create type customer_type as enum ('pf', 'pj');
@@ -73,7 +78,7 @@ create table users (
   email         text not null,
   phone         text,
   avatar_url    text,
-  role          user_role not null default 'atendimento',
+  role          user_role not null default 'funcionario',
   is_active     boolean not null default true,
   last_login_at timestamptz,
   created_at    timestamptz not null default now(),

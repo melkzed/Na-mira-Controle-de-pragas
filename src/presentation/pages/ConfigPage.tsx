@@ -23,7 +23,7 @@ import { Drawer } from '../components/ui/Drawer';
 import { MIN_PASSWORD, createEmployee, resetEmployeePassword } from '@/application/employees';
 import { suggestPassword } from '@/lib/password';
 import { areasImport, pestsImport, serviceTypesImport, trapTypesImport, type ImportSpec } from '@/lib/importModules';
-import { ROLE_META, MODULE_META, ALL_MODULES, STAFF_ROLES, type PermissionModule, type UserRole } from '@/domain/enums';
+import { ROLE_META, MODULE_META, ALL_MODULES, ASSIGNABLE_ROLES, type PermissionModule, type UserRole } from '@/domain/enums';
 import { modulesByGroup } from '@/application/navigation';
 import type { Department, User } from '@/domain/types';
 
@@ -209,14 +209,21 @@ function DepartamentoTab() {
       <div className="flex items-center gap-2.5"><Avatar name={u.name} size="sm" /><div><p className="font-medium">{u.name}</p><p className="text-xs text-muted-foreground">{u.email}</p></div></div>
     ) },
     { key: 'role', header: 'Perfil', render: (u) => <Badge tone="brand">{ROLE_META[u.role].label}</Badge> },
-    { key: 'dept', header: 'Departamento', render: (u) => (
-      u.role === 'admin'
-        ? <span className="text-xs text-muted-foreground">Acesso total</span>
-        : <Select value={u.departmentId ?? ''} onChange={(e) => updateUser(u.id, { departmentId: e.target.value || undefined })} className="h-8 w-40 text-xs">
-            <option value="">— sem departamento —</option>
+    { key: 'dept', header: 'Setor', render: (u) => {
+      if (u.role === 'admin') return <span className="text-xs text-muted-foreground">Acesso total</span>;
+      if (u.role === 'tecnico') return <span className="text-xs text-muted-foreground">App do Técnico</span>;
+      return (
+        <div className="flex items-center gap-1.5">
+          <Select value={u.departmentId ?? ''} onChange={(e) => updateUser(u.id, { departmentId: e.target.value || undefined })} className="h-8 w-40 text-xs">
+            <option value="">— sem setor —</option>
             {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </Select>
-    ) },
+          {/* Sem setor, o funcionário só enxerga o Dashboard — vale avisar
+              em vez de deixar a pessoa descobrir entrando. */}
+          {!u.departmentId && <Badge tone="warning" className="shrink-0 text-[10px]">só Dashboard</Badge>}
+        </div>
+      );
+    } },
     { key: 'status', header: 'Status', align: 'right', render: (u) => <Badge tone={u.isActive ? 'success' : 'neutral'} dot>{u.isActive ? 'Ativo' : 'Inativo'}</Badge> },
   ];
 
@@ -273,7 +280,7 @@ function EmployeeForm({ open, editing, departments, onClose }: {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<UserRole>('atendimento');
+  const [role, setRole] = useState<UserRole>('funcionario');
   const [departmentId, setDepartmentId] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [hideValues, setHideValues] = useState(false);
@@ -284,7 +291,7 @@ function EmployeeForm({ open, editing, departments, onClose }: {
   useEffect(() => {
     if (!open) return;
     setName(editing?.name ?? ''); setEmail(editing?.email ?? ''); setPhone(editing?.phone ?? '');
-    setRole(editing?.role && editing.role !== 'cliente' ? editing.role : 'atendimento');
+    setRole(editing?.role && editing.role !== 'cliente' ? editing.role : 'funcionario');
     setDepartmentId(editing?.departmentId ?? '');
     setIsActive(editing?.isActive ?? true);
     setHideValues(editing?.hideFinancialValues ?? false);
@@ -351,7 +358,7 @@ function EmployeeForm({ open, editing, departments, onClose }: {
           <Field label="Telefone"><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-0000" /></Field>
           <Field label="Perfil de acesso" required>
             <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
-              {STAFF_ROLES.concat('tecnico').map((r) => <option key={r} value={r}>{ROLE_META[r].label}</option>)}
+              {ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_META[r].label} — {ROLE_META[r].hint}</option>)}
             </Select>
           </Field>
           <Field label="Departamento" hint="Define os módulos que ele acessa por padrão">
@@ -628,7 +635,9 @@ function UserOverridesPanel({ users, departments, onUpdateUser }: {
   departments: Department[];
   onUpdateUser: (id: string, patch: Partial<User>) => void;
 }) {
-  const eligible = users.filter((u) => u.role !== 'admin' && u.role !== 'tecnico');
+  // Só funcionário tem exceção a ajustar: admin já vê tudo, e técnico/cliente
+  // vivem fora do sistema de módulos.
+  const eligible = users.filter((u) => u.role === 'funcionario');
   const [userId, setUserId] = useState('');
   useEffect(() => { if ((!userId || !eligible.some((u) => u.id === userId)) && eligible[0]) setUserId(eligible[0].id); }, [userId, eligible]);
   const user = eligible.find((u) => u.id === userId);

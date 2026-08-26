@@ -353,22 +353,46 @@ reagendamento) geram `notifications` para gestor / técnico / cliente, com canai
 
 ## 5. Permissões (RBAC)
 
-| Módulo | Admin | Supervisor | Financeiro | Atendimento | Estoque | Técnico |
-| --- | :-: | :-: | :-: | :-: | :-: | :-: |
-| Dashboard | ✅ | ✅ | ✅ | ✅ | ✅ | — |
-| Agenda / Ordens | ✅ | ✅ | — | ✅ | — | — |
-| Clientes / CRM | ✅ | ✅ | ✅¹ | ✅ | — | — |
-| Estoque / Produtos | ✅ | ✅ | — | — | ✅ | — |
-| Financeiro / Fiscal | ✅ | — | ✅ | — | — | — |
-| Relatórios | ✅ | ✅ | ✅ | — | — | — |
-| App do Técnico | ✅ | ✅ | — | — | — | ✅ |
+Duas perguntas separadas, cada uma com um dono:
 
-¹ Financeiro vê clientes apenas para conciliação.
+**Por qual porta a pessoa entra?** — é o **papel** (`UserRole`). São quatro, e
+cada um tem comportamento no código; por isso não é um cadastro editável.
 
-O **Técnico** é isolado: só acessa o App do Técnico, sem dados administrativos,
-financeiros ou de outros técnicos. Implementado em `application/navigation.ts`
-(`navForRole`) e refletido no banco por `permissions` / `role_permissions` /
-`user_permissions`.
+| Papel | Onde entra | Acesso |
+| --- | --- | --- |
+| `admin` | Escritório | Tudo. Ignora setor e `hideFinancialValues`. |
+| `funcionario` | Escritório | **Só o que o setor dele permitir.** |
+| `tecnico` | `/campo` | App do Técnico, fora do sistema de módulos. |
+| `cliente` | `/portal` | Portal do Cliente (§3.8), isolado. |
+
+**Quais telas ela abre depois de entrar?** — é o **setor**
+(`departments.modules`), um cadastro editável em Configurações → Departamento.
+Funcionário **sem setor** enxerga apenas o Dashboard: acesso nunca é um padrão
+implícito que ninguém configurou, e a tela marca esses usuários com um aviso.
+
+Sobre isso há duas camadas finas:
+- **Exceções por usuário** (`permissionOverrides`) — libera ou bloqueia um
+  módulo para uma pessoa sem mexer no setor inteiro.
+- **`hideFinancialValues`** (`canSeeFinancialValues`) — a pessoa abre a tela
+  liberada mas não vê valores em dinheiro. Existe porque acesso por módulo é
+  tudo-ou-nada por tela, e "abrir a OS sem ver quanto foi cobrado" não cabia
+  nele. Admin nunca é afetado.
+
+Tudo isso vale também para URL digitada à mão: `RequireAuth` refaz a checagem
+na rota, não só no menu.
+
+Os papéis `supervisor`, `financeiro`, `atendimento` e `estoque` foram
+consolidados em `funcionario` (`db/migrate_papeis.sql`). Eles não abriam nem
+fechavam tela nenhuma por si — só serviam de padrão de reserva e duplicavam o
+que o setor já decide, deixando duas respostas possíveis para "por que essa
+pessoa não vê Financeiro?". Com isso, `navItems` deixou de carregar `roles`:
+a única fonte de verdade de acesso é o setor.
+
+**Quem pode cadastrar pessoas** deixou de ser um papel fixo: é o administrador
+e o funcionário cujo setor tenha o módulo `configuracoes` marcado — que é
+justamente onde a tela de cadastro vive. A checagem roda no servidor, na Edge
+Function `convidar-tecnico` (§3.4), não só na interface.
+
 
 ## 6. Design System
 

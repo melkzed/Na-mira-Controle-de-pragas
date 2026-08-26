@@ -7,18 +7,15 @@
  * atribuído (compatibilidade). Técnicos têm um app dedicado e não enxergam
  * módulos administrativos.
  */
-import type { UserRole, PermissionModule } from '@/domain/enums';
+import type { PermissionModule } from '@/domain/enums';
 
 export interface NavItem {
   to: string;
   label: string;
   icon: string; // nome do ícone lucide
   module: PermissionModule;
-  roles: UserRole[];
   group: 'Operação' | 'Comercial' | 'Recursos' | 'Gestão' | 'Campo';
 }
-
-const ADMIN: UserRole[] = ['admin', 'supervisor'];
 
 /** Módulos agrupados como aparecem no menu — usado também na tela de
  *  permissões por setor, para o admin reconhecer o que está liberando. */
@@ -33,35 +30,33 @@ export function modulesByGroup(): { group: NavItem['group']; modules: Permission
 }
 
 export const navItems: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: 'LayoutDashboard', module: 'dashboard', roles: ['admin', 'supervisor', 'financeiro', 'atendimento', 'estoque'], group: 'Operação' },
-  { to: '/agenda', label: 'Agenda', icon: 'CalendarDays', module: 'agenda', roles: ['admin', 'supervisor', 'atendimento'], group: 'Operação' },
-  { to: '/rotas', label: 'Roteirização', icon: 'Route', module: 'rotas', roles: ['admin', 'supervisor'], group: 'Operação' },
-  { to: '/ordens', label: 'Ordens de Serviço', icon: 'ClipboardList', module: 'ordens', roles: ['admin', 'supervisor', 'atendimento'], group: 'Operação' },
+  { to: '/', label: 'Dashboard', icon: 'LayoutDashboard', module: 'dashboard', group: 'Operação' },
+  { to: '/agenda', label: 'Agenda', icon: 'CalendarDays', module: 'agenda', group: 'Operação' },
+  { to: '/rotas', label: 'Roteirização', icon: 'Route', module: 'rotas', group: 'Operação' },
+  { to: '/ordens', label: 'Ordens de Serviço', icon: 'ClipboardList', module: 'ordens', group: 'Operação' },
 
-  { to: '/clientes', label: 'Clientes', icon: 'Users', module: 'clientes', roles: ['admin', 'supervisor', 'atendimento', 'financeiro'], group: 'Comercial' },
-  { to: '/crm', label: 'CRM', icon: 'Target', module: 'crm', roles: ['admin', 'supervisor', 'atendimento'], group: 'Comercial' },
-  { to: '/monitoramento', label: 'Monitoramento', icon: 'Radar', module: 'monitoramento', roles: ['admin', 'supervisor', 'atendimento'], group: 'Operação' },
-  { to: '/nao-conformidade', label: 'Não Conformidade', icon: 'TriangleAlert', module: 'nao_conformidade', roles: ['admin', 'supervisor', 'atendimento'], group: 'Operação' },
+  { to: '/clientes', label: 'Clientes', icon: 'Users', module: 'clientes', group: 'Comercial' },
+  { to: '/crm', label: 'CRM', icon: 'Target', module: 'crm', group: 'Comercial' },
+  { to: '/monitoramento', label: 'Monitoramento', icon: 'Radar', module: 'monitoramento', group: 'Operação' },
+  { to: '/nao-conformidade', label: 'Não Conformidade', icon: 'TriangleAlert', module: 'nao_conformidade', group: 'Operação' },
 
-  { to: '/estoque', label: 'Estoque', icon: 'Boxes', module: 'estoque', roles: ['admin', 'supervisor', 'estoque'], group: 'Recursos' },
-  { to: '/produtos', label: 'Produtos', icon: 'FlaskConical', module: 'produtos', roles: ['admin', 'supervisor', 'estoque'], group: 'Recursos' },
-  { to: '/equipamentos', label: 'Equipamentos', icon: 'Wrench', module: 'equipamentos', roles: ['admin', 'supervisor', 'estoque'], group: 'Recursos' },
-  { to: '/tecnicos', label: 'Técnicos', icon: 'HardHat', module: 'tecnicos', roles: ['admin', 'supervisor'], group: 'Recursos' },
-  { to: '/veiculos', label: 'Veículos', icon: 'Truck', module: 'veiculos', roles: ['admin', 'supervisor'], group: 'Recursos' },
+  { to: '/estoque', label: 'Estoque', icon: 'Boxes', module: 'estoque', group: 'Recursos' },
+  { to: '/produtos', label: 'Produtos', icon: 'FlaskConical', module: 'produtos', group: 'Recursos' },
+  { to: '/equipamentos', label: 'Equipamentos', icon: 'Wrench', module: 'equipamentos', group: 'Recursos' },
+  { to: '/tecnicos', label: 'Técnicos', icon: 'HardHat', module: 'tecnicos', group: 'Recursos' },
+  { to: '/veiculos', label: 'Veículos', icon: 'Truck', module: 'veiculos', group: 'Recursos' },
 
-  { to: '/financeiro', label: 'Financeiro', icon: 'Wallet', module: 'financeiro', roles: ['admin', 'financeiro'], group: 'Gestão' },
-  { to: '/fiscal', label: 'Fiscal', icon: 'FileText', module: 'fiscal', roles: ['admin', 'financeiro'], group: 'Gestão' },
-  { to: '/relatorios', label: 'Relatórios', icon: 'BarChart3', module: 'relatorios', roles: ADMIN.concat('financeiro'), group: 'Gestão' },
-  { to: '/historico', label: 'Histórico', icon: 'History', module: 'historico', roles: ADMIN, group: 'Gestão' },
-  { to: '/config', label: 'Configurações', icon: 'Settings', module: 'configuracoes', roles: ['admin'], group: 'Gestão' },
+  { to: '/financeiro', label: 'Financeiro', icon: 'Wallet', module: 'financeiro', group: 'Gestão' },
+  { to: '/fiscal', label: 'Fiscal', icon: 'FileText', module: 'fiscal', group: 'Gestão' },
+  { to: '/relatorios', label: 'Relatórios', icon: 'BarChart3', module: 'relatorios', group: 'Gestão' },
+  { to: '/historico', label: 'Histórico', icon: 'History', module: 'historico', group: 'Gestão' },
+  { to: '/config', label: 'Configurações', icon: 'Settings', module: 'configuracoes', group: 'Gestão' },
 ];
 
 /** App do Técnico — controlado só pelo papel, fora do sistema de módulos. */
-export const CAMPO_ITEM: NavItem = { to: '/campo', label: 'App do Técnico', icon: 'Smartphone', module: 'dashboard', roles: ['admin', 'supervisor', 'financeiro', 'atendimento', 'estoque', 'tecnico'], group: 'Campo' };
+export const CAMPO_ITEM: NavItem = { to: '/campo', label: 'App do Técnico', icon: 'Smartphone', module: 'dashboard', group: 'Campo' };
 
-/** Acesso padrão por papel quando o usuário não tem departamento atribuído
- *  (compatibilidade com o RBAC anterior, baseado só no papel). */
-export function legacyModulesForRole(role: UserRole): PermissionModule[] {
-  if (role === 'admin') return navItems.map((n) => n.module);
-  return navItems.filter((n) => n.roles.includes(role)).map((n) => n.module);
+/** Todos os módulos do sistema, na ordem do menu — o acesso do administrador. */
+export function allModules(): PermissionModule[] {
+  return navItems.map((n) => n.module);
 }
