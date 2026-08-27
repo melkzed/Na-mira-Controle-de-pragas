@@ -12,7 +12,13 @@ precisa reiniciar nada.
 | 2 | `db/migrate_stock_locations_cadastro.sql` | Locais de estoque viram cadastro real e cria os que faltam para técnicos já cadastrados |
 | 3 | `db/storage_atendimentos.sql` | Bucket `atendimentos` para as fotos do atendimento |
 | 4 | `db/migrate_campo_verificacao.sql` | Assinatura do cliente e verificação do local na visita; acesso ao Portal do Cliente; pedido de reagendamento; áreas específicas da OS; coordenadas das armadilhas; campos novos de `users` |
-| 5 | `db/migrate_papeis.sql` | **Consolidação dos papéis** — admin / funcionário / técnico / cliente. ⚠️ Rode em duas etapas, conforme as marcações dentro do arquivo |
+| 5 | `db/migrate_papeis_1.sql` | Cria os valores novos do tipo `user_role`. **Rode sozinho e espere terminar.** |
+| 6 | `db/migrate_papeis_2.sql` | Converte os papéis antigos em `funcionario` e lista quem ficou sem setor |
+
+> Os passos 5 e 6 são dois envios separados de propósito: o PostgreSQL não
+> permite usar um valor de enum na mesma transação em que ele foi criado. Se
+> aparecer `unsafe use of new value "funcionario"`, é sinal de que os dois
+> foram enviados juntos — rode o 5 sozinho e depois o 6.
 
 ## Depois das migrations
 

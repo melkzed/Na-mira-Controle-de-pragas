@@ -31,7 +31,8 @@ alter table public.service_orders
   add column if not exists custom_areas jsonb;
 
 -- Posição das armadilhas, para o mapa no app do técnico.
-alter table public.traps
+-- A tabela é trap_devices (trap_types é o catálogo de tipos).
+alter table public.trap_devices
   add column if not exists latitude double precision,
   add column if not exists longitude double precision;
 
