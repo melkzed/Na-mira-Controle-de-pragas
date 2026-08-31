@@ -1,12 +1,15 @@
 -- ============================================================================
 -- Na Mira · Controle de Pragas — conferência do banco
 --
--- Rode INTEIRO no SQL Editor do Supabase depois de aplicar as migrations.
--- Cada linha do resultado diz se uma peça que o app usa está no lugar.
--- Só de leitura: não altera nada.
+-- Cole TUDO no SQL Editor do Supabase e execute. É uma consulta só, de
+-- propósito: o SQL Editor exibe apenas o resultado da ÚLTIMA instrução, então
+-- um script com vários SELECTs mostraria só o último e esconderia o resto.
 --
--- Se tudo vier "OK", o banco está pronto para a versão atual do sistema.
--- Qualquer "FALTA" indica a migration que ainda precisa ser aplicada.
+-- Só de leitura: não altera nada. Linhas com ❌ vêm primeiro.
+-- Se tudo vier ✅, o banco está pronto para a versão atual do sistema.
+--
+-- As consultas de diagnóstico (quem ficou sem setor, quem pode cadastrar)
+-- estão no fim do arquivo, comentadas — rode UMA POR VEZ quando precisar.
 -- ============================================================================
 
 with esperado(migration, tabela, coluna) as (values
@@ -44,49 +47,69 @@ with esperado(migration, tabela, coluna) as (values
   ('4 campo/portal',  'users',              'hide_financial_values'),
   ('4 campo/portal',  'users',              'customer_id'),
   ('4 campo/portal',  'users',              'department_id')
+),
+colunas as (
+  select
+    e.migration                       as migration,
+    e.tabela || '.' || e.coluna       as peca,
+    case when c.column_name is null then '❌ FALTA' else '✅ OK' end as situacao
+  from esperado e
+  left join information_schema.columns c
+         on c.table_schema = 'public'
+        and c.table_name   = e.tabela
+        and c.column_name  = e.coluna
+),
+papeis as (
+  select
+    '5-6 papeis'                      as migration,
+    'papel ' || v                     as peca,
+    case when v = any(enum_range(null::user_role)::text[])
+         then '✅ OK' else '❌ FALTA' end as situacao
+  from (values ('admin'), ('funcionario'), ('tecnico'), ('cliente')) t(v)
+),
+papel_antigo as (
+  select
+    '5-6 papeis'                                       as migration,
+    'nenhum papel antigo em uso'                       as peca,
+    case when exists (
+      select 1 from public.users
+       where role::text in ('supervisor','financeiro','atendimento','estoque')
+    ) then '❌ FALTA' else '✅ OK' end                   as situacao
+),
+bucket as (
+  select
+    '3 storage'                                        as migration,
+    'bucket atendimentos'                              as peca,
+    case when exists (select 1 from storage.buckets where id = 'atendimentos')
+         then '✅ OK' else '❌ FALTA' end                as situacao
 )
-select
-  e.migration                                     as migration,
-  e.tabela || '.' || e.coluna                     as peca,
-  case when c.column_name is null then '❌ FALTA' else '✅ OK' end as situacao
-from esperado e
-left join information_schema.columns c
-       on c.table_schema = 'public'
-      and c.table_name   = e.tabela
-      and c.column_name  = e.coluna
-order by (c.column_name is null) desc, e.migration, e.tabela, e.coluna;
+select * from colunas
+union all select * from papeis
+union all select * from papel_antigo
+union all select * from bucket
+order by situacao desc, migration, peca;
 
 
--- ── Papéis (migrations 5 e 6) ───────────────────────────────────────────────
-select
-  'papel ' || v as peca,
-  case when v in (select unnest(enum_range(null::user_role))::text) then '✅ OK' else '❌ FALTA' end as situacao
-from (values ('admin'), ('funcionario'), ('tecnico'), ('cliente')) t(v);
+-- ============================================================================
+-- DIAGNÓSTICO — rode UMA POR VEZ (selecione a consulta e execute).
+-- O SQL Editor só mostra o resultado da última instrução enviada.
+-- ============================================================================
 
--- Ninguém pode ter sobrado com papel antigo.
-select role::text as papel, count(*) as usuarios
-  from public.users
- group by role
- order by role;
+-- Quantos usuários por papel:
+--   select role::text as papel, count(*) as usuarios
+--     from public.users group by role order by role;
 
--- Funcionários sem setor enxergam só o Dashboard.
-select u.name, u.email, coalesce(d.name, '— SEM SETOR —') as setor
-  from public.users u
-  left join public.departments d on d.id = u.department_id
- where u.role::text = 'funcionario'
- order by (u.department_id is null) desc, u.name;
+-- Funcionários sem setor (enxergam só o Dashboard):
+--   select u.name, u.email, coalesce(d.name, '— SEM SETOR —') as setor
+--     from public.users u
+--     left join public.departments d on d.id = u.department_id
+--    where u.role::text = 'funcionario'
+--    order by (u.department_id is null) desc, u.name;
 
--- Quem pode cadastrar pessoas (admin + funcionário com "configuracoes" no setor).
-select u.name, u.email, u.role::text as papel, coalesce(d.name, '—') as setor
-  from public.users u
-  left join public.departments d on d.id = u.department_id
- where u.role::text = 'admin'
-    or (u.role::text = 'funcionario' and d.modules ? 'configuracoes')
- order by u.role::text, u.name;
-
-
--- ── Storage das fotos (migration 3) ─────────────────────────────────────────
-select
-  'bucket atendimentos' as peca,
-  case when exists (select 1 from storage.buckets where id = 'atendimentos')
-       then '✅ OK' else '❌ FALTA' end as situacao;
+-- Quem pode cadastrar pessoas (admin + funcionário com "configuracoes" no setor):
+--   select u.name, u.email, u.role::text as papel, coalesce(d.name, '—') as setor
+--     from public.users u
+--     left join public.departments d on d.id = u.department_id
+--    where u.role::text = 'admin'
+--       or (u.role::text = 'funcionario' and d.modules ? 'configuracoes')
+--    order by u.role::text, u.name;
