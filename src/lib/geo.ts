@@ -156,6 +156,13 @@ export function googleMapsRouteToAddress(address: string): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}&travelmode=driving`;
 }
 
+/** Link do Google Maps que **mostra** um endereço (pino no mapa), em vez de
+ *  traçar rota. É o que serve no escritório: ver onde fica o cliente. Para o
+ *  técnico em campo, que quer chegar lá, use `googleMapsRouteToAddress`. */
+export function googleMapsAddressUrl(address: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
 /** Formata o endereço de um cliente para exibição/uso em links de navegação. */
 export function formatAddress(c: { street?: string; number?: string; district?: string; city?: string; state?: string }): string {
   return [c.street && `${c.street}, ${c.number ?? 's/n'}`, c.district, c.city && `${c.city}/${c.state ?? ''}`]

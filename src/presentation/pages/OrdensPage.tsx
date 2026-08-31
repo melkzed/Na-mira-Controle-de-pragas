@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Check, Download, Pencil, Plus, Trash2, TriangleAlert, X, Zap } from 'lucide-react';
+import { Check, Download, MapPin, Pencil, Plus, Trash2, TriangleAlert, X, Zap } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -35,6 +35,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { computeTaxes } from '@/application/fiscal/tax';
 import { providerLabel } from '@/application/fiscal/providers';
 import { cn, formatCurrency } from '@/lib/utils';
+import { formatAddress, googleMapsAddressUrl } from '@/lib/geo';
 import { canSeeFinancialValues } from '@/application/permissions';
 import { useAppStore } from '@/store/appStore';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
@@ -58,6 +59,24 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   return (
     <button type="button" onClick={onClick} className={`rounded-full border px-2.5 py-1 text-xs transition ${active ? 'border-brand bg-brand-soft text-brand' : 'border-border text-muted-foreground hover:bg-muted'}`}>{children}</button>
   );
+}
+
+/** Rascunho da OS em criação — some assim que a OS é confirmada. */
+const OS_DRAFT_KEY = 'namira-os-draft';
+
+type OsDraft = Record<string, unknown>;
+
+function loadOsDraft(): OsDraft | null {
+  try {
+    const raw = localStorage.getItem(OS_DRAFT_KEY);
+    return raw ? (JSON.parse(raw) as OsDraft) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearOsDraft() {
+  try { localStorage.removeItem(OS_DRAFT_KEY); } catch { /* ignora */ }
 }
 
 export function OrdensPage() {
@@ -251,7 +270,35 @@ export function OrdensPage() {
         {selected && !editMode && (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div className="space-y-5 lg:col-span-2">
-              <div className="flex items-center gap-2"><ServiceOrderStatusBadge status={selected.status} /><Badge tone="neutral">{getServiceType(selected.serviceTypeId)?.name}</Badge></div>
+              <div className="flex flex-wrap items-center gap-2">
+                <ServiceOrderStatusBadge status={selected.status} />
+                <Badge tone="neutral">{getServiceType(selected.serviceTypeId)?.name}</Badge>
+              </div>
+
+              {/* Endereço do cliente com atalho para o mapa — quem atende no
+                  escritório precisa localizar o cliente sem sair da OS. */}
+              {(() => {
+                const cliente = getCustomer(selected.customerId);
+                const endereco = cliente ? formatAddress(cliente) : '';
+                if (!endereco) return null;
+                return (
+                  <div className="flex flex-wrap items-start justify-between gap-2 rounded-xl border border-border bg-muted/30 p-3">
+                    <div className="flex min-w-0 items-start gap-2">
+                      <MapPin size={16} className="mt-0.5 shrink-0 text-brand" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">{cliente?.name}</p>
+                        <p className="text-xs text-muted-foreground">{endereco}</p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline" size="sm" leftIcon={<MapPin size={14} />}
+                      onClick={() => window.open(googleMapsAddressUrl(endereco), '_blank', 'noopener,noreferrer')}
+                    >
+                      Abrir no mapa
+                    </Button>
+                  </div>
+                );
+              })()}
 
               <Section title="Detalhes">
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -415,6 +462,12 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   // (antes do primeiro re-render), o que um useState não garante.
   const submittingRef = useRef(false);
   const [filledFrom, setFilledFrom] = useState<number | null>(null);
+  /** Só passa a valer depois que o formulário terminou de se popular — antes
+   *  disso, salvar o rascunho gravaria o estado inicial vazio por cima. */
+  const hydratedRef = useRef(false);
+  /** true quando o formulário abriu com um rascunho recuperado — vale avisar,
+   *  senão a pessoa não entende por que os campos vieram preenchidos. */
+  const [fromDraft, setFromDraft] = useState(false);
   const [validityTouched, setValidityTouched] = useState(false);
   /** Texto livre de "áreas tratadas" de OS antigas (anteriores ao seletor por
    *  chips) — preservado ao editar quando nenhuma área com id correspondente
@@ -496,6 +549,15 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       setFilledFrom(null);
       return;
     }
+    // Rascunho de uma OS não finalizada tem prioridade sobre tudo: é o que a
+    // pessoa estava fazendo.
+    const rascunho = loadOsDraft();
+    if (rascunho) {
+      aplicarRascunho(rascunho);
+      setFromDraft(true);
+      hydratedRef.current = true;
+      return;
+    }
     const c0 = customers[0]?.id ?? '';
     setCustomerId(c0);
     setAppointmentId('');
@@ -507,8 +569,87 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     setRecEnabled(false); setRecPhases([]); setExecDate(''); setExecTime(''); setDueDate(''); setValidityDate(''); setValidityTouched(false);
     setCertValidityDate(''); setCertValidityTouched(false);
     setEquipmentIds([]); setProducts([]); setReturnAt(''); setTouched(false); setFilledFrom(null);
+    hydratedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** Repõe no formulário o rascunho salvo. Campo ausente cai no padrão, para
+   *  um rascunho antigo (de antes de um campo existir) não quebrar a tela. */
+  const aplicarRascunho = (d: OsDraft) => {
+    const str = (k: string, def = '') => (typeof d[k] === 'string' ? (d[k] as string) : def);
+    const arr = <T,>(k: string): T[] => (Array.isArray(d[k]) ? (d[k] as T[]) : []);
+    const obj = <T,>(k: string): T => ((d[k] && typeof d[k] === 'object' ? d[k] : {}) as T);
+    const bool = (k: string, def = false) => (typeof d[k] === 'boolean' ? (d[k] as boolean) : def);
+
+    setCustomerId(str('customerId'));
+    setAppointmentId(str('appointmentId'));
+    setServiceTypeIds(arr<string>('serviceTypeIds'));
+    setTechnicianIds(arr<string>('technicianIds'));
+    setSellerId(str('sellerId'));
+    setStatus(str('status', 'em_andamento') as ServiceOrderStatus);
+    setAreaQty(obj<Record<string, number>>('areaQty'));
+    setCustomAreas(arr<{ name: string; qty: number }>('customAreas'));
+    setLegacyAreaText(str('legacyAreaText'));
+    setPestIds(arr<string>('pestIds'));
+    setPestValidity(obj<Record<string, string>>('pestValidity'));
+    setDuration(str('duration'));
+    setProcedures(str('procedures'));
+    setTechnicianMessage(str('technicianMessage'));
+    setPaymentMethod(str('paymentMethod'));
+    setServiceValue(str('serviceValue'));
+    setServiceValueTouched(bool('serviceValueTouched'));
+    setValueConfirmed(bool('valueConfirmed'));
+    setAssociatedOrderId(str('associatedOrderId'));
+    setPaymentStatus(str('paymentStatus', 'pendente') as PaymentStatus);
+    setPaymentDate(str('paymentDate'));
+    setWarrantyHas(bool('warrantyHas', true));
+    setWarrantyValue(str('warrantyValue', '3'));
+    setWarrantyUnit(str('warrantyUnit', 'meses') as WarrantyUnit);
+    setWarrantyType(str('warrantyType', 'corretivo') as WarrantyType);
+    setRecEnabled(bool('recEnabled'));
+    setRecPhases(arr<RecurrencePhase>('recPhases'));
+    setExecDate(str('execDate'));
+    setExecTime(str('execTime'));
+    setDueDate(str('dueDate'));
+    setValidityDate(str('validityDate'));
+    setValidityTouched(bool('validityTouched'));
+    setCertValidityDate(str('certValidityDate'));
+    setCertValidityTouched(bool('certValidityTouched'));
+    setEquipmentIds(arr<string>('equipmentIds'));
+    setProducts(arr<{ productId: string; qty: number }>('products'));
+    setReturnAt(str('returnAt'));
+    setTouched(false);
+    setFilledFrom(null);
+  };
+
+  /** Rascunho da OS em criação, guardado enquanto o formulário está aberto.
+   *
+   *  Sem isso, fechar e reabrir "Nova O.S." perdia tudo o que já tinha sido
+   *  digitado — e, pior, o preenchimento pelo histórico repunha os dados da
+   *  ÚLTIMA OS do cliente, que depois de salvar passa a ser justamente a que
+   *  acabou de ser criada: dava a impressão de que a OS anterior "não zerava".
+   *  Agora o rascunho manda enquanto a OS não foi confirmada, e é apagado no
+   *  momento em que ela é criada. */
+  const draft = useMemo(() => ({
+    customerId, appointmentId, serviceTypeIds, technicianIds, sellerId, status,
+    areaQty, customAreas, legacyAreaText, pestIds, pestValidity, duration, procedures,
+    technicianMessage, paymentMethod, serviceValue, serviceValueTouched, valueConfirmed,
+    associatedOrderId, paymentStatus, paymentDate, warrantyHas, warrantyValue, warrantyUnit,
+    warrantyType, recEnabled, recPhases, execDate, execTime, dueDate, validityDate,
+    validityTouched, certValidityDate, certValidityTouched, equipmentIds, products, returnAt,
+  }), [customerId, appointmentId, serviceTypeIds, technicianIds, sellerId, status, areaQty,
+    customAreas, legacyAreaText, pestIds, pestValidity, duration, procedures, technicianMessage,
+    paymentMethod, serviceValue, serviceValueTouched, valueConfirmed, associatedOrderId,
+    paymentStatus, paymentDate, warrantyHas, warrantyValue, warrantyUnit, warrantyType,
+    recEnabled, recPhases, execDate, execTime, dueDate, validityDate, validityTouched,
+    certValidityDate, certValidityTouched, equipmentIds, products, returnAt]);
+
+  /** Guarda o rascunho a cada mudança — só na criação, e só depois que a
+   *  pessoa mexeu em alguma coisa (senão o estado inicial vira "rascunho"). */
+  useEffect(() => {
+    if (initial || !hydratedRef.current) return;
+    try { localStorage.setItem(OS_DRAFT_KEY, JSON.stringify(draft)); } catch { /* cota — ignora */ }
+  }, [draft, initial]);
 
   /** Preenchimento inteligente: repete o último atendimento do cliente. */
   const applyHistory = (cid: string) => {
@@ -543,8 +684,15 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
 
   const clearFill = () => {
     setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
-    setPestIds([]); setPestValidity({}); setAreaQty({}); setLegacyAreaText(''); setPaymentMethod(''); setRecEnabled(false); setRecPhases([]); setFilledFrom(null);
+    setPestIds([]); setPestValidity({}); setAreaQty({}); setCustomAreas([]); setLegacyAreaText(''); setPaymentMethod(''); setRecEnabled(false); setRecPhases([]); setFilledFrom(null);
     setValidityDate(''); setValidityTouched(false);
+    setProducts([]); setEquipmentIds([]); setProcedures(''); setTechnicianMessage('');
+    setExecDate(''); setExecTime(''); setDuration('');
+    setServiceValue(''); setServiceValueTouched(false); setValueConfirmed(false);
+    // "Começar em branco" também descarta o rascunho — senão ele voltaria na
+    // próxima abertura e pareceria que a limpeza não funcionou.
+    clearOsDraft();
+    setFromDraft(false);
   };
 
   const toggle = (setter: React.Dispatch<React.SetStateAction<string[]>>, id: string) =>
@@ -933,6 +1081,10 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     }
 
     logChange('criação', 'ordem de serviço', `OS #${so.number} · ${custName}`, so.id);
+    // A OS foi confirmada: o rascunho deixou de existir. É isto que faz o
+    // próximo "Nova O.S." abrir em branco em vez de repetir esta.
+    clearOsDraft();
+    hydratedRef.current = false;
     toast(`OS #${so.number} criada e adicionada à Agenda.`, { tone: 'success' });
     onSaved(so);
     } finally {
@@ -966,7 +1118,15 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
           </Field>
         )}
 
-        {filledFrom != null && (
+        {fromDraft && (
+          <div className="flex items-center gap-2 rounded-xl border border-warning/40 bg-warning-soft/50 p-2.5 text-xs text-foreground">
+            <Zap size={14} className="shrink-0 text-warning" />
+            <span className="flex-1">Rascunho recuperado — você tinha começado esta OS e não finalizou. Ao confirmar a criação, ela some daqui.</span>
+            <button onClick={clearFill} className="shrink-0 font-medium underline">Começar em branco</button>
+          </div>
+        )}
+
+        {filledFrom != null && !fromDraft && (
           <div className="flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft/40 p-2.5 text-xs text-brand">
             <Zap size={14} className="shrink-0" />
             <span className="flex-1">Preenchido automaticamente pelo último atendimento (OS #{filledFrom}). Revise e ajuste o que mudou.</span>
