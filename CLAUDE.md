@@ -57,7 +57,14 @@ npm run preview    # serve o build (vite preview)
   `role="button"`, `tabIndex={0}`, `onKeyDown` (Enter/Espaço) e `aria-label`.
 - Formulários em `Drawer`: o efeito de foco depende só de `[open]` (ver
   `Drawer.tsx`) — não reintroduza `onClose` nas deps (causa trava ao digitar).
-- Datas: inputs `date`/`datetime-local` chamam `e.currentTarget.showPicker?.()`.
+- Datas: use `DateInput` (`components/ui/Field.tsx`) para `date`, `time` e
+  `datetime-local` — nunca `<input type="date">` direto. Ele deixa o clique
+  apenas focar (o campo nativo já aceita digitar nos segmentos) e move o
+  calendário para um botão próprio. **Não** volte a chamar `showPicker()` no
+  `onClick`/`onFocus` do campo: o seletor nativo toma o foco e impede digitar.
+- Ordenação alfabética: `compareText`/`sortByName` (`lib/utils.ts`), que usam
+  `Intl.Collator('pt-BR')`. `localeCompare` sem locale, ou comparação crua,
+  joga todo nome acentuado para o fim da lista.
 
 ## Roteirização / mapa (feature central recente)
 

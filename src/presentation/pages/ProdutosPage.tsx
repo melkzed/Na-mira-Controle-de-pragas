@@ -4,7 +4,7 @@ import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Drawer } from '../components/ui/Drawer';
-import { Field, Input, Select } from '../components/ui/Field';
+import { DateInput, Field, Input, Select } from '../components/ui/Field';
 import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
 import * as seed from '@/infrastructure/seed/data';
@@ -13,7 +13,7 @@ import { useProductsStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
 import type { Batch, Product } from '@/domain/types';
-import { formatCurrency, formatNumber } from '@/lib/utils';
+import { formatCurrency, formatNumber, sortByName } from '@/lib/utils';
 import { downloadCsv } from '@/lib/export';
 import { ImportDrawer } from '../components/ImportDrawer';
 import { productsImport } from '@/lib/importModules';
@@ -30,7 +30,7 @@ export function ProdutosPage() {
   const catName = (id?: string) => seed.productCategories.find((c) => c.id === id)?.name ?? '—';
 
   const filtered = useMemo(
-    () => products.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()) || (p.activeIngredient ?? '').toLowerCase().includes(query.toLowerCase())),
+    () => sortByName(products.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()) || (p.activeIngredient ?? '').toLowerCase().includes(query.toLowerCase()))),
     [products, query],
   );
 
@@ -257,7 +257,7 @@ function ProductForm({ open, initial, onClose, onSave }: { open: boolean; initia
           <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Registrar lote {isEdit ? '(nova compra)' : 'inicial'}</p>
           <div className="grid grid-cols-3 gap-3">
             <Field label="Lote"><Input value={batchCode} onChange={(e) => setBatchCode(e.target.value)} placeholder="KO-2408" /></Field>
-            <Field label="Validade"><Input type="date" value={batchExpiry} onChange={(e) => setBatchExpiry(e.target.value)} onFocus={(e) => e.currentTarget.showPicker?.()} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+            <Field label="Validade"><DateInput type="date" value={batchExpiry} onChange={(e) => setBatchExpiry(e.target.value)} /></Field>
             <Field label="Qtd."><Input type="number" min={0} value={batchQty} onChange={(e) => setBatchQty(e.target.value)} /></Field>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">O lote informado é adicionado ao histórico e passa a aparecer na Ordem de Serviço.</p>

@@ -146,3 +146,16 @@ body {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* Campo de data/hora (ui/Field.tsx → DateInput).
+   O ícone nativo do navegador é escondido: o componente oferece um botão
+   próprio, maior e com área de toque decente. Sem isso ficariam dois
+   controles abrindo o mesmo calendário, colados um no outro. */
+.dateinput::-webkit-calendar-picker-indicator {
+  display: none;
+  -webkit-appearance: none;
+}
+.dateinput::-webkit-inner-spin-button,
+.dateinput::-webkit-clear-button {
+  display: none;
+}

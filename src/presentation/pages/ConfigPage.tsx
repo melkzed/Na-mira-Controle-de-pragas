@@ -5,7 +5,7 @@ import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
-import { Field, Input, Select, Textarea } from '../components/ui/Field';
+import { DateInput, Field, Input, Select, Textarea } from '../components/ui/Field';
 import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
 import { useAreasStore, useDepartmentsStore, usePestsStore, useProductsStore, useServiceTypesStore, useTrapTypesStore, useUsersStore, useLicensesStore } from '@/store/entityStores';
@@ -14,7 +14,7 @@ import { useOrgProfileStore } from '@/store/orgProfileStore';
 import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
 import { toast } from '@/store/toastStore';
-import { cn, daysUntil, formatCurrency } from '@/lib/utils';
+import { cn, daysUntil, formatCurrency, sortByName } from '@/lib/utils';
 import { maskDocument, maskCep, maskPhone } from '@/lib/validation';
 import { dateInputToIso } from '@/lib/date';
 import { SignaturePad } from '../components/SignaturePad';
@@ -186,7 +186,7 @@ function SanitaryLicensePanel() {
       />
       <CardBody className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field label="Número"><Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Ex.: VS-2025-0001" /></Field>
-        <Field label="Vencimento"><Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+        <Field label="Vencimento"><DateInput type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} /></Field>
         <div className="flex items-end"><Button size="sm" disabled={!dirty} onClick={save} className="w-full">Salvar</Button></div>
       </CardBody>
     </Card>
@@ -652,7 +652,7 @@ function UserOverridesPanel({ users, departments, onUpdateUser }: {
 }) {
   // Só funcionário tem exceção a ajustar: admin já vê tudo, e técnico/cliente
   // vivem fora do sistema de módulos.
-  const eligible = users.filter((u) => u.role === 'funcionario');
+  const eligible = sortByName(users.filter((u) => u.role === 'funcionario'));
   const [userId, setUserId] = useState('');
   useEffect(() => { if ((!userId || !eligible.some((u) => u.id === userId)) && eligible[0]) setUserId(eligible[0].id); }, [userId, eligible]);
   const user = eligible.find((u) => u.id === userId);
@@ -830,7 +830,7 @@ function DocumentTextsPanel() {
 /** Assinatura de cada técnico — incorporada ao PDF da OS/Laudo como "Técnico de Execução". */
 function TechnicianSignaturesPanel() {
   const { signatures, setUserSignature } = useSettingsStore();
-  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico'));
+  const technicians = useUsersStore((s) => sortByName(s.items.filter((u) => u.role === 'tecnico')));
   const [userId, setUserId] = useState('');
   useEffect(() => { if (!userId && technicians[0]) setUserId(technicians[0].id); }, [userId, technicians]);
 

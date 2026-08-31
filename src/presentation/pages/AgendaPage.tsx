@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Check, ChevronLeft, ChevronRight, Lock, MapPin, Plus } from 'lucide-react';
+import { CalendarClock, Check, ChevronLeft, ChevronRight, Lock, MapPin, Plus } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
@@ -10,10 +10,16 @@ import { Avatar } from '../components/ui/Avatar';
 import { Drawer } from '../components/ui/Drawer';
 import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { Badge } from '../components/ui/Badge';
-import { Select } from '../components/ui/Field';
+import { DateInput, Select } from '../components/ui/Field';
 import { AppointmentForm } from '../components/AppointmentForm';
 import { getCustomer, getServiceType, primaryContactPhone, techniciansForAppointment } from '@/application/repository';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
+import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
+import { toast } from '@/store/toastStore';
+import {
+  confirmRecurrenceVisit, pendingLabel, pendingRecurrenceConfirmations, type PendingRecurrence,
+} from '@/application/recurrenceConfirm';
+import { weekdayLabel } from '@/lib/recurrence';
 import { logChange } from '@/store/auditStore';
 import { useMessagesStore } from '@/store/messagesStore';
 import { useUsersStore } from '@/store/entityStores';
@@ -21,10 +27,10 @@ import { buildWhatsMessage, WHATS_TYPE_LABEL } from '@/lib/whatsapp';
 import { MessageCircle } from 'lucide-react';
 import { APPOINTMENT_STATUS_META, type AppointmentStatus } from '@/domain/enums';
 import type { Appointment, Customer } from '@/domain/types';
-import { addDays, fmtTime, isSameDay, isToday, parseISO, weekDays, weekRangeLabel } from '@/lib/date';
+import { addDays, fmtDate, fmtTime, isSameDay, isToday, parseISO, weekDays, weekRangeLabel } from '@/lib/date';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { cn } from '@/lib/utils';
+import { cn, sortByName } from '@/lib/utils';
 import { photoSrc } from '@/lib/photoStorage';
 
 type View = 'dia' | 'semana' | 'mes' | 'agenda' | 'mapa';
@@ -34,8 +40,80 @@ const HOURS = Array.from({ length: 12 }, (_, i) => i + 7); // 07h–18h
 const ROW_H = 76;
 const GRID_H = HOURS.length * ROW_H;
 
+/**
+ * Visitas de recorrência que chegam na próxima semana e ainda não viraram OS.
+ *
+ * Fica no topo da Agenda porque é aqui que se olha o que vem pela frente — e
+ * porque uma visita contratada que ninguém confirmou some no meio da grade sem
+ * que ninguém perceba, até o cliente cobrar.
+ */
+function RecurrenciasAConfirmar() {
+  const appts = useAppointmentsStore((s) => s.appointments);
+  const orders = useServiceOrdersStore((s) => s.orders);
+  const [gerando, setGerando] = useState<string | null>(null);
+  // `appts`/`orders` não são lidos aqui de propósito: servem de gatilho. A
+  // função lê as stores por `getState()`, então sem eles a lista não se
+  // atualizaria ao confirmar uma visita — que é exatamente o momento em que
+  // ela precisa sumir da tela.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const pendentes = useMemo(() => pendingRecurrenceConfirmations(), [appts, orders]);
+  if (!pendentes.length) return null;
+
+  const confirmar = async (p: PendingRecurrence) => {
+    if (!p.origem) {
+      toast('Não encontrei a OS anterior desta recorrência para copiar os dados.', { tone: 'warning' });
+      return;
+    }
+    setGerando(p.appointment.id);
+    try {
+      const os = await confirmRecurrenceVisit(p);
+      if (os) {
+        logChange('criação', 'ordem de serviço', `OS #${os.number} gerada pela recorrência da OS #${p.origem.number}`, os.id);
+        toast(`OS #${os.number} gerada a partir da OS #${p.origem.number}.`, { tone: 'success' });
+      }
+    } catch {
+      toast('Não foi possível gerar a ordem de serviço — tente novamente.', { tone: 'danger' });
+    } finally {
+      setGerando(null);
+    }
+  };
+
+  return (
+    <div className="mb-4 rounded-xl border border-warning/40 bg-warning-soft/25 p-3">
+      <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+        <CalendarClock size={15} className="text-warning" />
+        Recorrências a confirmar ({pendentes.length})
+      </p>
+      <div className="space-y-1.5">
+        {pendentes.map((p) => {
+          const cliente = getCustomer(p.appointment.customerId);
+          return (
+            <div key={p.appointment.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface p-2.5">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">{cliente?.name ?? 'Cliente'}</p>
+                <p className="text-xs text-muted-foreground">
+                  {fmtDate(p.appointment.scheduledStart)} · <span className="capitalize">{weekdayLabel(p.appointment.scheduledStart)}</span> — {pendingLabel(p)}
+                  {p.origem ? ` · copia a OS #${p.origem.number}` : ' · sem OS anterior para copiar'}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant={p.emDias < 0 ? 'primary' : 'outline'}
+                disabled={gerando === p.appointment.id || !p.origem}
+                onClick={() => confirmar(p)}
+              >
+                {gerando === p.appointment.id ? 'Gerando…' : 'Confirmar e gerar OS'}
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function AgendaPage() {
-  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico'));
+  const technicians = useUsersStore((s) => sortByName(s.items.filter((u) => u.role === 'tecnico')));
   const [view, setView] = useState<View>('semana');
   const [ref, setRef] = useState(new Date());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -79,6 +157,8 @@ export function AgendaPage() {
         description="Módulo central de agendamento e gestão de equipes em campo"
         actions={<Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Novo agendamento</Button>}
       />
+
+      <RecurrenciasAConfirmar />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -568,7 +648,7 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
 /** Reagendamento: altera data/hora/técnico e marca a visita como reagendada. */
 function RescheduleForm({ appt, onDone }: { appt: Appointment; onDone: () => void }) {
   const update = useAppointmentsStore((s) => s.update);
-  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico'));
+  const technicians = useUsersStore((s) => sortByName(s.items.filter((u) => u.role === 'tecnico')));
   const toLocal = (iso: string) => {
     const d = new Date(iso); const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -595,7 +675,7 @@ function RescheduleForm({ appt, onDone }: { appt: Appointment; onDone: () => voi
       <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Reagendar visita</p>
       <div className="space-y-3">
         <label className="block text-xs font-medium text-muted-foreground">Nova data e hora
-          <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-input bg-surface px-2 text-sm text-foreground" />
+          <DateInput type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} className="mt-1 h-9" />
         </label>
         <label className="block text-xs font-medium text-muted-foreground">Técnico responsável
           <Select value={technicianId} onChange={(e) => setTechnicianId(e.target.value)} className="mt-1">

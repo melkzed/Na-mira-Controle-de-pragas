@@ -715,6 +715,14 @@ export interface OsRecurrence {
    *  recorrência (Appointment.recurrenceId) — usado para regenerar o plano
    *  sem duplicar visitas já criadas ao editar a OS. */
   recurrenceGroupId?: string;
+  /** Datas efetivas de cada visita do plano (ISO), na ordem das ocorrências.
+   *
+   *  As fases dão a periodicidade, mas a data que sai da conta pode cair num
+   *  sábado, num feriado ou num dia em que o estabelecimento não abre. Aqui
+   *  fica a data realmente combinada — o que a conta sugeriu, quando ninguém
+   *  mexeu, ou o dia que o usuário escolheu no lugar dela. É desta lista que
+   *  saem os agendamentos. */
+  dates?: string[];
 }
 
 /** Uma fase de um plano de recorrência: repete `occurrences` vezes na

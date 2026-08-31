@@ -6,6 +6,7 @@ import { Input } from '../components/ui/Field';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
 import { technicianBalances } from '@/application/repository';
 import { useProductsStore } from '@/store/entityStores';
+import { compareText } from '@/lib/utils';
 
 /**
  * Produtos — consulta de campo. O técnico vê o catálogo técnico (princípio
@@ -30,9 +31,10 @@ export function CampoProdutosPage() {
       .filter((p) => p.isActive)
       .filter((p) => !q || p.name.toLowerCase().includes(q) || (p.activeIngredient ?? '').toLowerCase().includes(q))
       .sort((a, b) => {
+        // Primeiro o que está na minha bolsa; dentro de cada bloco, alfabético.
         const am = myStock.has(a.id) ? 0 : 1;
         const bm = myStock.has(b.id) ? 0 : 1;
-        return am - bm || a.name.localeCompare(b.name);
+        return am - bm || compareText(a.name, b.name);
       });
   }, [products, query, myStock]);
 

@@ -358,6 +358,39 @@ o mapeamento explícito de colunas, então os três campos foram adicionados a
 `AppointmentRow`/`fromRow`/`toRow`; `serviceOrdersStore` usa `toSnakeRow` e não
 precisou de mudança.
 
+### 3.10 Recorrência: datas combinadas e confirmação
+
+A periodicidade calcula a data; ela nem sempre serve. A conta pode cair num
+sábado, num feriado ou num dia em que o estabelecimento não abre — e quem
+programa precisa **ver o dia da semana antes de fechar**, não descobrir depois.
+Por isso `OsRecurrence.dates` guarda a data efetiva de cada visita: o que a
+conta sugeriu, quando ninguém mexeu, ou o dia escolhido no lugar dela. É desta
+lista que saem os agendamentos, e não do cálculo.
+
+Mudar uma data **não desloca as seguintes**. Cascatear obrigaria a refazer o
+plano inteiro por causa de um feriado; o caso real é remarcar uma visita.
+
+Uma visita programada **não vira Ordem de Serviço sozinha**. Entre a
+programação e a data, o cliente troca o dia, o contrato muda, a visita perde o
+sentido. Uma semana antes (`DIAS_DE_AVISO`), `notifyPendingRecurrences()` avisa
+e a Agenda mostra "Recorrências a confirmar"; `confirmRecurrenceVisit()` cria a
+OS copiando a última OS do mesmo plano — serviços, pragas, áreas, equipe,
+produtos e valor, porque visita recorrente é a repetição do mesmo atendimento.
+
+O que **não** é copiado importa tanto quanto: assinaturas, horários de execução
+e pagamento ficam de fora. São fatos do atendimento anterior, e repeti-los
+produziria uma OS afirmando o que não aconteceu. A nova OS também nasce com
+`recurrence.enabled: false` — é uma ocorrência do plano, não a origem de um
+plano novo, senão cada confirmação geraria outra árvore de agendamentos.
+
+Visita atrasada continua na lista: sumir da tela é exatamente o que faz uma
+visita contratada ser esquecida.
+
+Sem migration — `service_orders.recurrence` já é `jsonb`.
+
+- `lib/recurrence.ts`: `planDates`, `weekdayLabel`, `isWeekend`, `withinNextYear`.
+- `application/recurrenceConfirm.ts`: pendências, notificação e geração da OS.
+
 ## 4. Fluxos principais
 
 ### 4.1 Do agendamento à Ordem de Serviço

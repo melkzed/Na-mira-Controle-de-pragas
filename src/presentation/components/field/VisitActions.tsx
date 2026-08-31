@@ -572,7 +572,6 @@ function VerificacaoDrawer({ open, onClose, appt }: {
   const inspecionadasHoje = inspections.filter((i) => trapIdsDoCliente.has(i.trapId) && i.date.slice(0, 10) === hoje);
   const comConsumo = inspecionadasHoje.filter((i) => i.consumed).length;
   const ncsAbertas = ncs.filter((n) => n.customerId === appt.customerId && n.status !== 'resolvida').length;
-  const fotos = appt.photos?.length ?? 0;
   const naoConformes = items.filter((i) => i.result === 'nao_conforme').length;
 
   const salvar = () => {
@@ -636,7 +635,6 @@ function VerificacaoDrawer({ open, onClose, appt }: {
             <Confere label="Armadilhas inspecionadas hoje" value={`${inspecionadasHoje.length} de ${trapIdsDoCliente.size}`} alerta={trapIdsDoCliente.size > 0 && inspecionadasHoje.length === 0} />
             <Confere label="Com consumo/captura" value={String(comConsumo)} alerta={comConsumo > 0} />
             <Confere label="Não conformidades abertas" value={String(ncsAbertas)} alerta={ncsAbertas > 0} />
-            <Confere label="Fotos do atendimento" value={String(fotos)} alerta={fotos === 0} />
             <Confere label="Assinatura do cliente" value={appt.customerSignature ? 'Colhida' : 'Pendente'} alerta={!appt.customerSignature} />
             <Confere label="Assinatura do técnico" value={appt.technicianSignature ? 'Colhida' : 'Pendente'} alerta={!appt.technicianSignature} />
           </div>

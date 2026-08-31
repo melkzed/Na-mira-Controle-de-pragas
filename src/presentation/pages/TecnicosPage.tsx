@@ -7,7 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
 import { Drawer } from '../components/ui/Drawer';
-import { Field, Input } from '../components/ui/Field';
+import { DateInput, Field, Input } from '../components/ui/Field';
 import { Combobox } from '../components/ui/Combobox';
 import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
@@ -29,6 +29,7 @@ import { EQUIPMENT_STATUS_META as statusMeta } from '@/domain/equipmentMeta';
 import type { User, Equipment } from '@/domain/types';
 import type { EquipmentStatus } from '@/domain/enums';
 import { dateInputToIso, fmtDate } from '@/lib/date';
+import { sortByName } from '@/lib/utils';
 
 const fmtDateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 
@@ -44,7 +45,7 @@ export function TecnicosPage() {
   const { requests: equipRequests } = useEquipmentRequestsStore();
   const { requests: stockRequests } = useStockRequestsStore();
 
-  const technicians = users.filter((u) => u.role === 'tecnico');
+  const technicians = sortByName(users.filter((u) => u.role === 'tecnico'));
   const [formOpen, setFormOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
@@ -552,7 +553,7 @@ function TechEquipmentTab({ tech }: { tech: User }) {
         <div className="space-y-2">
           <Combobox value={assignId} onChange={setAssignId} placeholder="Buscar equipamento disponível…" options={available.map((e) => ({ value: e.id, label: e.name, sub: e.code }))} />
           <div className="flex gap-2">
-            <input type="date" value={returnAt} onChange={(e) => setReturnAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} className="h-9 flex-1 rounded-lg border border-input bg-surface px-2.5 text-sm text-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-ring/40" />
+            <DateInput type="date" value={returnAt} onChange={(e) => setReturnAt(e.target.value)} className="h-9 flex-1 rounded-lg border border-input bg-surface px-2.5 text-sm text-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-ring/40" />
             <Button size="sm" disabled={!assignId} onClick={deliver}>Entregar</Button>
           </div>
         </div>

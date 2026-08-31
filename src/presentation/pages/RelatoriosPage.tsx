@@ -5,7 +5,7 @@ import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card, CardBody } from '../components/ui/Card';
 import { Icon } from '../components/ui/Icon';
-import { Input, Select } from '../components/ui/Field';
+import { DateInput, Input, Select } from '../components/ui/Field';
 import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getServiceType, getUser } from '@/application/repository';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
@@ -14,7 +14,7 @@ import { useCustomersStore } from '@/store/customersStore';
 import { downloadCsv, downloadXls } from '@/lib/export';
 import { printDataReport, type ReportColumn } from '@/lib/printReports';
 import { fmtDate, toDateInputValue } from '@/lib/date';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, sortByName } from '@/lib/utils';
 import { SERVICE_ORDER_STATUS_META, type ServiceOrderStatus } from '@/domain/enums';
 
 interface Filters { search: string; customerId: string; technicianId: string; serviceTypeId: string; status: string; startDate: string; endDate: string }
@@ -311,7 +311,7 @@ function quickRangeDates(days: number): { startDate: string; endDate: string } {
 
 export function RelatoriosPage() {
   const customers = useCustomersStore((s) => s.customers);
-  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico'));
+  const technicians = useUsersStore((s) => sortByName(s.items.filter((u) => u.role === 'tecnico')));
   useServiceOrdersStore((s) => s.orders); // reatividade das contagens
   useProductsStore((s) => s.items);
 
@@ -373,11 +373,11 @@ export function RelatoriosPage() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Período inicial</label>
-              <Input type="date" value={f.startDate} onChange={(e) => set({ startDate: e.target.value })} onClick={(e) => e.currentTarget.showPicker?.()} aria-label="Período inicial" />
+              <DateInput type="date" value={f.startDate} onChange={(e) => set({ startDate: e.target.value })} aria-label="Período inicial" />
             </div>
             <div>
               <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Período final</label>
-              <Input type="date" value={f.endDate} min={f.startDate || undefined} onChange={(e) => set({ endDate: e.target.value })} onClick={(e) => e.currentTarget.showPicker?.()} aria-label="Período final" />
+              <DateInput type="date" value={f.endDate} min={f.startDate || undefined} onChange={(e) => set({ endDate: e.target.value })} aria-label="Período final" />
             </div>
             <div className="flex items-end gap-1.5">
               {QUICK_RANGES.map((qr) => {

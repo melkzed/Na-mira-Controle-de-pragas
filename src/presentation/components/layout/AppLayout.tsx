@@ -6,6 +6,7 @@ import { Topbar } from './Topbar';
 import { CommandPalette } from './CommandPalette';
 import { PageLoader } from '../RouteError';
 import { cn } from '@/lib/utils';
+import { notifyPendingRecurrences } from '@/application/recurrenceConfirm';
 
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -16,6 +17,14 @@ export function AppLayout() {
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname]);
+
+  // Avisa sobre as visitas de recorrência que chegam na próxima semana. Roda
+  // ao entrar no sistema porque é aí que alguém está olhando — uma visita
+  // contratada que ninguém confirmou é receita perdida e cliente sem
+  // atendimento.
+  useEffect(() => {
+    notifyPendingRecurrences();
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">

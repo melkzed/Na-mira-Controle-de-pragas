@@ -64,7 +64,10 @@ export function parseDateInput(value: string): Date {
  */
 export function toDateInputValue(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  // O ano também precisa dos 4 dígitos: enquanto se digita "2026" o campo
+  // passa por 2, 20, 202, e um ano de 3 dígitos faz o `<input type="date">`
+  // recusar o valor ("does not conform to the required format").
+  return `${String(d.getFullYear()).padStart(4, '0')}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export function fmtDate(iso: string): string {

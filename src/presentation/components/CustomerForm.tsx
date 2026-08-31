@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Cloud, KeyRound, Loader2, Plus, Search, Trash2 } from 'lucide-react';
 import { Drawer } from './ui/Drawer';
 import { Button } from './ui/Button';
-import { Field, Input, Select, Textarea } from './ui/Field';
+import { DateInput, Field, Input, Select, Textarea } from './ui/Field';
 import { Segmented } from './ui/Segmented';
 import { Badge } from './ui/Badge';
 import { useCustomersStore, type CustomerInput } from '@/store/customersStore';
@@ -532,7 +532,7 @@ export function CustomerForm({
             <div className="border-t border-border pt-4">
               <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Agenda de contato</p>
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Próximo contato"><Input type="date" value={contactNextAt} onChange={(e) => setContactNextAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+                <Field label="Próximo contato"><DateInput type="date" value={contactNextAt} onChange={(e) => setContactNextAt(e.target.value)} /></Field>
                 <Field label="Responsável">
                   <Select value={contactResponsibleId} onChange={(e) => setContactResponsibleId(e.target.value)}><option value="">—</option>{staff.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</Select>
                 </Field>
@@ -672,8 +672,8 @@ function ContractsPanel({ value, onChange }: { value: ServiceContract[]; onChang
         </div>
       ))}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Field label="Início"><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
-        <Field label="Vencimento"><Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+        <Field label="Início"><DateInput type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></Field>
+        <Field label="Vencimento"><DateInput type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></Field>
         <Field label="Renovação"><Select value={renewal} onChange={(e) => setRenewal(e.target.value)}>{['Automática', 'Manual', 'Não renova'].map((o) => <option key={o}>{o}</option>)}</Select></Field>
         <Field label="Situação"><Select value={status} onChange={(e) => setStatus(e.target.value as ContractStatus)}>{(Object.keys(CONTRACT_STATUS_LABEL) as ContractStatus[]).map((s) => <option key={s} value={s}>{CONTRACT_STATUS_LABEL[s]}</option>)}</Select></Field>
       </div>
