@@ -501,6 +501,10 @@ export interface Appointment {
   /** Assinatura eletrônica de quem recebeu o serviço, capturada em campo.
    *  Ao fechar a OS é copiada para ela (é o que sai no PDF). */
   customerSignature?: string;
+  /** Identificação de quem assinou (ver `SignerInfo`). */
+  signerName?: string;
+  signerDocType?: SignerDocType;
+  signerDocument?: string;
   /** Verificação do local feita em campo — ver `VerificationItem`. */
   verification?: VerificationItem[];
   routeOrder?: number;
@@ -619,7 +623,30 @@ export interface ServiceOrder {
   /** Assinaturas eletrônicas (dataURL) incorporadas ao PDF. */
   technicianSignature?: string;
   customerSignature?: string;
+  /** Quem assinou pelo cliente (ver `SignerInfo`) — sai no PDF no lugar do
+   *  titular do cadastro quando informado. */
+  signerName?: string;
+  signerDocType?: SignerDocType;
+  signerDocument?: string;
 }
+
+/** Quem assinou o atendimento em campo.
+ *
+ *  O serviço costuma estar no nome de uma pessoa jurídica ou de um titular que
+ *  não estava no local; quem acompanha e assina é um zelador, síndico,
+ *  encarregado. O documento precisa dizer quem de fato recebeu o serviço, então
+ *  o nome e a identificação são registrados junto da assinatura, e não herdados
+ *  do cadastro do cliente. */
+export interface SignerInfo {
+  /** Nome de quem acompanhou o serviço e assinou. */
+  signerName?: string;
+  /** Tipo do documento apresentado. */
+  signerDocType?: SignerDocType;
+  /** Número do documento (CPF, RG ou matrícula), como foi informado. */
+  signerDocument?: string;
+}
+
+export type SignerDocType = 'cpf' | 'rg' | 'matricula';
 
 export interface Pest {
   id: string;

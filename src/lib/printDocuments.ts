@@ -16,6 +16,7 @@ import { useLicensesStore } from '@/store/entityStores';
 import { getOrgProfile } from '@/store/orgProfileStore';
 import { currentBatch } from './batches';
 import { formatDocument } from './utils';
+import { signerDocumentLabel } from './signer';
 import { formatAddress } from './geo';
 import { logoSvgMarkup } from './logoSvg';
 import { toast } from '@/store/toastStore';
@@ -165,8 +166,18 @@ export function clientTechSignatures(so: ServiceOrder): string {
   const img = (src?: string) => (src ? `<img src="${src}" alt="assinatura" style="height:38px;object-fit:contain;margin:0 auto 2px;display:block" />` : '<div style="height:38px"></div>');
   const techNames = (so.technicianIds?.length ? so.technicianIds : [so.technicianId]).map((id) => getUser(id)?.name).filter(Boolean).join(', ') || '—';
   const c = getCustomer(so.customerId);
+  // Quem assinou é quem acompanhou o serviço — raramente o titular do cadastro.
+  // Quando o técnico registrou o nome em campo, é ele que identifica a
+  // assinatura; sem isso o documento atribuiria a assinatura à pessoa errada.
+  const assinante = so.signerName?.trim() || c?.name || 'Cliente';
+  const idAssinante = so.signerName?.trim()
+    ? signerDocumentLabel(so)
+    : (c?.document ? formatDocument(c.document) : '');
+  const papel = so.signerName?.trim() && so.signerName.trim() !== c?.name
+    ? `Recebido por${c?.name ? ` — ${esc(c.name)}` : ''}`
+    : 'Assinatura Cliente';
   return `<div class="sign2">
-    <div class="line">${img(so.customerSignature)}<span class="signlabel">${esc(c?.name ?? 'Cliente')}${c?.document ? `<br/>${esc(formatDocument(c.document))}` : ''}<br/>Assinatura Cliente</span></div>
+    <div class="line">${img(so.customerSignature)}<span class="signlabel">${esc(assinante)}${idAssinante ? `<br/>${esc(idAssinante)}` : ''}<br/>${papel}</span></div>
     <div class="line">${img(techSig)}<span class="signlabel">${esc(techNames)}<br/>Técnico de Execução</span></div>
   </div>`;
 }

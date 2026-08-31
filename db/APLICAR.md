@@ -11,7 +11,7 @@ precisa reiniciar nada.
 | 1 | `db/migrate_feedback_cliente.sql` | Produtos (grupo químico, antídoto, tratamento, diluente, exibição no laudo), cômodos e estrutura do cliente, contas recorrentes com duração, tipo de tributo, textos dos documentos |
 | 2 | `db/migrate_stock_locations_cadastro.sql` | Locais de estoque viram cadastro real e cria os que faltam para técnicos já cadastrados |
 | 3 | `db/storage_atendimentos.sql` | Bucket `atendimentos` para as fotos do atendimento |
-| 4 | `db/migrate_campo_verificacao.sql` | Assinatura do cliente e verificação do local na visita; acesso ao Portal do Cliente; pedido de reagendamento; áreas específicas da OS; coordenadas das armadilhas; campos novos de `users` |
+| 4 | `db/migrate_campo_verificacao.sql` | Assinatura do cliente e verificação do local na visita; acesso ao Portal do Cliente; pedido de reagendamento; áreas específicas da OS; coordenadas das armadilhas; campos novos de `users`; cancelamento pelo cliente; identificação de quem assinou o atendimento |
 | 5 | `db/migrate_papeis_1.sql` | Cria os valores novos do tipo `user_role`. **Rode sozinho e espere terminar.** |
 | 6 | `db/migrate_papeis_2.sql` | Converte os papéis antigos em `funcionario` e lista quem ficou sem setor |
 

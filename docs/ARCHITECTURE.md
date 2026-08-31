@@ -323,6 +323,41 @@ Migration: `db/migrate_campo_verificacao.sql` (colunas de acesso do cliente,
 pedido de reagendamento, áreas específicas da OS, coordenadas das armadilhas e
 os dois campos novos de `users`).
 
+### 3.9 Quem assinou o atendimento
+
+A assinatura colhida em campo precisa dizer **quem assinou**, não a quem o
+serviço foi vendido. O contrato costuma estar no nome de uma pessoa jurídica
+ou de um titular que não estava no local; quem acompanha o técnico e assina é
+zelador, síndico, encarregado, funcionário do local. Rotular a assinatura com o
+nome do cadastro atribuiria o aceite a alguém que não estava lá — num documento
+técnico isso é informação errada, não um detalhe de exibição.
+
+Por isso `SignerInfo` (`signerName`, `signerDocType`, `signerDocument`) é
+digitada junto da assinatura e viaja com ela: fica no `Appointment` (onde é
+colhida) e é copiada para a `ServiceOrder` (que vira PDF). `signerDocType` é
+`cpf | rg | matricula` — CPF é o caso comum e vem pré-selecionado, mas
+condomínio e indústria identificam quem recebe por matrícula funcional.
+
+- Componente: `presentation/components/SignerFields.tsx` (formulário) e
+  `lib/signer.ts` (rótulos e validação — fica em `lib` porque a impressão,
+  que não é React, também precisa deles).
+- `signerMissing()` bloqueia o salvamento **só quando existe assinatura**:
+  assinatura sem identificação não prova nada, mas cobrar o cadastro de quem
+  ainda nem assinou trava o técnico à toa.
+- Os dois pontos de captura usam o mesmo componente: o menu Gerenciar
+  (`field/VisitActions.tsx` → `AssinaturasDrawer`) e a confirmação de
+  "Finalizar atendimento" (`CampoPage`).
+- Na impressão (`printDocuments.ts` → `clientTechSignatures`), quando há
+  `signerName` a linha passa a mostrar esse nome, a identificação apresentada e
+  o rótulo "Recebido por — <cliente>"; sem ele, cai no titular do cadastro
+  como antes.
+
+Migration: `db/migrate_campo_verificacao.sql` (`signer_name`, `signer_doc_type`,
+`signer_document` em `appointments` e `service_orders`). `appointmentsStore` faz
+o mapeamento explícito de colunas, então os três campos foram adicionados a
+`AppointmentRow`/`fromRow`/`toRow`; `serviceOrdersStore` usa `toSnakeRow` e não
+precisou de mudança.
+
 ## 4. Fluxos principais
 
 ### 4.1 Do agendamento à Ordem de Serviço
