@@ -325,7 +325,7 @@ function ClienteDetail({
                       <p className="text-sm font-medium text-foreground">OS #{so.number} · {getServiceType(so.serviceTypeId)?.name}</p>
                       <p className="text-xs text-muted-foreground">{fmtDate(so.createdAt)} · {so.totalMinutes ? `${so.totalMinutes} min` : 'em aberto'}</p>
                     </div>
-                    <ServiceOrderStatusBadge status={so.status} />
+                    <ServiceOrderStatusBadge status={so.status} cancelledBy={so.cancelledBy} />
                   </div>
                   <div className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
                     {techNames && <p>Técnico(s): {techNames}</p>}

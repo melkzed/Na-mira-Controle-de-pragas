@@ -130,6 +130,22 @@ export function serviceOrderForAppointment(appointmentId: string): ServiceOrder 
   return useServiceOrdersStore.getState().orders.find((so) => so.appointmentId === appointmentId);
 }
 
+/**
+ * Equipe responsável por uma visita.
+ *
+ * O agendamento guarda um técnico só (`technicianId`), mas a OS vinculada
+ * pode ter vários (`technicianIds`) — é lá que fica a equipe de verdade.
+ * Sem isso a Agenda mostrava apenas o primeiro e escondia os demais.
+ */
+export function techniciansForAppointment(appt: Appointment): User[] {
+  const os = serviceOrderForAppointment(appt.id);
+  const ids = os?.technicianIds?.length
+    ? os.technicianIds
+    : [os?.technicianId, appt.technicianId].filter(Boolean) as string[];
+  const unicos = [...new Set(ids)];
+  return unicos.map((id) => getUser(id)).filter(Boolean) as User[];
+}
+
 /** Agendamentos em aberto do cliente — usados para vincular a OS a uma visita. */
 export function appointmentsForCustomer(customerId: string): Appointment[] {
   return useAppointmentsStore.getState().appointments

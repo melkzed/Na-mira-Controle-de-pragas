@@ -581,6 +581,13 @@ export interface ServiceOrder {
   warranty?: WarrantyInfo;
   /** Recorrência do serviço. */
   recurrence?: OsRecurrence;
+  /** Quem cancelou a OS, quando ela é cancelada. O cliente pode cancelar a
+   *  visita pelo Portal; a OS resultante precisa dizer que a decisão foi dele,
+   *  e não da empresa — muda a conversa de cobrança e o indicador de perdas. */
+  cancelledBy?: 'cliente' | 'empresa';
+  cancelledAt?: string;
+  /** Motivo informado no cancelamento. */
+  cancelReason?: string;
   /** Data do serviço (execução). */
   executionDate?: string;
   /** Horário do serviço (`HH:MM`) — combinado com executionDate ao gerar o

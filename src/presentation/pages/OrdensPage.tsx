@@ -172,7 +172,7 @@ export function OrdensPage() {
       );
     } },
     { key: 'time', header: 'Duração', align: 'right', render: (so) => so.totalMinutes ? `${so.totalMinutes} min` : '—' },
-    { key: 'status', header: 'Status', align: 'right', render: (so) => <ServiceOrderStatusBadge status={so.status} /> },
+    { key: 'status', header: 'Status', align: 'right', render: (so) => <ServiceOrderStatusBadge status={so.status} cancelledBy={so.cancelledBy} /> },
   ];
 
   return (
@@ -271,7 +271,7 @@ export function OrdensPage() {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div className="space-y-5 lg:col-span-2">
               <div className="flex flex-wrap items-center gap-2">
-                <ServiceOrderStatusBadge status={selected.status} />
+                <ServiceOrderStatusBadge status={selected.status} cancelledBy={selected.cancelledBy} />
                 <Badge tone="neutral">{getServiceType(selected.serviceTypeId)?.name}</Badge>
               </div>
 
