@@ -9,10 +9,13 @@
 import type { SignerDocType, SignerInfo } from '@/domain/types';
 import { formatDocument } from './utils';
 
-export const SIGNER_DOC_TYPES: { value: SignerDocType; label: string }[] = [
-  { value: 'cpf', label: 'CPF' },
-  { value: 'rg', label: 'RG' },
-  { value: 'matricula', label: 'Matrícula' },
+/** `artigo` existe porque a sigla não segue o gênero da palavra que abrevia:
+ *  é "o CPF" e "o RG", mas "a matrícula". Sem isso a cobrança sairia como
+ *  "Informe a CPF". */
+export const SIGNER_DOC_TYPES: { value: SignerDocType; label: string; artigo: 'o' | 'a' }[] = [
+  { value: 'cpf', label: 'CPF', artigo: 'o' },
+  { value: 'rg', label: 'RG', artigo: 'o' },
+  { value: 'matricula', label: 'Matrícula', artigo: 'a' },
 ];
 
 export function signerDocTypeLabel(type?: SignerDocType): string {
@@ -32,6 +35,12 @@ export function signerDocumentLabel(info: SignerInfo): string {
  *  está tudo preenchido. */
 export function signerMissing(info: SignerInfo): string | undefined {
   if (!info.signerName?.trim()) return 'Informe o nome de quem acompanhou o serviço.';
-  if (!info.signerDocument?.trim()) return `Informe a ${signerDocTypeLabel(info.signerDocType).toLowerCase()} de quem assinou.`;
+  if (!info.signerDocument?.trim()) {
+    const tipo = SIGNER_DOC_TYPES.find((t) => t.value === info.signerDocType);
+    // Sigla se mantém em caixa alta ("o CPF"); palavra por extenso vai em
+    // minúscula no meio da frase ("a matrícula").
+    const nome = tipo?.artigo === 'a' ? tipo.label.toLowerCase() : (tipo?.label ?? 'identificação');
+    return `Informe ${tipo?.artigo ?? 'a'} ${nome} de quem assinou.`;
+  }
   return undefined;
 }
