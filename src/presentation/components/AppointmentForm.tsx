@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Check, Lock } from 'lucide-react';
 import { Drawer } from './ui/Drawer';
 import { Button } from './ui/Button';
-import { Field, Input, Select, Textarea } from './ui/Field';
+import { DateInput, Field, Input, Select, Textarea } from './ui/Field';
 import { Combobox } from './ui/Combobox';
 import { Segmented } from './ui/Segmented';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
@@ -277,7 +277,7 @@ export function AppointmentForm({
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Data e hora" required>
-            <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} />
+            <DateInput type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
           </Field>
           <Field label="Duração (min)">
             <Input type="number" min={15} step={15} value={duration} onChange={(e) => setDuration(Number(e.target.value) || 0)} />

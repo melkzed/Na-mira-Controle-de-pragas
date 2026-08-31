@@ -4,7 +4,7 @@ import { Button } from '../ui/Button';
 import { Card, CardBody, CardHeader } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Drawer } from '../ui/Drawer';
-import { Field, Input, Select, Textarea } from '../ui/Field';
+import { DateInput, Field, Input, Select, Textarea } from '../ui/Field';
 import { StatCard } from '../StatCard';
 import { Stagger } from '../ui/misc';
 import { useTrapsStore, type TrapInput } from '@/store/trapsStore';
@@ -14,6 +14,7 @@ import { useTrapTypesStore, useUsersStore } from '@/store/entityStores';
 import type { TrapDevice } from '@/domain/types';
 import { TRAP_STATUS_META } from '@/domain/trapMeta';
 import { dateInputToIso, fmtDate } from '@/lib/date';
+import { sortByName } from '@/lib/utils';
 
 /** Painel de armadilhas/monitoramento de um cliente — usado tanto embutido no
  *  cadastro do cliente quanto na página standalone de Monitoramento. */
@@ -87,7 +88,7 @@ export function TrapsPanel({ customerId, compact = false }: { customerId: string
 }
 
 function TrapForm({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (t: Omit<TrapInput, 'customerId'>) => void }) {
-  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico'));
+  const technicians = useUsersStore((s) => sortByName(s.items.filter((u) => u.role === 'tecnico')));
   const trapTypes = useTrapTypesStore((s) => s.items.filter((t) => t.isActive !== false));
   const [code, setCode] = useState('');
   const [type, setType] = useState('');
@@ -114,7 +115,7 @@ function TrapForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
         <Field label="Identificação / numeração" required><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Porta Isca 005" />{touched && !code.trim() && <span className="mt-1 block text-xs text-danger">Informe a identificação.</span>}</Field>
         <Field label="Tipo"><Select value={type} onChange={(e) => setType(e.target.value)}>{trapTypes.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}</Select></Field>
         <Field label="Local de instalação"><Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Ex.: Garagem G1, Cozinha, Lixeira externa" /></Field>
-        <Field label="Data de instalação"><Input type="date" value={installedAt} onChange={(e) => setInstalledAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+        <Field label="Data de instalação"><DateInput type="date" value={installedAt} onChange={(e) => setInstalledAt(e.target.value)} /></Field>
         <Field label="Responsável fixo"><Select value={responsibleId} onChange={(e) => setResponsibleId(e.target.value)}><option value="">—</option>{technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
       </div>
     </Drawer>
@@ -126,7 +127,7 @@ function InspectionForm({ trap, onClose, onSave }: {
   onClose: () => void;
   onSave: (d: { trapId: string; date: string; consumed: boolean; action?: 'nenhuma' | 'substituida' | 'retirada' | 'reinstalada' | 'extraviada'; technicianId?: string; notes?: string }, nextInspectionAt?: string) => void;
 }) {
-  const technicians = useUsersStore((s) => s.items.filter((u) => u.role === 'tecnico'));
+  const technicians = useUsersStore((s) => sortByName(s.items.filter((u) => u.role === 'tecnico')));
   const [consumed, setConsumed] = useState(false);
   const [action, setAction] = useState<'nenhuma' | 'substituida' | 'retirada' | 'reinstalada' | 'extraviada'>('nenhuma');
   const [technicianId, setTechnicianId] = useState(technicians[0]?.id ?? '');
@@ -157,7 +158,7 @@ function InspectionForm({ trap, onClose, onSave }: {
           </Select>
         </Field>
         <Field label="Técnico"><Select value={technicianId} onChange={(e) => setTechnicianId(e.target.value)}>{technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
-        <Field label="Próxima inspeção prevista"><Input type="date" value={nextInspectionAt} onChange={(e) => setNextInspectionAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+        <Field label="Próxima inspeção prevista"><DateInput type="date" value={nextInspectionAt} onChange={(e) => setNextInspectionAt(e.target.value)} /></Field>
         <Field label="Ocorrências / observações"><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Sinais de pragas, frestas, limpeza inadequada…" /></Field>
       </div>
     </Drawer>

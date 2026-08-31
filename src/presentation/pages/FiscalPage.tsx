@@ -5,7 +5,7 @@ import { Button } from '../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Drawer } from '../components/ui/Drawer';
-import { Field, Input, Select } from '../components/ui/Field';
+import { DateInput, Field, Input, Select } from '../components/ui/Field';
 import { Table, type Column } from '../components/ui/Table';
 import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getUser } from '@/application/repository';
@@ -138,8 +138,8 @@ function LicenseForm({ open, onClose, onSave }: { open: boolean; onClose: () => 
         <Field label="Órgão emissor"><Input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="Vigilância Sanitária" /></Field>
         <Field label="Número"><Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="VS-2025-0001" /></Field>
         <Field label="Responsável técnico" className="col-span-2"><Select value={responsibleId} onChange={(e) => setResponsibleId(e.target.value)}><option value="">—</option>{seed.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></Field>
-        <Field label="Emissão"><Input type="date" value={issuedAt} onChange={(e) => setIssuedAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
-        <Field label="Validade"><Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+        <Field label="Emissão"><DateInput type="date" value={issuedAt} onChange={(e) => setIssuedAt(e.target.value)} /></Field>
+        <Field label="Validade"><DateInput type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} /></Field>
       </div>
     </Drawer>
   );

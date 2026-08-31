@@ -11,11 +11,10 @@ import { Avatar } from '../components/ui/Avatar';
 import { Badge } from '../components/ui/Badge';
 import { Progress } from '../components/ui/misc';
 import { Drawer } from '../components/ui/Drawer';
-import { Textarea } from '../components/ui/Field';
+import { DateInput, Textarea } from '../components/ui/Field';
 import { Segmented } from '../components/ui/Segmented';
 import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { RouteMap, type RouteStop } from '../components/RouteMap';
-import { PhotoCapture } from '../components/PhotoCapture';
 import { SignaturePad } from '../components/SignaturePad';
 import { SignerFields } from '../components/SignerFields';
 import { signerMissing } from '@/lib/signer';
@@ -28,7 +27,7 @@ import { useStockStore } from '@/store/stockStore';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
 import { Plus, Search, X } from 'lucide-react';
-import type { Appointment, Customer, PaymentStatus, ServiceOrder, ServiceOrderPhoto, ServiceOrderProduct, SignerInfo } from '@/domain/types';
+import type { Appointment, Customer, PaymentStatus, ServiceOrder, ServiceOrderProduct, SignerInfo } from '@/domain/types';
 import { fmtTime } from '@/lib/date';
 import { cn, formatDocument } from '@/lib/utils';
 import { formatAddress, googleMapsRoute, googleMapsRouteToAddress } from '@/lib/geo';
@@ -57,7 +56,7 @@ interface FieldSaveData {
   endTime?: string;
 }
 
-/** `HH:MM` local de um ISO, para preencher `<input type="time">`. */
+/** `HH:MM` local de um ISO, para preencher `<DateInput type="time">`. */
 function hhmm(iso?: string): string {
   if (!iso) return '';
   const d = new Date(iso);
@@ -312,7 +311,6 @@ export function CampoPage() {
             onStart={handleStart}
             onFinish={handleFinish}
             onEditSave={handleEditSave}
-            onPhotosChange={(photos) => updateAppt(active.id, { photos })}
             finishSignal={finishSignal}
             onOpenTraps={() => setTrapsSignal((n) => n + 1)}
             actions={
@@ -395,11 +393,7 @@ function TechNote({ appt, onSave }: { appt: Appointment; onSave: (text: string) 
 
 /** Detalhe da visita para o técnico: produtos necessários, solicitação e infos. */
 function VisitDetailDrawer({ appt, onClose, onNavigate }: { appt: Appointment | null; onClose: () => void; onNavigate: (a: Appointment) => void }) {
-  const updateAppt = useAppointmentsStore((s) => s.update);
-  const [photos, setPhotos] = useState<ServiceOrderPhoto[]>(appt?.photos ?? []);
-  useEffect(() => { setPhotos(appt?.photos ?? []); }, [appt?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!appt) return null;
-  const savePhotos = (next: ServiceOrderPhoto[]) => { setPhotos(next); updateAppt(appt.id, { photos: next }); };
   const cust = getCustomer(appt.customerId);
   const st = getServiceType(appt.serviceTypeId);
   const linkedOs = serviceOrderForAppointment(appt.id);
@@ -454,10 +448,6 @@ function VisitDetailDrawer({ appt, onClose, onNavigate }: { appt: Appointment | 
               })}
             </div>
           )}
-        </Section>
-
-        <Section title="Fotos do atendimento">
-          <PhotoCapture photos={photos} onChange={savePhotos} />
         </Section>
 
         {linkedOs?.technicianMessage && (
@@ -791,7 +781,7 @@ function HeaderStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEditSave, onPhotosChange, finishSignal, actions, onOpenTraps }: {
+function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEditSave, finishSignal, actions, onOpenTraps }: {
   appt: Appointment;
   techId: string;
   onNavigate: () => void;
@@ -799,7 +789,6 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
   onStart: () => void;
   onFinish: (data: FieldSaveData) => void;
   onEditSave: (data: FieldSaveData) => void;
-  onPhotosChange: (photos: ServiceOrderPhoto[]) => void;
   /** Muda quando o menu Gerenciar pede para fechar a OS. */
   finishSignal: number;
   actions: React.ReactNode;
@@ -954,15 +943,6 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
           technicianIds={linkedOs?.technicianIds?.length ? linkedOs.technicianIds : [linkedOs?.technicianId ?? techId]}
         />
 
-        {/* Fotos de antes/depois — só liberadas após iniciar; servem de check
-         *  de que o atendimento realmente está sendo feito. */}
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
-            Fotos do atendimento (antes / depois){locked && !finished ? ' — inicie o atendimento para registrar' : ''}
-          </p>
-          <PhotoCapture photos={appt.photos ?? []} onChange={onPhotosChange} compact disabled={locked} />
-        </div>
-
         <div className="grid grid-cols-1 gap-2">
           {finished && !editingAfterFinish && (
             <>
@@ -983,21 +963,19 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
                 <div className="grid grid-cols-2 gap-2">
                   <label className="text-[11px] text-muted-foreground">
                     Início
-                    <input
+                    <DateInput
                       type="time"
                       value={startTime}
                       onChange={(e) => setStartTime(e.target.value)}
-                      onFocus={(e) => e.currentTarget.showPicker?.()}
                       className="mt-0.5 w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-foreground focus:border-brand focus:outline-none"
                     />
                   </label>
                   <label className="text-[11px] text-muted-foreground">
                     Término
-                    <input
+                    <DateInput
                       type="time"
                       value={endTime}
                       onChange={(e) => setEndTime(e.target.value)}
-                      onFocus={(e) => e.currentTarget.showPicker?.()}
                       className="mt-0.5 w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-foreground focus:border-brand focus:outline-none"
                     />
                   </label>

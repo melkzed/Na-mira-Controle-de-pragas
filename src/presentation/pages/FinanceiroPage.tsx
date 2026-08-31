@@ -23,7 +23,7 @@ import { toast } from '@/store/toastStore';
 import { Drawer } from '../components/ui/Drawer';
 import { ImportDrawer } from '../components/ImportDrawer';
 import { bankAccountsImport, financeImport } from '@/lib/importModules';
-import { Field, Input, Select } from '../components/ui/Field';
+import { DateInput, Field, Input, Select } from '../components/ui/Field';
 import type { BankAccount, Check as CheckEntity, FinanceEntry, LoanInvestment, PaymentMethodKind, RecurringPayable, TaxKind } from '@/domain/types';
 import { FinanceEntryStatus, RECURRENCE_FREQ_LABEL, type FinanceEntryType, type RecurrenceFreq } from '@/domain/enums';
 import { daysUntil, formatCompactCurrency, formatCurrency } from '@/lib/utils';
@@ -404,7 +404,7 @@ function PaymentDialog({ entries, onClose }: { entries: FinanceEntry[] | null; o
           {entries.map((e) => <div key={e.id} className="flex items-center justify-between text-sm"><span className="text-foreground">{e.description}</span><span className="font-medium text-foreground">{formatCurrency(netAmount(e))}</span></div>)}
         </div>
         <Field label="Data do pagamento" hint="Pré-preenchida com hoje — ajuste se o pagamento foi antecipado ou já ocorreu em outra data">
-          <Input type="date" value={paidAt} onChange={(ev) => setPaidAt(ev.target.value)} onClick={(ev) => ev.currentTarget.showPicker?.()} />
+          <DateInput type="date" value={paidAt} onChange={(ev) => setPaidAt(ev.target.value)} />
         </Field>
         <Field label="Forma de pagamento">
           <Select value={method} onChange={(ev) => setMethod(ev.target.value as PaymentMethodKind)}>
@@ -550,7 +550,7 @@ function RecurringForm({ open, onClose, onSave }: { open: boolean; onClose: () =
             </Select>
           </Field>
           <Field label="Primeiro vencimento" required hint="Dia, mês e ano — define quando a recorrência começa">
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} />
+            <DateInput type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </Field>
           {usaCustom && (
             <Field label="Repetir a cada (meses)" required className="col-span-2" hint="Ex.: 4 = a cada quatro meses">
@@ -581,7 +581,7 @@ function RecurringForm({ open, onClose, onSave }: { open: boolean; onClose: () =
           )}
           {durationKind === 'ate_data' && (
             <Field label="Cobrar até" required className="mt-3">
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} />
+              <DateInput type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </Field>
           )}
         </div>
@@ -630,7 +630,7 @@ function FinanceForm({ open, defaultType, onClose, onSave }: { open: boolean; de
         <div className="grid grid-cols-2 gap-4">
           <Field label="Valor (R$)" required><Input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
           <Field label="Desconto vinculado (R$)"><Input type="number" min={0} step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0,00" /></Field>
-          <Field label="Vencimento"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+          <Field label="Vencimento"><DateInput type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
           <Field label="Status">
             <Select value={status} onChange={(e) => setStatus(e.target.value as FinanceEntryStatus)}>
               {(['pendente', 'pago', 'atrasado', 'cancelado'] as FinanceEntryStatus[]).map((s) => <option key={s} value={s}>{statusMeta[s].label}</option>)}
@@ -914,7 +914,7 @@ function CheckForm({ open, onClose, onSave }: { open: boolean; onClose: () => vo
         <Field label="Banco" required><Input value={bank} onChange={(e) => setBank(e.target.value)} /></Field>
         <Field label="Beneficiário" className="col-span-2"><Input value={payee} onChange={(e) => setPayee(e.target.value)} /></Field>
         <Field label="Valor (R$)" required><Input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
-        <Field label="Data de emissão"><Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+        <Field label="Data de emissão"><DateInput type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} /></Field>
       </div>
     </Drawer>
   );
@@ -991,8 +991,8 @@ function LoanForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
         <div className="grid grid-cols-2 gap-4">
           <Field label="Valor principal (R$)" required><Input type="number" min={0} step="0.01" value={principal} onChange={(e) => setPrincipal(e.target.value)} /></Field>
           <Field label="Taxa (% a.m.)"><Input type="number" min={0} step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} /></Field>
-          <Field label="Data de início"><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
-          <Field label="Vencimento"><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} onClick={(e) => e.currentTarget.showPicker?.()} /></Field>
+          <Field label="Data de início"><DateInput type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></Field>
+          <Field label="Vencimento"><DateInput type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
         </div>
       </div>
     </Drawer>

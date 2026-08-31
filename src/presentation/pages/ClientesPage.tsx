@@ -18,7 +18,7 @@ import { useUsersStore } from '@/store/entityStores';
 import { logChange } from '@/store/auditStore';
 import { getPest, getProduct, getServiceType, getUser, serviceOrdersForCustomer } from '@/application/repository';
 import type { Customer, ContractStatus } from '@/domain/types';
-import { formatDocument } from '@/lib/utils';
+import { formatDocument, sortByName } from '@/lib/utils';
 import { downloadCsv } from '@/lib/export';
 import { customersImport } from '@/lib/importModules';
 import { fmtDate } from '@/lib/date';
@@ -41,7 +41,7 @@ export function ClientesPage() {
   const [editing, setEditing] = useState<Customer | null>(null);
 
   const filtered = useMemo(
-    () => customers.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || (c.document ?? '').includes(query)),
+    () => sortByName(customers.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || (c.document ?? '').includes(query))),
     [customers, query],
   );
 

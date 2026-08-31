@@ -79,3 +79,29 @@ export function daysUntil(dateISO?: string): number | null {
   now.setHours(0, 0, 0, 0);
   return Math.ceil((target - now.getTime()) / (1000 * 60 * 60 * 24));
 }
+
+/**
+ * Comparação alfabética em pt-BR.
+ *
+ * `localeCompare` com a locale certa é o que faz "Ávila" cair junto de "Avila"
+ * e "ç" junto de "c" — a ordenação por código de caractere jogaria todos os
+ * acentuados para o fim da lista, o que numa lista de clientes brasileiros é
+ * praticamente uma lista errada. `sensitivity: 'base'` ignora caixa e acento
+ * no desempate; `numeric` faz "Sala 2" vir antes de "Sala 10".
+ */
+const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true });
+
+export function compareText(a?: string, b?: string): number {
+  return collator.compare(a ?? '', b ?? '');
+}
+
+/** Ordena por nome sem alterar o array original (as stores são compartilhadas
+ *  entre telas — ordenar no lugar mudaria a ordem para todo mundo). */
+export function sortByName<T extends { name?: string }>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) => compareText(a.name, b.name));
+}
+
+/** Igual a `sortByName`, mas para listas cujo rótulo não é `name`. */
+export function sortBy<T>(items: readonly T[], key: (item: T) => string | undefined): T[] {
+  return [...items].sort((a, b) => compareText(key(a), key(b)));
+}

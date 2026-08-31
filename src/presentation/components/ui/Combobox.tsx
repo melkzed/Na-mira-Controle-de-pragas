@@ -1,6 +1,6 @@
 import { Check, ChevronDown, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { cn } from '@/lib/utils';
+import { cn, compareText } from '@/lib/utils';
 
 export interface ComboboxOption {
   value: string;
@@ -49,8 +49,16 @@ export function Combobox({
   const selected = options.find((o) => o.value === value);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter((o) => o.label.toLowerCase().includes(q) || o.sub?.toLowerCase().includes(q));
+    const base = q
+      ? options.filter((o) => o.label.toLowerCase().includes(q) || o.sub?.toLowerCase().includes(q))
+      : options;
+    // Alfabético em pt-BR: numa lista de busca o usuário procura pelo nome, e
+    // a ordem em que a store devolveu não diz nada a ele. A opção vazia
+    // ("nenhum", "todos") fica no topo — é um comando, não um item da lista.
+    return [...base].sort((a, b) => {
+      if (!a.value !== !b.value) return a.value ? 1 : -1;
+      return compareText(a.label, b.label);
+    });
   }, [options, query]);
 
   useEffect(() => {
@@ -160,8 +168,10 @@ export function MultiCombobox({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter((o) => o.label.toLowerCase().includes(q) || o.sub?.toLowerCase().includes(q));
+    const base = q
+      ? options.filter((o) => o.label.toLowerCase().includes(q) || o.sub?.toLowerCase().includes(q))
+      : options;
+    return [...base].sort((a, b) => compareText(a.label, b.label));
   }, [options, query]);
 
   const toggle = (v: string) => onChange(values.includes(v) ? values.filter((x) => x !== v) : [...values, v]);

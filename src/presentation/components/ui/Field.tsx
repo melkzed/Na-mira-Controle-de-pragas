@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { Check, ChevronDown } from 'lucide-react';
+import { CalendarDays, Check, ChevronDown, Clock } from 'lucide-react';
 import {
   Children,
   forwardRef,
@@ -103,6 +103,62 @@ function parseOptions(children: ReactNode): ParsedOption[] {
       content: c.props.children,
     }));
 }
+
+/**
+ * Campo de data/hora.
+ *
+ * O `<input type="date">` do navegador já aceita **digitar** nos segmentos
+ * (dia, mês, ano) além de abrir o calendário. O que impedia digitar aqui era
+ * `onClick={showPicker()}` espalhado pelas telas: qualquer clique dentro do
+ * campo abria o seletor nativo, que toma o foco e engole o teclado. Quem sabe
+ * a data na cabeça — a maioria das vezes — ficava obrigado a navegar o
+ * calendário.
+ *
+ * Então o clique no campo não faz mais nada de especial (digita-se
+ * normalmente) e abrir o calendário virou um botão explícito à direita. O
+ * ícone nativo é escondido por CSS (`.dateinput` em index.css) para não haver
+ * dois botões fazendo a mesma coisa.
+ */
+export const DateInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  ({ className, type = 'date', disabled, ...props }, ref) => {
+    const innerRef = useRef<HTMLInputElement | null>(null);
+    const setRefs = (el: HTMLInputElement | null) => {
+      innerRef.current = el;
+      if (typeof ref === 'function') ref(el);
+      else if (ref) (ref as { current: HTMLInputElement | null }).current = el;
+    };
+    const abrir = () => {
+      const el = innerRef.current;
+      if (!el || disabled) return;
+      // showPicker não existe em todo navegador; sem ele, ao menos leva o
+      // foco ao campo para o usuário digitar.
+      if (typeof el.showPicker === 'function') el.showPicker();
+      else el.focus();
+    };
+    return (
+      <div className="relative">
+        <input
+          ref={setRefs}
+          type={type}
+          disabled={disabled}
+          className={cn(base, 'dateinput pr-9', className)}
+          {...props}
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          disabled={disabled}
+          onClick={abrir}
+          aria-label={type === 'time' ? 'Abrir seletor de horário' : 'Abrir calendário'}
+          className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50"
+        >
+          {type === 'time' ? <Clock size={15} /> : <CalendarDays size={15} />}
+        </button>
+      </div>
+    );
+  },
+);
+DateInput.displayName = 'DateInput';
 
 /** Substitui o `<select>` nativo por um dropdown no estilo do sistema — a
  *  lista de opções do navegador não é estilizável via CSS, então usamos um
