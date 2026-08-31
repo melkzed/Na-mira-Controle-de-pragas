@@ -258,6 +258,7 @@ export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
         body: `${custName} — visita em ${new Date(a.scheduledStart).toLocaleDateString('pt-BR')} aguarda confirmação.`,
         tone: 'warning',
         entityType: 'appointment',
+        entityId: a.id,
       });
     });
   },

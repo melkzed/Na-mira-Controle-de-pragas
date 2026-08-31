@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 /** Menu principal do App do Técnico — ordenado pelas funcionalidades mais usadas. */
 const FIELD_TABS = [
   { to: '/campo', label: 'Visitas do Dia', icon: CalendarCheck, end: true },
-  { to: '/campo/semana', label: 'Semana', icon: CalendarRange, end: false },
+  { to: '/campo/semana', label: 'Agenda', icon: CalendarRange, end: false },
   { to: '/campo/estoque', label: 'Estoque', icon: Package, end: false },
   { to: '/campo/ponto', label: 'Meu Ponto', icon: Clock, end: false },
   { to: '/campo/combustivel', label: 'Combustível', icon: Fuel, end: false },

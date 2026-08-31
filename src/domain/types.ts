@@ -909,7 +909,11 @@ export interface AppNotification {
   title: string;
   body?: string;
   tone: 'info' | 'success' | 'warning' | 'danger';
+  /** Módulo de origem — define para onde a notificação leva ao ser clicada
+   *  (ver `notificationLink` em `application/notifications.ts`). */
   entityType?: string;
+  /** Registro específico, quando existe: leva direto a ele, já aberto. */
+  entityId?: string;
   read: boolean;
   createdAt: string;
 }

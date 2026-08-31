@@ -20,6 +20,8 @@ interface AppState {
   login: (email: string, password: string) => Promise<User | null>;
   logout: () => void;
   markAllRead: () => void;
+  /** Marca uma notificação como lida — ao clicar nela para abrir o módulo. */
+  markRead: (id: string) => void;
   /** Remove uma notificação específica (o X de cada item da lista). */
   dismissNotification: (id: string) => void;
   setCommandOpen: (open: boolean) => void;
@@ -30,7 +32,7 @@ const USER_KEY = 'namira-user';
 const CLIENTE_PREFIX = 'cliente-';
 
 const initialNotifications: AppNotification[] = [
-  { id: 'n-1', title: 'Nova Ordem de Serviço', body: 'OS #1045 criada para Restaurante Sabor & Cia', tone: 'info', entityType: 'service_order', read: false, createdAt: daysFromNowIso(0) },
+  { id: 'n-1', title: 'Nova Ordem de Serviço', body: 'OS #1045 criada para Restaurante Sabor & Cia', tone: 'info', entityType: 'service_order', entityId: 'so-4', read: false, createdAt: daysFromNowIso(0) },
   { id: 'n-2', title: 'Estoque baixo', body: 'Klerat Blocos abaixo do mínimo no estoque central', tone: 'warning', entityType: 'product', read: false, createdAt: daysFromNowIso(0) },
   { id: 'n-3', title: 'Licença vencida', body: 'Registro de Responsável Técnico (CRQ) venceu há 8 dias', tone: 'danger', entityType: 'license', read: false, createdAt: daysFromNowIso(-1) },
   { id: 'n-4', title: 'Pagamento recebido', body: 'R$ 320,00 · Padaria Pão Quente', tone: 'success', entityType: 'finance', read: true, createdAt: daysFromNowIso(0) },
@@ -93,6 +95,10 @@ export const useAppStore = create<AppState>((set) => ({
   markAllRead: () =>
     set((s) => ({
       notifications: s.notifications.map((n) => ({ ...n, read: true })),
+    })),
+  markRead: (id) =>
+    set((s) => ({
+      notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)),
     })),
   dismissNotification: (id) =>
     set((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) })),

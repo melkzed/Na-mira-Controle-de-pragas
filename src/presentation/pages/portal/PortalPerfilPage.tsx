@@ -39,6 +39,7 @@ export function PortalPerfilPage() {
       body: `${customer.name}: ${texto.trim()}`,
       tone: 'info',
       entityType: 'customer',
+      entityId: customer.id,
     });
     logChange('alteração', 'cliente', `Cliente ${customer.name} pediu correção de cadastro: ${texto.trim()}`, customer.id);
     toast('Pedido enviado. A empresa vai revisar seus dados.', { tone: 'success' });

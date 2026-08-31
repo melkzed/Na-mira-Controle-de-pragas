@@ -42,6 +42,7 @@ export function PortalAgendamentosPage() {
       body: `${customer?.name ?? 'Cliente'} confirmou a visita de ${fmtDateLong(a.scheduledStart)}`,
       tone: 'success',
       entityType: 'appointment',
+      entityId: a.id,
     });
     logChange('alteração', 'agendamento', `Cliente ${customer?.name ?? ''} confirmou a visita de ${fmtDateLong(a.scheduledStart)}`, a.id);
     toast('Agendamento confirmado. Obrigado!', { tone: 'success' });
@@ -56,6 +57,7 @@ export function PortalAgendamentosPage() {
       body: `${customer?.name ?? 'Cliente'} pediu para remarcar a visita de ${fmtDateLong(remarcar.scheduledStart)}`,
       tone: 'warning',
       entityType: 'appointment',
+      entityId: remarcar.id,
     });
     logChange('alteração', 'agendamento', `Cliente ${customer?.name ?? ''} solicitou reagendamento${mensagem.trim() ? `: ${mensagem.trim()}` : ''}`, remarcar.id);
     toast('Pedido enviado. A empresa entrará em contato para remarcar.', { tone: 'success' });
@@ -85,6 +87,7 @@ export function PortalAgendamentosPage() {
       body: `${customer?.name ?? 'Cliente'} cancelou a visita de ${fmtDateLong(cancelar.scheduledStart)}${motivo.trim() ? ` — ${motivo.trim()}` : ''}`,
       tone: 'danger',
       entityType: 'appointment',
+      entityId: cancelar.id,
     });
     logChange('cancelamento', 'agendamento', `Cliente ${customer?.name ?? ''} cancelou a visita de ${fmtDateLong(cancelar.scheduledStart)}${motivo.trim() ? `: ${motivo.trim()}` : ''}`, cancelar.id);
     toast('Visita cancelada. A empresa foi avisada.', { tone: 'success' });
