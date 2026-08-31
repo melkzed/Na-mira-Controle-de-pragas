@@ -42,3 +42,13 @@ alter table public.users
   add column if not exists customer_id text;
 
 notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- Cancelamento pelo cliente (Portal) — a OS registra de quem partiu.
+-- ============================================================================
+alter table public.service_orders
+  add column if not exists cancelled_by text,
+  add column if not exists cancelled_at timestamptz,
+  add column if not exists cancel_reason text;
+
+notify pgrst, 'reload schema';

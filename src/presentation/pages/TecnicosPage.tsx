@@ -229,18 +229,26 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing]);
 
+  // O e-mail é o login: dois cadastros com o mesmo e-mail deixariam o sistema
+  // sem saber quem está entrando. A Edge Function também recusa no servidor
+  // (409), mas barrar aqui evita gastar o convite e dá a mensagem na hora.
+  const emailDuplicado = useUsersStore((s) =>
+    s.items.some((u) => u.id !== editing?.id && u.email.trim().toLowerCase() === email.trim().toLowerCase()),
+  );
+
   // Na edição a senha é opcional (só preenche quem quer trocar); no cadastro
   // novo é o administrador quem define a senha de acesso do técnico.
   const passwordTooShort = password.length > 0 && password.length < MIN_PASSWORD;
   const passwordMismatch = password !== passwordConfirm;
-  const passwordError = (!editing && !password.trim() && 'Defina a senha de acesso do técnico.')
+  const passwordError = (emailDuplicado && 'Já existe um cadastro com esse e-mail. Cada pessoa precisa de um e-mail próprio.')
+    || (!editing && !password.trim() && 'Defina a senha de acesso do técnico.')
     || (passwordTooShort && `A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.`)
     || (password && passwordMismatch && 'As senhas não coincidem.')
     || '';
 
   const submit = async () => {
     setTouched(true);
-    if (!name.trim() || !email.trim() || passwordError) return;
+    if (!name.trim() || !email.trim() || passwordError || emailDuplicado) return;
     if (editing) {
       update(editing.id, { name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, isActive, fieldAppAccess });
       setUserSignature(editing.id, signature);
@@ -296,7 +304,15 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
     >
       <div className="space-y-4">
         <Field label="Nome completo" required><Input value={name} onChange={(e) => setName(e.target.value)} />{touched && !name.trim() && <span className="mt-1 block text-xs text-danger">Informe o nome.</span>}</Field>
-        <Field label="E-mail" required><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />{touched && !email.trim() && <span className="mt-1 block text-xs text-danger">Informe o e-mail.</span>}</Field>
+        <Field label="E-mail" required hint="É o login do técnico — não pode se repetir">
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          {touched && !email.trim() && <span className="mt-1 block text-xs text-danger">Informe o e-mail.</span>}
+          {emailDuplicado && (
+            <span className="mt-1 block text-xs text-danger">
+              Já existe um cadastro com esse e-mail. Cada pessoa precisa de um e-mail próprio.
+            </span>
+          )}
+        </Field>
         <Field label="Telefone"><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-0000" /></Field>
         <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/30 p-3">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="h-4 w-4 rounded border-border" id="tec-ativo" />

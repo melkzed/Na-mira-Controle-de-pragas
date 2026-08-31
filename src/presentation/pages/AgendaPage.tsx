@@ -12,7 +12,7 @@ import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge
 import { Badge } from '../components/ui/Badge';
 import { Select } from '../components/ui/Field';
 import { AppointmentForm } from '../components/AppointmentForm';
-import { getCustomer, getServiceType, getUser, primaryContactPhone } from '@/application/repository';
+import { getCustomer, getServiceType, primaryContactPhone, techniciansForAppointment } from '@/application/repository';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { logChange } from '@/store/auditStore';
 import { useMessagesStore } from '@/store/messagesStore';
@@ -389,7 +389,9 @@ function MapView({ appts, onSelect }: { appts: Appointment[]; onSelect: (a: Appo
 function ApptRow({ a, onSelect, compact }: { a: Appointment; onSelect: (a: Appointment) => void; compact?: boolean }) {
   const cust = getCustomer(a.customerId);
   const st = getServiceType(a.serviceTypeId);
-  const tech = getUser(a.technicianId);
+  // Equipe completa da visita — vem da OS vinculada, que pode ter vários
+  // técnicos; o agendamento sozinho guarda apenas um.
+  const equipe = techniciansForAppointment(a);
   return (
     <motion.button whileHover={{ x: 3 }} onClick={() => onSelect(a)} className="flex w-full items-center gap-3 rounded-xl border border-border/60 p-3 text-left transition hover:bg-muted/40">
       <div className="w-12 shrink-0 text-center">
@@ -401,7 +403,18 @@ function ApptRow({ a, onSelect, compact }: { a: Appointment; onSelect: (a: Appoi
         <p className="truncate text-sm font-medium text-foreground">{cust?.name}</p>
         <p className="truncate text-xs text-muted-foreground">{st?.name}{!compact && ` · ${a.address}`}</p>
       </div>
-      {!compact && tech && <Avatar name={tech.name} size="xs" />}
+      {!compact && equipe.length > 0 && (
+        <div className="flex shrink-0 -space-x-1.5" title={equipe.map((t) => t.name).join(', ')}>
+          {equipe.slice(0, 3).map((t) => (
+            <Avatar key={t.id} name={t.name} size="xs" className="ring-2 ring-surface" />
+          ))}
+          {equipe.length > 3 && (
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground ring-2 ring-surface">
+              +{equipe.length - 3}
+            </span>
+          )}
+        </div>
+      )}
       <AppointmentStatusBadge status={a.status} />
     </motion.button>
   );
@@ -415,7 +428,8 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
 
   const cust = appt ? getCustomer(appt.customerId) : undefined;
   const st = getServiceType(appt?.serviceTypeId);
-  const tech = getUser(appt?.technicianId);
+  // Equipe da visita — a OS vinculada pode ter mais de um técnico.
+  const equipe = appt ? techniciansForAppointment(appt) : [];
   if (!appt) return null;
 
   const confirmVisit = () => {
@@ -503,7 +517,18 @@ function AppointmentDrawer({ appt, onClose }: { appt: Appointment | null; onClos
             <p className="mt-0.5 text-sm text-foreground">{cust.permanentNotes}</p>
           </div>
         )}
-        {tech && <Section title="Técnico responsável"><div className="flex items-center gap-2"><Avatar name={tech.name} size="sm" /><span className="text-sm text-foreground">{tech.name}</span></div></Section>}
+        {equipe.length > 0 && (
+          <Section title={equipe.length > 1 ? `Equipe responsável (${equipe.length})` : 'Técnico responsável'}>
+            <div className="space-y-1.5">
+              {equipe.map((t) => (
+                <div key={t.id} className="flex items-center gap-2">
+                  <Avatar name={t.name} size="sm" />
+                  <span className="text-sm text-foreground">{t.name}</span>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
         <Section title="Contato">
           <p className="text-sm text-foreground">{cust?.phone}</p>
           {primaryContactPhone(cust) && primaryContactPhone(cust) !== cust?.phone && <p className="text-sm text-success">Telefone de contato: {primaryContactPhone(cust)}</p>}

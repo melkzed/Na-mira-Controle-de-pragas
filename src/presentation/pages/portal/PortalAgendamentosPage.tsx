@@ -1,6 +1,6 @@
 /** Portal do Cliente — agendamentos: consulta, confirmação e pedido de remarcação. */
 import { useState } from 'react';
-import { CalendarCheck, CalendarClock, Check, MapPin } from 'lucide-react';
+import { CalendarCheck, CalendarClock, Check, MapPin, XCircle } from 'lucide-react';
 import { PageHeader } from '../../components/ui/misc';
 import { Card, CardBody } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
@@ -9,6 +9,8 @@ import { Drawer } from '../../components/ui/Drawer';
 import { Field, Textarea } from '../../components/ui/Field';
 import { AppointmentStatusBadge } from '../../components/StatusBadge';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
+import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
+import { serviceOrderForAppointment } from '@/application/repository';
 import { useAppStore } from '@/store/appStore';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
@@ -22,8 +24,11 @@ export function PortalAgendamentosPage() {
   const setStatus = useAppointmentsStore((s) => s.setStatus);
   const updateAppt = useAppointmentsStore((s) => s.update);
   const addNotification = useAppStore((s) => s.addNotification);
+  const updateOs = useServiceOrdersStore((s) => s.update);
   const [remarcar, setRemarcar] = useState<Appointment | null>(null);
   const [mensagem, setMensagem] = useState('');
+  const [cancelar, setCancelar] = useState<Appointment | null>(null);
+  const [motivo, setMotivo] = useState('');
 
   const proximos = upcoming(appointments);
   const anteriores = past(appointments).slice(0, 10);
@@ -37,6 +42,7 @@ export function PortalAgendamentosPage() {
       body: `${customer?.name ?? 'Cliente'} confirmou a visita de ${fmtDateLong(a.scheduledStart)}`,
       tone: 'success',
       entityType: 'appointment',
+      entityId: a.id,
     });
     logChange('alteração', 'agendamento', `Cliente ${customer?.name ?? ''} confirmou a visita de ${fmtDateLong(a.scheduledStart)}`, a.id);
     toast('Agendamento confirmado. Obrigado!', { tone: 'success' });
@@ -51,6 +57,7 @@ export function PortalAgendamentosPage() {
       body: `${customer?.name ?? 'Cliente'} pediu para remarcar a visita de ${fmtDateLong(remarcar.scheduledStart)}`,
       tone: 'warning',
       entityType: 'appointment',
+      entityId: remarcar.id,
     });
     logChange('alteração', 'agendamento', `Cliente ${customer?.name ?? ''} solicitou reagendamento${mensagem.trim() ? `: ${mensagem.trim()}` : ''}`, remarcar.id);
     toast('Pedido enviado. A empresa entrará em contato para remarcar.', { tone: 'success' });
@@ -58,9 +65,39 @@ export function PortalAgendamentosPage() {
     setMensagem('');
   };
 
+  /** Cancelamento pelo cliente. A visita e a OS vinculada ficam canceladas,
+   *  mas registrando que a decisão partiu do cliente — para a empresa isso é
+   *  diferente de um cancelamento interno. */
+  const cancelarVisita = () => {
+    if (!cancelar) return;
+    const agora = new Date().toISOString();
+    setStatus(cancelar.id, 'cancelado');
+    updateAppt(cancelar.id, { notes: motivo.trim() ? `Cancelado pelo cliente: ${motivo.trim()}` : cancelar.notes });
+    const os = serviceOrderForAppointment(cancelar.id);
+    if (os) {
+      updateOs(os.id, {
+        status: 'cancelada',
+        cancelledBy: 'cliente',
+        cancelledAt: agora,
+        cancelReason: motivo.trim() || undefined,
+      });
+    }
+    addNotification({
+      title: 'Visita cancelada pelo cliente',
+      body: `${customer?.name ?? 'Cliente'} cancelou a visita de ${fmtDateLong(cancelar.scheduledStart)}${motivo.trim() ? ` — ${motivo.trim()}` : ''}`,
+      tone: 'danger',
+      entityType: 'appointment',
+      entityId: cancelar.id,
+    });
+    logChange('cancelamento', 'agendamento', `Cliente ${customer?.name ?? ''} cancelou a visita de ${fmtDateLong(cancelar.scheduledStart)}${motivo.trim() ? `: ${motivo.trim()}` : ''}`, cancelar.id);
+    toast('Visita cancelada. A empresa foi avisada.', { tone: 'success' });
+    setCancelar(null);
+    setMotivo('');
+  };
+
   return (
     <div>
-      <PageHeader title="Agendamentos" description="Confirme a visita ou peça uma nova data" />
+      <PageHeader title="Agendamentos" description="Confirme a visita, peça outra data ou cancele" />
 
       <div className="space-y-3">
         {proximos.map((a) => (
@@ -104,6 +141,15 @@ export function PortalAgendamentosPage() {
                   {a.rescheduleRequest ? 'Pedido enviado' : 'Pedir outra data'}
                 </Button>
               </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="w-full text-danger"
+                leftIcon={<XCircle size={15} />}
+                onClick={() => { setCancelar(a); setMotivo(''); }}
+              >
+                Cancelar visita
+              </Button>
             </CardBody>
           </Card>
         ))}
@@ -134,6 +180,29 @@ export function PortalAgendamentosPage() {
           </div>
         </>
       )}
+
+      <Drawer
+        open={!!cancelar}
+        onClose={() => setCancelar(null)}
+        title="Cancelar visita"
+        subtitle={cancelar ? fmtDateLong(cancelar.scheduledStart) : undefined}
+        footer={
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" onClick={() => setCancelar(null)}>Voltar</Button>
+            <Button variant="danger" leftIcon={<XCircle size={15} />} onClick={cancelarVisita}>Confirmar cancelamento</Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <p className="rounded-xl border border-warning/30 bg-warning-soft/50 p-3 text-sm text-foreground">
+            A visita será cancelada e a empresa avisada na hora. Para remarcar em vez de cancelar,
+            volte e use <span className="font-medium">Pedir outra data</span>.
+          </p>
+          <Field label="Motivo (opcional)">
+            <Textarea rows={4} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: o estabelecimento estará fechado nesse dia." />
+          </Field>
+        </div>
+      </Drawer>
 
       <Drawer
         open={!!remarcar}

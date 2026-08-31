@@ -33,7 +33,7 @@ export function PortalHistoricoPage() {
                       {so.startedAt && so.finishedAt ? ` · ${fmtTime(so.startedAt)}–${fmtTime(so.finishedAt)}` : ''}
                     </p>
                   </div>
-                  <ServiceOrderStatusBadge status={so.status} />
+                  <ServiceOrderStatusBadge status={so.status} cancelledBy={so.cancelledBy} />
                 </div>
 
                 <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">

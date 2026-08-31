@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, Package, PackagePlus, Wrench } from 'lucide-react';
+import { BookOpen, Check, Package, PackagePlus, Wrench } from 'lucide-react';
 import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Combobox } from '../components/ui/Combobox';
+import { Drawer } from '../components/ui/Drawer';
+import { Field, Input, Textarea } from '../components/ui/Field';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
 import { technicianBalances } from '@/application/repository';
 import { useEquipmentStore } from '@/store/entityStores';
@@ -28,6 +30,12 @@ export function CampoEstoquePage() {
   const myRequests = requests.filter((r) => r.technicianId === techId).slice(0, 5);
   const [equipmentId, setEquipmentId] = useState('');
   const [note, setNote] = useState('');
+  // Reposição pedida pelo técnico: quem sabe quanto precisa é ele. Antes o
+  // sistema chutava `max(minQuantity, 5)` e o pedido chegava ao almoxarifado
+  // com um número que ninguém escolheu.
+  const [restock, setRestock] = useState<{ id: string; name: string; unit: string; saldo: number } | null>(null);
+  const [restockQty, setRestockQty] = useState('');
+  const [restockNote, setRestockNote] = useState('');
 
   const doRequestEquipment = () => {
     if (!equipmentId) return;
@@ -59,7 +67,11 @@ export function CampoEstoquePage() {
               </div>
               <Badge tone={quantity <= 2 ? 'warning' : 'neutral'}>{quantity} {product.unit}</Badge>
               <button
-                onClick={() => { requestRestock({ productId: product.id, quantity: Math.max(product.minQuantity, 5), requestedBy: techId }); toast(`Reposição de ${product.name} solicitada ao estoque.`, { tone: 'success' }); }}
+                onClick={() => {
+                  setRestock({ id: product.id, name: product.name, unit: product.unit, saldo: quantity });
+                  setRestockQty(String(Math.max(product.minQuantity, 5)));
+                  setRestockNote('');
+                }}
                 aria-label={`Solicitar reposição de ${product.name}`}
                 className="shrink-0 rounded-lg border border-border p-1.5 text-brand transition hover:bg-brand-soft"
                 title="Solicitar reposição"
@@ -126,6 +138,56 @@ export function CampoEstoquePage() {
           )}
         </CardBody>
       </Card>
+
+      <Drawer
+        open={!!restock}
+        onClose={() => setRestock(null)}
+        title="Solicitar reposição"
+        subtitle={restock?.name}
+        footer={
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" onClick={() => setRestock(null)}>Cancelar</Button>
+            <Button
+              leftIcon={<Check size={15} />}
+              disabled={!(Number(restockQty) > 0)}
+              onClick={() => {
+                if (!restock || !(Number(restockQty) > 0)) return;
+                requestRestock({
+                  productId: restock.id,
+                  quantity: Number(restockQty),
+                  requestedBy: techId,
+                  note: restockNote.trim() || undefined,
+                });
+                toast(`Reposição de ${restockQty} ${restock.unit} de ${restock.name} solicitada ao estoque.`, { tone: 'success' });
+                setRestock(null);
+              }}
+            >
+              Solicitar
+            </Button>
+          </div>
+        }
+      >
+        {restock && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-border bg-muted/30 p-3">
+              <p className="text-sm font-semibold text-foreground">{restock.name}</p>
+              <p className="text-xs text-muted-foreground">Você tem {restock.saldo} {restock.unit} no seu estoque.</p>
+            </div>
+            <Field label={`Quantidade a solicitar (${restock.unit})`} required>
+              <Input
+                type="number" min={1} step="any" inputMode="decimal"
+                value={restockQty}
+                onChange={(e) => setRestockQty(e.target.value)}
+                autoFocus
+              />
+              {!(Number(restockQty) > 0) && <span className="mt-1 block text-xs text-danger">Informe quanto você precisa.</span>}
+            </Field>
+            <Field label="Observação para o almoxarifado">
+              <Textarea rows={3} value={restockNote} onChange={(e) => setRestockNote(e.target.value)} placeholder="Ex.: preciso para o atendimento de amanhã cedo." />
+            </Field>
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 }

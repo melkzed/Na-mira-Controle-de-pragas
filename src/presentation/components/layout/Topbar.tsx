@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { notificationLink } from '@/application/notifications';
 import { Bell, LogOut, Menu, Moon, Search, Smartphone, Sun, X } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import { ROLE_META } from '@/domain/enums';
@@ -10,7 +11,7 @@ import { Badge } from '../ui/Badge';
 import { cn } from '@/lib/utils';
 
 export function Topbar({ onMenu }: { onMenu: () => void }) {
-  const { theme, toggleTheme, currentUser, logout, notifications, markAllRead, dismissNotification, setCommandOpen } =
+  const { theme, toggleTheme, currentUser, logout, notifications, markAllRead, markRead, dismissNotification, setCommandOpen } =
     useAppStore();
   const navigate = useNavigate();
   const [notifOpen, setNotifOpen] = useState(false);
@@ -82,26 +83,44 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
                 {notifications.length === 0 && (
                   <p className="px-2 py-6 text-center text-xs text-muted-foreground">Nenhuma notificação.</p>
                 )}
-                {notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className={cn('group flex gap-3 rounded-lg px-2 py-2.5 transition hover:bg-muted', !n.read && 'bg-muted/50')}
-                  >
-                    <Badge tone={n.tone} dot className="mt-0.5 shrink-0">{''}</Badge>
-                    <div className="min-w-0 flex-1 leading-snug">
-                      <p className="text-sm font-medium text-foreground">{n.title}</p>
-                      <p className="text-xs text-muted-foreground">{n.body}</p>
-                    </div>
-                    <button
-                      onClick={() => dismissNotification(n.id)}
-                      aria-label={`Remover notificação: ${n.title}`}
-                      title="Remover"
-                      className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition hover:bg-border hover:text-danger focus:opacity-100 group-hover:opacity-100"
+                {notifications.map((n) => {
+                  const destino = notificationLink(n);
+                  return (
+                    <div
+                      key={n.id}
+                      className={cn('group flex gap-3 rounded-lg px-2 py-2.5 transition hover:bg-muted', !n.read && 'bg-muted/50')}
                     >
-                      <X size={13} />
-                    </button>
-                  </div>
-                ))}
+                      <Badge tone={n.tone} dot className="mt-0.5 shrink-0">{''}</Badge>
+                      {/* Clicar leva ao módulo do aviso (e ao registro, quando
+                          a tela aceita ?id=) — sem isso a pessoa lê o alerta e
+                          tem de sair procurando onde ele aconteceu. */}
+                      {destino ? (
+                        <button
+                          type="button"
+                          onClick={() => { markRead(n.id); setNotifOpen(false); navigate(destino); }}
+                          className="min-w-0 flex-1 text-left leading-snug"
+                          title={`Abrir ${destino}`}
+                        >
+                          <p className="text-sm font-medium text-foreground group-hover:underline">{n.title}</p>
+                          <p className="text-xs text-muted-foreground">{n.body}</p>
+                        </button>
+                      ) : (
+                        <div className="min-w-0 flex-1 leading-snug">
+                          <p className="text-sm font-medium text-foreground">{n.title}</p>
+                          <p className="text-xs text-muted-foreground">{n.body}</p>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => dismissNotification(n.id)}
+                        aria-label={`Remover notificação: ${n.title}`}
+                        title="Remover"
+                        className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition hover:bg-border hover:text-danger focus:opacity-100 group-hover:opacity-100"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </Dropdown>
           )}

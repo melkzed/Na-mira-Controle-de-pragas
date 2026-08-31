@@ -32,29 +32,42 @@
   --color-info-soft: 224 242 254;
 }
 
+/* Tema escuro — preto, cinza, branco e vermelho.
+ *
+ * Os cinzas são NEUTROS de propósito: a paleta anterior era slate (com fundo
+ * azulado), e o vermelho da marca em cima de um cinza azulado briga, deixando
+ * a tela com dois tons dominantes. Aqui o cinza não tem cor, então o vermelho
+ * é o único destaque e as telas ficam harmônicas.
+ *
+ * O vermelho da marca sobe para #F87171: o #D32F2F do tema claro não tem
+ * contraste suficiente sobre fundo escuro, e o #EF5350 anterior ainda ficava
+ * pesado em texto e ícones pequenos. */
 :root[data-theme='dark'] {
-  --color-background: 9 12 20;
-  --color-surface: 17 22 33;
-  --color-elevated: 24 31 45;
-  --color-foreground: 226 232 240;
-  --color-muted: 30 38 54;
-  --color-muted-foreground: 148 163 184;
-  --color-border: 38 47 66;
-  --color-input: 44 54 74;
-  --color-ring: 239 83 80;
+  --color-background: 10 10 11;      /* quase preto, sem cor */
+  --color-surface: 24 24 26;
+  --color-elevated: 33 33 36;
+  --color-foreground: 245 245 246;   /* branco levemente quebrado, não puro */
+  --color-muted: 38 38 41;
+  --color-muted-foreground: 163 163 168;
+  --color-border: 46 46 50;
+  --color-input: 55 55 60;
+  --color-ring: 248 113 113;
 
-  --color-brand: 239 83 80;          /* #EF5350 — vermelho mais claro p/ contraste no escuro */
-  --color-brand-foreground: 25 8 8;
-  --color-brand-soft: 61 20 20;
+  --color-brand: 248 113 113;        /* #F87171 — vermelho claro, legível no escuro */
+  --color-brand-foreground: 26 10 10;
+  --color-brand-soft: 62 28 28;      /* vermelho profundo, para fundo de destaque */
 
-  --color-success: 34 197 94;
-  --color-success-soft: 8 45 30;
+  /* Cores de significado continuam distintas: um alerta não pode virar
+   * decoração. Os fundos "soft" ficam escuros e pouco saturados para não
+   * competir com o vermelho da marca. */
+  --color-success: 74 222 128;
+  --color-success-soft: 18 42 28;
   --color-warning: 251 191 36;
-  --color-warning-soft: 55 42 8;
-  --color-danger: 251 113 133;       /* rose-400 */
-  --color-danger-soft: 58 16 26;
-  --color-info: 56 189 248;
-  --color-info-soft: 12 40 56;
+  --color-warning-soft: 48 38 14;
+  --color-danger: 252 129 129;       /* vermelho mais quente que o da marca */
+  --color-danger-soft: 58 26 26;
+  --color-info: 125 211 252;
+  --color-info-soft: 20 38 48;
 }
 
 * {

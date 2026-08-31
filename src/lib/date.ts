@@ -84,6 +84,33 @@ export function weekDays(reference: Date): Date[] {
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));
 }
 
+/** Todos os dias do mês da data de referência — base do calendário mensal
+ *  do App do Técnico. */
+export function monthDays(reference: Date): Date[] {
+  const ano = reference.getFullYear();
+  const mes = reference.getMonth();
+  const total = new Date(ano, mes + 1, 0).getDate();
+  return Array.from({ length: total }, (_, i) => new Date(ano, mes, i + 1));
+}
+
+/** "setembro de 2026" — rótulo do período mensal. */
+export function monthRangeLabel(reference: Date): string {
+  return reference.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+}
+
+/** Soma semanas (ou meses) a uma data, para navegar entre períodos. */
+export function addWeeks(d: Date, n: number): Date {
+  const out = new Date(d);
+  out.setDate(out.getDate() + n * 7);
+  return out;
+}
+
+export function addMonths(d: Date, n: number): Date {
+  const out = new Date(d);
+  out.setMonth(out.getMonth() + n, 1);
+  return out;
+}
+
 export function weekRangeLabel(reference: Date): string {
   const start = startOfWeek(reference, { weekStartsOn: 1 });
   const end = endOfWeek(reference, { weekStartsOn: 1 });
