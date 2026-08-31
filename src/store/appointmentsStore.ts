@@ -3,7 +3,7 @@ import type { Appointment, AppointmentProduct, ServiceOrderPhoto, VerificationIt
 import type { AppointmentStatus } from '@/domain/enums';
 import { appointments as seedAppointments } from '@/infrastructure/seed/data';
 import { isDueForConfirmation } from '@/lib/confirmation';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { asPromise, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
 import { useAppStore } from './appStore';
 import { useCustomersStore } from './customersStore';
@@ -194,10 +194,10 @@ function syncUpdate(id: string, rollbackTo: Appointment[]) {
   if (!supabaseEnabled || !supabase) return;
   const updated = useAppointmentsStore.getState().appointments.find((a) => a.id === id);
   if (!updated) return;
-  supabase.from(TABLE).update(toRow(updated)).eq('id', id).then(({ error }: any) => {
+  asPromise(supabase.from(TABLE).update(toRow(updated)).eq('id', id)).then(({ error }) => {
     if (error) {
       useAppointmentsStore.setState({ appointments: rollbackTo });
-      console.error('[appointmentsStore] Erro ao atualizar agendamento:', (error as any).code, (error as any).message);
+      console.error('[appointmentsStore] Erro ao atualizar agendamento:', error.code, error.message);
       toast('Não foi possível salvar o agendamento — tente novamente.', { tone: 'danger' });
     }
   }).catch((err: unknown) => {
@@ -223,8 +223,8 @@ export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
         const { error } = await supabase.from(TABLE).insert(toRow(appt));
         if (error) {
           set({ appointments: get().appointments.filter((a) => a.id !== appt.id) });
-          console.error('[appointmentsStore] Erro ao criar agendamento:', (error as any).code, (error as any).message);
-          toast(`Erro ao criar agendamento: ${(error as any).message}`, { tone: 'danger' });
+          console.error('[appointmentsStore] Erro ao criar agendamento:', error.code, error.message);
+          toast(`Erro ao criar agendamento: ${error.message}`, { tone: 'danger' });
           throw error;
         }
       } catch (err: unknown) {
@@ -257,10 +257,10 @@ export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
     const next = prev.filter((a) => a.id !== id);
     set({ appointments: next });
     if (supabaseEnabled && supabase) {
-      supabase.from(TABLE).delete().eq('id', id).then(({ error }: any) => {
+      asPromise(supabase.from(TABLE).delete().eq('id', id)).then(({ error }) => {
         if (error) {
           set({ appointments: prev });
-          console.error('[appointmentsStore] Erro ao excluir agendamento:', (error as any).code, (error as any).message);
+          console.error('[appointmentsStore] Erro ao excluir agendamento:', error.code, error.message);
           toast('Não foi possível excluir o agendamento — tente novamente.', { tone: 'danger' });
         }
       }).catch((err: unknown) => {
@@ -302,13 +302,15 @@ if (!supabaseEnabled) {
 }
 
 if (supabaseEnabled && supabase) {
-  supabase
-    .from(TABLE)
-    .select('*')
-    .order('scheduled_start', { ascending: true })
-    .then(({ data, error }: any) => {
+  asPromise(
+    supabase
+      .from(TABLE)
+      .select('*')
+      .order('scheduled_start', { ascending: true }),
+  )
+    .then(({ data, error }) => {
       if (error) {
-        console.error('[appointmentsStore] Erro ao carregar agendamentos:', (error as any).code, (error as any).message);
+        console.error('[appointmentsStore] Erro ao carregar agendamentos:', error.code, error.message);
         return;
       }
       if (data) {
@@ -322,7 +324,7 @@ if (supabaseEnabled && supabase) {
 
   supabase
     .channel('appointments-sync')
-    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, (payload: any) => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, (payload) => {
       const state = useAppointmentsStore.getState();
       if (payload.eventType === 'DELETE') {
         const oldId = (payload.old as { id?: string } | null)?.id;

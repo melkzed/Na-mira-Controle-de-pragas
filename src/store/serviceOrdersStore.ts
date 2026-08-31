@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { ServiceOrder } from '@/domain/types';
 import { serviceOrders as seed } from '@/infrastructure/seed/data';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { asPromise, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
 import { currentOrgId } from './appStore';
 
@@ -72,8 +72,8 @@ export const useServiceOrdersStore = create<ServiceOrdersState>((set, get) => ({
         const { error } = await supabase.from(TABLE).insert(toSnakeRow(order as unknown as Record<string, unknown>));
         if (error) {
           set({ orders: get().orders.filter((o) => o.id !== order.id) });
-          console.error('[serviceOrdersStore] Erro ao criar ordem:', (error as any).code, (error as any).message);
-          toast(`Erro ao criar ordem: ${(error as any).message}`, { tone: 'danger' });
+          console.error('[serviceOrdersStore] Erro ao criar ordem:', error.code, error.message);
+          toast(`Erro ao criar ordem: ${error.message}`, { tone: 'danger' });
           throw error;
         }
       } catch (err: unknown) {
@@ -96,14 +96,16 @@ export const useServiceOrdersStore = create<ServiceOrdersState>((set, get) => ({
     if (supabaseEnabled && supabase) {
       const updated = next.find((o) => o.id === id);
       if (!updated) return;
-      supabase
-        .from(TABLE)
-        .update(toSnakeRow(updated as unknown as Record<string, unknown>))
-        .eq('id', id)
-        .then(({ error }: any) => {
+      asPromise(
+        supabase
+          .from(TABLE)
+          .update(toSnakeRow(updated as unknown as Record<string, unknown>))
+          .eq('id', id),
+      )
+        .then(({ error }) => {
           if (error) {
             set({ orders: prev });
-            console.error('[serviceOrdersStore] Erro ao atualizar ordem:', (error as any).code, (error as any).message);
+            console.error('[serviceOrdersStore] Erro ao atualizar ordem:', error.code, error.message);
             toast('Não foi possível salvar a ordem de serviço — tente novamente.', { tone: 'danger' });
           }
         })
@@ -141,13 +143,15 @@ export const useServiceOrdersStore = create<ServiceOrdersState>((set, get) => ({
 }));
 
 if (supabaseEnabled && supabase) {
-  supabase
-    .from(TABLE)
-    .select('*')
-    .order('number', { ascending: false })
-    .then(({ data, error }: any) => {
+  asPromise(
+    supabase
+      .from(TABLE)
+      .select('*')
+      .order('number', { ascending: false }),
+  )
+    .then(({ data, error }) => {
       if (error) {
-        console.error('[serviceOrdersStore] Erro ao carregar ordens:', (error as any).code, (error as any).message);
+        console.error('[serviceOrdersStore] Erro ao carregar ordens:', error.code, error.message);
         return;
       }
       if (data) {
@@ -160,7 +164,7 @@ if (supabaseEnabled && supabase) {
 
   supabase
     .channel(`${TABLE}-sync`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, (payload: any) => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, (payload) => {
       const state = useServiceOrdersStore.getState();
       if (payload.eventType === 'DELETE') {
         const oldId = (payload.old as { id?: string } | null)?.id;

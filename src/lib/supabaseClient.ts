@@ -41,3 +41,17 @@ export async function functionErrorMessage(error: unknown, data: unknown, fallba
   }
   return fallback;
 }
+
+/**
+ * Converte um builder do PostgREST numa Promise de verdade.
+ *
+ * O builder é um `PromiseLike`: tem `.then`, não tem `.catch`. Encadear
+ * `.catch` direto nele compila em runtime mas quebra o `tsc`
+ * ("Property 'catch' does not exist on type 'PromiseLike<void>'") — e é
+ * justamente onde queremos capturar falha de rede, que não vira `error` na
+ * resposta, e sim exceção. `Promise.resolve` adota o thenable preservando o
+ * tipo da resposta, então `.then`/`.catch` seguem tipados.
+ */
+export function asPromise<T>(builder: PromiseLike<T>): Promise<T> {
+  return Promise.resolve(builder);
+}
