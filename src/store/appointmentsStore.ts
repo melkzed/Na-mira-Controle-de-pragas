@@ -111,6 +111,9 @@ interface AppointmentRow {
   recurrence_rule: string | null;
   confirmed_at: string | null;
   reschedule_request: Appointment['rescheduleRequest'] | null;
+  signer_name: string | null;
+  signer_doc_type: string | null;
+  signer_document: string | null;
 }
 
 function fromRow(row: AppointmentRow): Appointment {
@@ -143,6 +146,9 @@ function fromRow(row: AppointmentRow): Appointment {
     recurrenceRule: row.recurrence_rule ?? undefined,
     confirmedAt: row.confirmed_at ?? undefined,
     rescheduleRequest: row.reschedule_request ?? undefined,
+    signerName: row.signer_name ?? undefined,
+    signerDocType: (row.signer_doc_type as Appointment['signerDocType']) ?? undefined,
+    signerDocument: row.signer_document ?? undefined,
   };
 }
 
@@ -176,6 +182,9 @@ function toRow(a: Appointment): AppointmentRow {
     recurrence_rule: a.recurrenceRule ?? null,
     confirmed_at: a.confirmedAt ?? null,
     reschedule_request: a.rescheduleRequest ?? null,
+    signer_name: a.signerName ?? null,
+    signer_doc_type: a.signerDocType ?? null,
+    signer_document: a.signerDocument ?? null,
   };
 }
 

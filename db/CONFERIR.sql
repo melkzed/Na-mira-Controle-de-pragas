@@ -46,7 +46,17 @@ with esperado(migration, tabela, coluna) as (values
   ('4 campo/portal',  'trap_devices',       'longitude'),
   ('4 campo/portal',  'users',              'hide_financial_values'),
   ('4 campo/portal',  'users',              'customer_id'),
-  ('4 campo/portal',  'users',              'department_id')
+  ('4 campo/portal',  'users',              'department_id'),
+  -- 4 · cancelamento pelo cliente e identificação de quem assinou
+  ('4 campo/portal',  'service_orders',     'cancelled_by'),
+  ('4 campo/portal',  'service_orders',     'cancelled_at'),
+  ('4 campo/portal',  'service_orders',     'cancel_reason'),
+  ('4 campo/portal',  'appointments',       'signer_name'),
+  ('4 campo/portal',  'appointments',       'signer_doc_type'),
+  ('4 campo/portal',  'appointments',       'signer_document'),
+  ('4 campo/portal',  'service_orders',     'signer_name'),
+  ('4 campo/portal',  'service_orders',     'signer_doc_type'),
+  ('4 campo/portal',  'service_orders',     'signer_document')
 ),
 colunas as (
   select

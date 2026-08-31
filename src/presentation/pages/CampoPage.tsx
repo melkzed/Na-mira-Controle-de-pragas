@@ -11,12 +11,14 @@ import { Avatar } from '../components/ui/Avatar';
 import { Badge } from '../components/ui/Badge';
 import { Progress } from '../components/ui/misc';
 import { Drawer } from '../components/ui/Drawer';
-import { Select, Textarea } from '../components/ui/Field';
+import { Textarea } from '../components/ui/Field';
 import { Segmented } from '../components/ui/Segmented';
 import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { PhotoCapture } from '../components/PhotoCapture';
 import { SignaturePad } from '../components/SignaturePad';
+import { SignerFields } from '../components/SignerFields';
+import { signerMissing } from '@/lib/signer';
 import { useSettingsStore } from '@/store/settingsStore';
 import { releasedAppointmentsForTechnician, getCustomer, getProduct, getServiceType, serviceOrderForAppointment } from '@/application/repository';
 import { useProductsStore } from '@/store/entityStores';
@@ -25,8 +27,8 @@ import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import { useStockStore } from '@/store/stockStore';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
-import { X } from 'lucide-react';
-import type { Appointment, Customer, PaymentStatus, ServiceOrder, ServiceOrderPhoto, ServiceOrderProduct } from '@/domain/types';
+import { Plus, Search, X } from 'lucide-react';
+import type { Appointment, Customer, PaymentStatus, ServiceOrder, ServiceOrderPhoto, ServiceOrderProduct, SignerInfo } from '@/domain/types';
 import { fmtTime } from '@/lib/date';
 import { cn, formatDocument } from '@/lib/utils';
 import { formatAddress, googleMapsRoute, googleMapsRouteToAddress } from '@/lib/geo';
@@ -43,6 +45,9 @@ interface FieldSaveData {
   signature?: string;
   /** Assinatura de quem recebeu o serviço, colhida no atendimento. */
   customerSignature?: string;
+  /** Nome e documento de quem assinou — o titular do cadastro quase nunca é
+   *  quem acompanha o serviço, e o PDF precisa dizer quem de fato recebeu. */
+  signer?: SignerInfo;
   products: AppliedProductRow[];
   paymentStatus: PaymentStatus;
   /** Horário informado pelo técnico (`HH:MM`) — o relógio do sistema marca
@@ -138,6 +143,17 @@ function reconcileTechStock(
   return outOfStock;
 }
 
+/** Dados de quem assinou: o que já foi registrado na visita, caindo para a OS
+ *  (a mesma assinatura é gravada nos dois lugares). CPF é o caso comum, então
+ *  é o tipo pré-selecionado. */
+function signerOf(appt: Appointment, os?: ServiceOrder): SignerInfo {
+  return {
+    signerName: appt.signerName ?? os?.signerName,
+    signerDocType: appt.signerDocType ?? os?.signerDocType ?? 'cpf',
+    signerDocument: appt.signerDocument ?? os?.signerDocument,
+  };
+}
+
 /** Produtos aplicados padrão da visita — parte do que já foi registrado na OS
  *  (se o atendimento já foi finalizado antes) ou do plano original. */
 function defaultProductRows(appt: Appointment, linkedOs?: ServiceOrder): AppliedProductRow[] {
@@ -197,11 +213,11 @@ export function CampoPage() {
   /** Finaliza o atendimento: grava assinatura, produtos aplicados e pagamento
    *  na OS, dá baixa no estoque combinado dos técnicos da OS (ver
    *  reconcileTechStock) e registra o histórico da OS. */
-  const handleFinish = ({ signature, customerSignature: assinaturaCliente, products, paymentStatus, startTime, endTime }: FieldSaveData) => {
+  const handleFinish = ({ signature, customerSignature: assinaturaCliente, signer, products, paymentStatus, startTime, endTime }: FieldSaveData) => {
     if (!active) return;
     const so = serviceOrderForAppointment(active.id);
     const now = new Date().toISOString();
-    updateAppt(active.id, { technicianSignature: signature, customerSignature: assinaturaCliente ?? active.customerSignature });
+    updateAppt(active.id, { technicianSignature: signature, customerSignature: assinaturaCliente ?? active.customerSignature, ...signer });
     setStatus(active.id, 'finalizado');
     if (so) {
       // A assinatura do cliente é colhida no menu Gerenciar; é ela que sai
@@ -222,6 +238,9 @@ export function CampoPage() {
         technicianSignature: signature,
         customerSignature,
         hasCustomerSignature: !!customerSignature,
+        signerName: signer?.signerName ?? active.signerName ?? so.signerName,
+        signerDocType: signer?.signerDocType ?? active.signerDocType ?? so.signerDocType,
+        signerDocument: signer?.signerDocument ?? active.signerDocument ?? so.signerDocument,
       });
       if (outOfStock.size) toast('Alguns produtos foram usados além do estoque disponível — sinalizado na OS.', { tone: 'warning' });
       logChange('conclusão', 'ordem de serviço', `OS #${so.number} finalizada em campo por ${techName} em ${new Date(now).toLocaleString('pt-BR')}`, so.id);
@@ -660,21 +679,56 @@ function AppliedProducts({ value, onChange, disabled, technicianIds }: {
 }) {
   const allProducts = useProductsStore((s) => s.items);
   useStockStore((s) => s.balances); // re-renderiza quando o estoque muda (pooledBalance lê getState() por baixo)
-  const [adding, setAdding] = useState('');
+  const [busca, setBusca] = useState('');
 
   const available = (productId: string) => pooledBalance(technicianIds, productId);
 
   const toggle = (id: string) => onChange(value.map((x) => (x.productId === id ? { ...x, used: !x.used } : x)));
   const setQty = (id: string, qty: number) => onChange(value.map((x) => (x.productId === id ? { ...x, qty } : x)));
   const removeRow = (id: string) => onChange(value.filter((x) => x.productId !== id));
-  const addRow = (id: string) => { if (id && !value.some((x) => x.productId === id)) onChange([...value, { productId: id, qty: 1, used: true }]); setAdding(''); };
+  const addRow = (id: string) => { if (id && !value.some((x) => x.productId === id)) onChange([...value, { productId: id, qty: 1, used: true }]); setBusca(''); };
+
+  // A busca serve às duas coisas ao mesmo tempo: filtra o que já está na lista
+  // e oferece o que ainda não está. Com o padrão do serviço passando de dez
+  // itens, procurar um produto virava rolagem até o fim da tela.
+  const termo = busca.trim().toLowerCase();
+  const combina = (p?: { name: string; activeIngredient?: string }) =>
+    !termo || !!p && (p.name.toLowerCase().includes(termo) || (p.activeIngredient ?? '').toLowerCase().includes(termo));
+  const visiveis = termo ? value.filter((row) => combina(getProduct(row.productId))) : value;
+  const sugestoes = termo
+    ? allProducts.filter((p) => !value.some((r) => r.productId === p.id) && combina(p)).slice(0, 6)
+    : [];
 
   return (
     <div>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Produtos aplicados</p>
-      <div className="space-y-1.5">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Produtos aplicados</p>
+        <span className="text-[11px] text-muted-foreground">{value.filter((r) => r.used).length} de {value.length}</span>
+      </div>
+
+      {!disabled && (
+        <div className="relative mb-2">
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar produto pelo nome…"
+            className="h-9 w-full rounded-lg border border-input bg-surface pl-8 pr-8 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-ring/40"
+          />
+          {busca && (
+            <button onClick={() => setBusca('')} aria-label="Limpar busca" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="max-h-72 space-y-1.5 overflow-y-auto pr-0.5">
         {value.length === 0 && <p className="text-sm text-muted-foreground">Nenhum produto padrão para este serviço.</p>}
-        {value.map((row) => {
+        {value.length > 0 && visiveis.length === 0 && sugestoes.length === 0 && (
+          <p className="text-sm text-muted-foreground">Nenhum produto encontrado para “{busca}”.</p>
+        )}
+        {visiveis.map((row) => {
           const prod = getProduct(row.productId);
           const avail = available(row.productId);
           const short = row.used && row.qty > avail;
@@ -700,13 +754,29 @@ function AppliedProducts({ value, onChange, disabled, technicianIds }: {
           );
         })}
       </div>
-      {!disabled && (
-        <div className="mt-2">
-          <Select value={adding} onChange={(e) => addRow(e.target.value)} className="h-9 text-sm">
-            <option value="">+ Adicionar outro produto…</option>
-            {allProducts.filter((p) => !value.some((r) => r.productId === p.id)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </Select>
+      {!disabled && sugestoes.length > 0 && (
+        <div className="mt-2 rounded-lg border border-dashed border-border p-2">
+          <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">Não está na lista — toque para adicionar</p>
+          <div className="space-y-1">
+            {sugestoes.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => addRow(p.id)}
+                className="flex w-full items-center gap-2 rounded-lg border border-border/60 px-2 py-1.5 text-left text-sm text-foreground transition hover:border-brand hover:bg-brand-soft/30"
+              >
+                <Plus size={13} className="shrink-0 text-brand" />
+                <span className="flex-1 truncate">{p.name}</span>
+                <span className="text-xs text-muted-foreground">{available(p.id)} {p.unit}</span>
+              </button>
+            ))}
+          </div>
         </div>
+      )}
+
+      {!disabled && !termo && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Use a busca acima para achar um produto que não está na lista e adicioná-lo.
+        </p>
       )}
     </div>
   );
@@ -751,6 +821,7 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
   const storedSig = useSettingsStore((s) => s.signatures[techId]);
   const signature = appt.technicianSignature ?? storedSig;
   const [customerSignature, setCustomerSignature] = useState<string | undefined>(appt.customerSignature);
+  const [signer, setSigner] = useState<SignerInfo>(() => signerOf(appt, linkedOs));
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(linkedOs?.paymentStatus ?? 'pendente');
   const [productRows, setProductRows] = useState<AppliedProductRow[]>(() => defaultProductRows(appt, linkedOs));
   // Horário real do serviço, informado pelo técnico. O relógio do sistema
@@ -768,6 +839,7 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
     setStartTime(hhmm(linkedOs?.startedAt));
     setEndTime(hhmm(linkedOs?.finishedAt));
     setCustomerSignature(appt.customerSignature);
+    setSigner(signerOf(appt, linkedOs));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appt.id]);
 
@@ -965,11 +1037,21 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
                       : 'Você ainda não tem assinatura cadastrada; peça ao escritório para registrá-la no seu perfil.'}
                   </p>
                   <SignaturePad key={`cli-${appt.id}`} value={customerSignature} onChange={setCustomerSignature} height={120} label="Assinatura do cliente" />
+                  <div className="mt-3">
+                    <SignerFields value={signer} onChange={setSigner} customerName={cust?.name} />
+                  </div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>Voltar</Button>
                     <Button
                       variant="primary" size="sm" leftIcon={<CheckCircle2 size={15} />}
-                      onClick={() => { onFinish({ signature, customerSignature, products: productRows, paymentStatus, startTime, endTime }); setConfirming(false); }}
+                      onClick={() => {
+                        // Assinatura anônima não prova nada; só cobra o cadastro
+                        // quando há de fato uma assinatura para registrar.
+                        const falta = customerSignature ? signerMissing(signer) : undefined;
+                        if (falta) { toast(falta, { tone: 'warning' }); return; }
+                        onFinish({ signature, customerSignature, signer, products: productRows, paymentStatus, startTime, endTime });
+                        setConfirming(false);
+                      }}
                     >Confirmar</Button>
                   </div>
                 </div>

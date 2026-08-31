@@ -21,6 +21,8 @@ import { Drawer } from '../ui/Drawer';
 import { Field, Input, Select, Textarea } from '../ui/Field';
 import { Segmented } from '../ui/Segmented';
 import { SignaturePad } from '../SignaturePad';
+import { SignerFields, SignerSummary } from '../SignerFields';
+import { signerMissing } from '@/lib/signer';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import { useTrapsStore } from '@/store/trapsStore';
@@ -38,7 +40,7 @@ import { NC_CATEGORY_LABEL } from '@/lib/printReports';
 import { fmtDate } from '@/lib/date';
 import { projectPoints } from '@/lib/geo';
 import type {
-  Appointment, NonConformity, ServiceOrder, TrapDevice, VerificationItem,
+  Appointment, NonConformity, ServiceOrder, SignerInfo, TrapDevice, VerificationItem,
 } from '@/domain/types';
 import type { AppointmentPriority } from '@/domain/enums';
 
@@ -673,19 +675,27 @@ function AssinaturasDrawer({ open, readOnly, onClose, appt, techId, techName }: 
   const os = serviceOrderForAppointment(appt.id);
   const customer = getCustomer(appt.customerId);
   const [customerSignature, setCustomerSignature] = useState<string | undefined>();
+  const [signer, setSigner] = useState<SignerInfo>({});
   // A do técnico não é desenhada aqui: vem do cadastro dele. Só é exibida.
   const technicianSignature = appt.technicianSignature ?? storedSig;
 
   useEffect(() => {
     if (!open) return;
     setCustomerSignature(appt.customerSignature ?? os?.customerSignature);
+    setSigner(signerOf(appt, os));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, appt.id]);
 
   const salvar = () => {
-    updateAppt(appt.id, { customerSignature, technicianSignature });
+    // Assinatura sem nome e documento não identifica ninguém — é justamente o
+    // que o documento precisa provar. Só cobra quando há assinatura para salvar.
+    if (customerSignature) {
+      const falta = signerMissing(signer);
+      if (falta) { toast(falta, { tone: 'warning' }); return; }
+    }
+    updateAppt(appt.id, { customerSignature, technicianSignature, ...signer });
     // A OS é o que vira PDF — a assinatura precisa chegar nela também.
-    if (os) applySignaturesToOs(updateOs, os, { customerSignature, technicianSignature });
+    if (os) applySignaturesToOs(updateOs, os, { customerSignature, technicianSignature, ...signer });
     toast('Assinaturas salvas.', { tone: 'success' });
     onClose();
   };
@@ -709,9 +719,17 @@ function AssinaturasDrawer({ open, readOnly, onClose, appt, techId, techName }: 
             Cliente {customer?.name ? `· ${customer.name}` : ''}
           </p>
           {readOnly ? (
-            <AssinaturaLida src={customerSignature} vazio="O cliente ainda não assinou." />
+            <>
+              <AssinaturaLida src={customerSignature} vazio="O cliente ainda não assinou." />
+              <div className="mt-2"><SignerSummary info={signer} /></div>
+            </>
           ) : (
-            <SignaturePad key={`cli-${appt.id}`} value={customerSignature} onChange={setCustomerSignature} height={140} label="Assinatura do cliente" />
+            <>
+              <SignaturePad key={`cli-${appt.id}`} value={customerSignature} onChange={setCustomerSignature} height={140} label="Assinatura do cliente" />
+              <div className="mt-3">
+                <SignerFields value={signer} onChange={setSigner} customerName={customer?.name} />
+              </div>
+            </>
           )}
         </div>
         <div>
@@ -732,17 +750,31 @@ function AssinaturasDrawer({ open, readOnly, onClose, appt, techId, techName }: 
   );
 }
 
-/** Grava as assinaturas na OS, mantendo `hasCustomerSignature` coerente. */
+/** Grava as assinaturas na OS, mantendo `hasCustomerSignature` coerente.
+ *  Leva junto quem assinou — é esse nome que sai no PDF, não o do cadastro. */
 function applySignaturesToOs(
   updateOs: (id: string, patch: Partial<ServiceOrder>) => void,
   os: ServiceOrder,
-  sig: { customerSignature?: string; technicianSignature?: string },
+  sig: { customerSignature?: string; technicianSignature?: string } & SignerInfo,
 ) {
   updateOs(os.id, {
     customerSignature: sig.customerSignature,
     technicianSignature: sig.technicianSignature,
     hasCustomerSignature: !!sig.customerSignature,
+    signerName: sig.signerName,
+    signerDocType: sig.signerDocType,
+    signerDocument: sig.signerDocument,
   });
+}
+
+/** Dados de quem assinou, preferindo o que já foi registrado na visita e
+ *  caindo para a OS (a mesma assinatura vive nos dois lugares). */
+function signerOf(appt: Appointment, os?: ServiceOrder): SignerInfo {
+  return {
+    signerName: appt.signerName ?? os?.signerName,
+    signerDocType: appt.signerDocType ?? os?.signerDocType ?? 'cpf',
+    signerDocument: appt.signerDocument ?? os?.signerDocument,
+  };
 }
 
 function AssinaturaLida({ src, vazio }: { src?: string; vazio: string }) {

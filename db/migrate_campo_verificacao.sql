@@ -52,3 +52,22 @@ alter table public.service_orders
   add column if not exists cancel_reason text;
 
 notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- Quem assinou o atendimento (app do técnico).
+--
+-- O serviço costuma estar no nome de uma empresa ou de um titular que não
+-- estava no local — quem acompanha e assina é zelador, síndico, encarregado.
+-- Sem estes campos o documento atribuiria a assinatura ao titular do cadastro.
+-- ============================================================================
+alter table public.appointments
+  add column if not exists signer_name text,
+  add column if not exists signer_doc_type text,
+  add column if not exists signer_document text;
+
+alter table public.service_orders
+  add column if not exists signer_name text,
+  add column if not exists signer_doc_type text,
+  add column if not exists signer_document text;
+
+notify pgrst, 'reload schema';

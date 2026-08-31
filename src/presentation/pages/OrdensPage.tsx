@@ -36,6 +36,7 @@ import { computeTaxes } from '@/application/fiscal/tax';
 import { providerLabel } from '@/application/fiscal/providers';
 import { cn, formatCurrency } from '@/lib/utils';
 import { formatAddress, googleMapsAddressUrl } from '@/lib/geo';
+import { signerDocumentLabel } from '@/lib/signer';
 import { canSeeFinancialValues } from '@/application/permissions';
 import { useAppStore } from '@/store/appStore';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
@@ -312,6 +313,10 @@ export function OrdensPage() {
                   <Info label="Duração" value={selected.totalMinutes ? `${selected.totalMinutes} min` : 'em aberto'} />
                   <Info label="Técnico(s)" value={(selected.technicianIds?.length ? selected.technicianIds : [selected.technicianId]).map((id) => getUser(id)?.name?.split(' ')[0]).filter(Boolean).join(', ') || '—'} />
                   <Info label="Vendedor" value={selected.sellerId ? getUser(selected.sellerId)?.name ?? '—' : '—'} />
+                  {/* Quem assinou pelo cliente — o titular do cadastro raramente
+                      é quem acompanhou o serviço, e é este nome que sai no PDF. */}
+                  <Info label="Recebido por" value={selected.signerName ?? '—'} />
+                  <Info label="Identificação de quem assinou" value={signerDocumentLabel(selected) || '—'} />
                   <Info label="Data do Serviço" value={selected.executionDate ? fmtDate(selected.executionDate) : (selected.startedAt ? fmtDate(selected.startedAt) : '—')} />
                   <Info label="Horário do Serviço" value={selected.executionTime ?? '—'} />
                   <Info label="Vencimento do Pagamento" value={selected.dueDate ? fmtDate(selected.dueDate) : '—'} />
