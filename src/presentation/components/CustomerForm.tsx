@@ -356,10 +356,12 @@ export function CustomerForm({
     };
     if (initial) {
       update(initial.id, input);
+      toast('Cliente atualizado.', { tone: 'success' });
       onSaved({ ...initial, ...input } as Customer, false);
     } else {
       const created = add(input);
       localStorage.removeItem(DRAFT_KEY);
+      toast('Cliente cadastrado.', { tone: 'success' });
       onSaved(created, true);
     }
   };

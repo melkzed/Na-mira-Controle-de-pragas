@@ -115,7 +115,10 @@ export function OrdensPage() {
       const t = getUser(so.technicianId);
       return t ? <div className="flex items-center gap-2"><Avatar name={t.name} size="xs" /><span className="text-muted-foreground">{t.name.split(' ')[0]}</span></div> : '—';
     } },
-    { key: 'date', header: 'Data', render: (so) => fmtDate(so.createdAt) },
+    // Data do serviço, não a de criação: uma OS agendada para o mês que vem
+    // aparecia com a data de hoje na listagem. Cai para o início/criação só
+    // quando a OS não tem data de execução definida.
+    { key: 'date', header: 'Data', render: (so) => fmtDate(so.executionDate ?? so.startedAt ?? so.createdAt) },
     { key: 'time', header: 'Duração', align: 'right', render: (so) => so.totalMinutes ? `${so.totalMinutes} min` : '—' },
     { key: 'status', header: 'Status', align: 'right', render: (so) => <ServiceOrderStatusBadge status={so.status} /> },
   ];
