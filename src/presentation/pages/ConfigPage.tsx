@@ -277,6 +277,7 @@ function EmployeeForm({ open, editing, departments, onClose }: {
   onClose: () => void;
 }) {
   const update = useUsersStore((s) => s.update);
+  const todosUsuarios = useUsersStore((s) => s.items);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -299,8 +300,15 @@ function EmployeeForm({ open, editing, departments, onClose }: {
   }, [open, editing]);
 
   const senhaCurta = password.length > 0 && password.length < MIN_PASSWORD;
+  // O e-mail é o login: dois cadastros iguais deixariam o sistema sem saber
+  // quem está entrando. A Edge Function também recusa no servidor (409), mas
+  // barrar aqui evita gastar o cadastro e avisa na hora.
+  const emailDuplicado = todosUsuarios.some(
+    (u) => u.id !== editing?.id && u.email.trim().toLowerCase() === email.trim().toLowerCase(),
+  );
   const erro = (!name.trim() && 'Informe o nome.')
     || (!email.trim() && 'Informe o e-mail.')
+    || (emailDuplicado && 'Já existe um cadastro com esse e-mail. Cada pessoa precisa de um e-mail próprio.')
     || (!editing && !password.trim() && 'Defina a senha de acesso.')
     || (senhaCurta && `A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.`)
     || '';
@@ -354,7 +362,14 @@ function EmployeeForm({ open, editing, departments, onClose }: {
       <div className="space-y-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Nome completo" required><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-          <Field label="E-mail (login)" required><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+          <Field label="E-mail (login)" required hint="Não pode se repetir entre pessoas">
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            {emailDuplicado && (
+              <span className="mt-1 block text-xs text-danger">
+                Já existe um cadastro com esse e-mail.
+              </span>
+            )}
+          </Field>
           <Field label="Telefone"><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-0000" /></Field>
           <Field label="Perfil de acesso" required>
             <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>

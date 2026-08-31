@@ -296,9 +296,18 @@ const fileName = (name: string) => name.toLowerCase().normalize('NFD').replace(/
  *  livre de datas, apenas evitam digitar um intervalo comum manualmente. */
 const QUICK_RANGES: { label: string; days: number }[] = [
   { label: '7 dias', days: 7 },
+  { label: '15 dias', days: 15 },
   { label: '30 dias', days: 30 },
   { label: '90 dias', days: 90 },
 ];
+
+/** Datas que um atalho de período produziria hoje — usado tanto para aplicar
+ *  quanto para saber se ele já está aplicado (e então desmarcar). */
+function quickRangeDates(days: number): { startDate: string; endDate: string } {
+  const end = new Date();
+  const start = new Date(end.getTime() - days * 864e5);
+  return { startDate: toDateInputValue(start), endDate: toDateInputValue(end) };
+}
 
 export function RelatoriosPage() {
   const customers = useCustomersStore((s) => s.customers);
@@ -313,10 +322,21 @@ export function RelatoriosPage() {
 
   // Período exibido de forma legível — respeita exatamente as datas escolhidas.
   const rangeLabel = `${f.startDate ? fmtDate(f.startDate) : '…'} até ${f.endDate ? fmtDate(f.endDate) : '…'}`;
-  const applyQuickRange = (days: number) => {
-    const end = new Date();
-    const start = new Date(end.getTime() - days * 864e5);
-    set({ startDate: toDateInputValue(start), endDate: toDateInputValue(end) });
+  /** Qual atalho está aplicado agora, se algum — comparando as datas do
+   *  filtro com o que cada atalho produziria hoje. */
+  const activeQuickRange = QUICK_RANGES.find((qr) => {
+    const r = quickRangeDates(qr.days);
+    return f.startDate === r.startDate && f.endDate === r.endDate;
+  })?.days;
+
+  /** Um clique marca o período; outro clique no mesmo desmarca e devolve o
+   *  intervalo padrão (do início do ano até hoje). */
+  const toggleQuickRange = (days: number) => {
+    if (activeQuickRange === days) {
+      set({ startDate: def.startDate, endDate: def.endDate });
+      return;
+    }
+    set(quickRangeDates(days));
   };
 
   // Contagem por grupo, reativa aos filtros.
@@ -360,9 +380,22 @@ export function RelatoriosPage() {
               <Input type="date" value={f.endDate} min={f.startDate || undefined} onChange={(e) => set({ endDate: e.target.value })} onClick={(e) => e.currentTarget.showPicker?.()} aria-label="Período final" />
             </div>
             <div className="flex items-end gap-1.5">
-              {QUICK_RANGES.map((qr) => (
-                <Button key={qr.label} type="button" variant="outline" size="sm" onClick={() => applyQuickRange(qr.days)}>{qr.label}</Button>
-              ))}
+              {QUICK_RANGES.map((qr) => {
+                const ativo = activeQuickRange === qr.days;
+                return (
+                  <Button
+                    key={qr.label}
+                    type="button"
+                    variant={ativo ? 'primary' : 'outline'}
+                    size="sm"
+                    aria-pressed={ativo}
+                    title={ativo ? `Clique para desmarcar ${qr.label}` : `Últimos ${qr.label}`}
+                    onClick={() => toggleQuickRange(qr.days)}
+                  >
+                    {qr.label}
+                  </Button>
+                );
+              })}
             </div>
             {/* O `relative` precisa envolver só o campo: no contêiner
                 `items-end` (mais alto que o input) o `top-1/2` centralizava a

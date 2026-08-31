@@ -16,7 +16,7 @@ import type { AppointmentStatus, RecurrenceFreq, ServiceOrderStatus, WarrantyTyp
 import { PAYMENT_METHODS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
 import { computeRecurrenceOccurrences, recurrenceSummaryLabel, totalOccurrences } from '@/lib/recurrence';
 import { isDueForConfirmation } from '@/lib/confirmation';
-import { combineDateTimeInputToIso, dateInputToIso, fmtDate, parseDateInput, toDateInputValue } from '@/lib/date';
+import { combineDateTimeInputToIso, dateInputToIso, fmtDate, fmtTime, parseDateInput, toDateInputValue } from '@/lib/date';
 import { osStatusToAppointmentStatus } from '@/lib/misc';
 import { downloadCsv } from '@/lib/export';
 import { printServiceOrder } from '@/lib/printOrder';
@@ -71,6 +71,9 @@ export function OrdensPage() {
   // abrir outro Drawer por cima) — "editMode" só alterna o conteúdo exibido.
   const [editMode, setEditMode] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const removeOs = useServiceOrdersStore((s) => s.remove);
   const editFormRef = useRef<OsFormHandle>(null);
   const createFormRef = useRef<OsFormHandle>(null);
   const [saving, setSaving] = useState(false);
@@ -103,8 +106,27 @@ export function OrdensPage() {
       { header: 'Técnico', value: (so) => getUser(so.technicianId)?.name ?? '' },
       { header: 'Status', value: (so) => so.status },
       { header: 'Duração (min)', value: (so) => so.totalMinutes ?? '' },
+      { header: 'Data do serviço', value: (so) => fmtDate(so.executionDate ?? so.startedAt ?? so.createdAt) },
+      { header: 'Horário', value: (so) => so.executionTime ?? (so.startedAt ? fmtTime(so.startedAt) : '') },
       { header: 'Criada em', value: (so) => fmtDate(so.createdAt) },
     ]);
+  };
+
+  const excluirOs = async (so: ServiceOrder) => {
+    setDeleting(true);
+    try {
+      await removeOs(so.id);
+      logChange('exclusão', 'ordem de serviço', `OS #${so.number} excluída · ${getCustomer(so.customerId)?.name ?? ''}`, so.id);
+      toast(`OS #${so.number} excluída.`, { tone: 'success' });
+      setSelected(null);
+      setConfirmDelete(false);
+    } catch {
+      // A store já explicou o motivo no toast (ex.: lançamento vinculado);
+      // aqui só desarma a confirmação para a pessoa poder sair da tela.
+      setConfirmDelete(false);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const columns: Column<ServiceOrder>[] = [
@@ -115,10 +137,21 @@ export function OrdensPage() {
       const t = getUser(so.technicianId);
       return t ? <div className="flex items-center gap-2"><Avatar name={t.name} size="xs" /><span className="text-muted-foreground">{t.name.split(' ')[0]}</span></div> : '—';
     } },
-    // Data do serviço, não a de criação: uma OS agendada para o mês que vem
-    // aparecia com a data de hoje na listagem. Cai para o início/criação só
+    // Data e horário do serviço, não a data de criação: uma OS agendada para
+    // o mês que vem aparecia com a data de hoje. Cai para o início/criação só
     // quando a OS não tem data de execução definida.
-    { key: 'date', header: 'Data', render: (so) => fmtDate(so.executionDate ?? so.startedAt ?? so.createdAt) },
+    { key: 'date', header: 'Data e horário', render: (so) => {
+      const dia = so.executionDate ?? so.startedAt ?? so.createdAt;
+      // O horário informado na OS ganha do relógio de startedAt, que marca
+      // quando o técnico apertou o botão.
+      const hora = so.executionTime ?? (so.startedAt ? fmtTime(so.startedAt) : undefined);
+      return (
+        <div className="leading-tight">
+          <p className="text-foreground">{fmtDate(dia)}</p>
+          <p className="text-xs text-muted-foreground">{hora ?? 'sem horário'}</p>
+        </div>
+      );
+    } },
     { key: 'time', header: 'Duração', align: 'right', render: (so) => so.totalMinutes ? `${so.totalMinutes} min` : '—' },
     { key: 'status', header: 'Status', align: 'right', render: (so) => <ServiceOrderStatusBadge status={so.status} /> },
   ];
@@ -170,7 +203,7 @@ export function OrdensPage() {
        *  ao clicar em "Editar", sem abrir outra janela por cima. */}
       <Drawer
         open={!!selected}
-        onClose={() => { setSelected(null); setEditMode(false); }}
+        onClose={() => { setSelected(null); setEditMode(false); setConfirmDelete(false); }}
         title={editMode ? `Editar Ordem de Serviço #${selected?.number}` : `Ordem de Serviço #${selected?.number}`}
         subtitle={editMode ? 'Altere os dados necessários — as mudanças ficam registradas no histórico da OS' : (selected ? getCustomer(selected.customerId)?.name : '')}
         wide
@@ -181,7 +214,27 @@ export function OrdensPage() {
           </div>
         ) : (
           <div className="flex flex-wrap justify-between gap-2">
-            <Button variant="outline" size="sm" leftIcon={<Pencil size={14} />} onClick={() => setEditMode(true)}>Editar</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" leftIcon={<Pencil size={14} />} onClick={() => setEditMode(true)}>Editar</Button>
+              {/* Exclusão em dois passos: o primeiro clique só arma, o segundo
+                  confirma. Excluir OS é irreversível e leva junto o histórico
+                  do atendimento — não pode sair num clique só. */}
+              {confirmDelete ? (
+                <>
+                  <Button
+                    variant="danger" size="sm" disabled={deleting} leftIcon={<Trash2 size={14} />}
+                    onClick={() => selected && excluirOs(selected)}
+                  >
+                    {deleting ? 'Excluindo…' : 'Confirmar exclusão'}
+                  </Button>
+                  <Button variant="ghost" size="sm" disabled={deleting} onClick={() => setConfirmDelete(false)}>Cancelar</Button>
+                </>
+              ) : (
+                <Button variant="ghost" size="sm" className="text-danger" leftIcon={<Trash2 size={14} />} onClick={() => setConfirmDelete(true)}>
+                  Excluir OS
+                </Button>
+              )}
+            </div>
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" size="sm" leftIcon={<Download size={14} />} onClick={() => selected && printServiceOrder(selected)}>OS (PDF)</Button>
               <Button variant="outline" size="sm" leftIcon={<Award size={14} />} onClick={() => selected && printCertificate(selected)}>Certificado</Button>

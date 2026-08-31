@@ -47,6 +47,11 @@ interface ServiceOrdersState {
    *  (ex.: finance_entries_service_order_id_fkey). */
   add: (input: ServiceOrderInput) => Promise<ServiceOrder>;
   update: (id: string, patch: Partial<ServiceOrder>) => void;
+  /** Exclui a OS. Assíncrona porque a tela precisa saber se o banco aceitou
+   *  antes de dizer que apagou — uma OS com lançamento financeiro vinculado é
+   *  recusada pela FK, e o usuário tem de ver isso, não um sumiço que volta
+   *  no próximo carregamento. */
+  remove: (id: string) => Promise<void>;
 }
 
 export const useServiceOrdersStore = create<ServiceOrdersState>((set, get) => ({
@@ -91,6 +96,28 @@ export const useServiceOrdersStore = create<ServiceOrdersState>((set, get) => ({
             toast('Não foi possível salvar a ordem de serviço — tente novamente.', { tone: 'danger' });
           }
         });
+    } else {
+      save(next);
+    }
+  },
+  remove: async (id) => {
+    const prev = get().orders;
+    const next = prev.filter((o) => o.id !== id);
+    set({ orders: next });
+    if (supabaseEnabled && supabase) {
+      const { error } = await supabase.from(TABLE).delete().eq('id', id);
+      if (error) {
+        set({ orders: prev });
+        // 23503 = a OS ainda é referenciada por outro registro (lançamento
+        // financeiro, agendamento…). Vale explicar, e não repetir o genérico.
+        toast(
+          error.code === '23503'
+            ? 'Esta OS não pode ser excluída porque tem lançamentos vinculados. Remova-os antes.'
+            : 'Não foi possível excluir a ordem de serviço — tente novamente.',
+          { tone: 'danger', duration: 9000 },
+        );
+        throw error;
+      }
     } else {
       save(next);
     }
