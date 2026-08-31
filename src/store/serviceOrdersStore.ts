@@ -63,11 +63,21 @@ export const useServiceOrdersStore = create<ServiceOrdersState>((set, get) => ({
     const next = [order, ...get().orders];
     set({ orders: next });
     if (supabaseEnabled && supabase) {
-      const { error } = await supabase.from(TABLE).insert(toSnakeRow(order as unknown as Record<string, unknown>));
-      if (error) {
+      try {
+        const { error } = await supabase.from(TABLE).insert(toSnakeRow(order as unknown as Record<string, unknown>));
+        if (error) {
+          set({ orders: get().orders.filter((o) => o.id !== order.id) });
+          console.error('[serviceOrdersStore] Erro ao criar ordem:', (error as any).code, (error as any).message);
+          toast(`Erro ao criar ordem: ${(error as any).message}`, { tone: 'danger' });
+          throw error;
+        }
+      } catch (err: unknown) {
         set({ orders: get().orders.filter((o) => o.id !== order.id) });
-        toast('Não foi possível criar a ordem de serviço — tente novamente.', { tone: 'danger' });
-        throw error;
+        console.error('[serviceOrdersStore] Exceção ao criar ordem:', err);
+        if (!(err instanceof Error && err.message.includes('code'))) {
+          toast('Erro ao criar ordem de serviço — tente novamente.', { tone: 'danger' });
+        }
+        throw err;
       }
     } else {
       save(next);
@@ -85,11 +95,17 @@ export const useServiceOrdersStore = create<ServiceOrdersState>((set, get) => ({
         .from(TABLE)
         .update(toSnakeRow(updated as unknown as Record<string, unknown>))
         .eq('id', id)
-        .then(({ error }) => {
+        .then(({ error }: any) => {
           if (error) {
             set({ orders: prev });
+            console.error('[serviceOrdersStore] Erro ao atualizar ordem:', (error as any).code, (error as any).message);
             toast('Não foi possível salvar a ordem de serviço — tente novamente.', { tone: 'danger' });
           }
+        })
+        .catch((err: unknown) => {
+          set({ orders: prev });
+          console.error('[serviceOrdersStore] Exceção ao sincronizar ordem:', err);
+          toast('Erro ao sincronizar ordem de serviço — tente novamente.', { tone: 'danger' });
         });
     } else {
       save(next);
@@ -102,15 +118,22 @@ if (supabaseEnabled && supabase) {
     .from(TABLE)
     .select('*')
     .order('number', { ascending: false })
-    .then(({ data, error }) => {
-      if (!error && data) {
+    .then(({ data, error }: any) => {
+      if (error) {
+        console.error('[serviceOrdersStore] Erro ao carregar ordens:', (error as any).code, (error as any).message);
+        return;
+      }
+      if (data) {
         useServiceOrdersStore.setState({ orders: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<ServiceOrder>(r)) });
       }
+    })
+    .catch((err: unknown) => {
+      console.error('[serviceOrdersStore] Exceção ao carregar ordens:', err);
     });
 
   supabase
     .channel(`${TABLE}-sync`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, (payload) => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, (payload: any) => {
       const state = useServiceOrdersStore.getState();
       if (payload.eventType === 'DELETE') {
         const oldId = (payload.old as { id?: string } | null)?.id;

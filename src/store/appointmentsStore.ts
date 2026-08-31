@@ -185,11 +185,16 @@ function syncUpdate(id: string, rollbackTo: Appointment[]) {
   if (!supabaseEnabled || !supabase) return;
   const updated = useAppointmentsStore.getState().appointments.find((a) => a.id === id);
   if (!updated) return;
-  supabase.from(TABLE).update(toRow(updated)).eq('id', id).then(({ error }) => {
+  supabase.from(TABLE).update(toRow(updated)).eq('id', id).then(({ error }: any) => {
     if (error) {
       useAppointmentsStore.setState({ appointments: rollbackTo });
+      console.error('[appointmentsStore] Erro ao atualizar agendamento:', (error as any).code, (error as any).message);
       toast('Não foi possível salvar o agendamento — tente novamente.', { tone: 'danger' });
     }
+  }).catch((err: unknown) => {
+    useAppointmentsStore.setState({ appointments: rollbackTo });
+    console.error('[appointmentsStore] Exceção ao sincronizar agendamento:', err);
+    toast('Erro ao sincronizar agendamento — tente novamente.', { tone: 'danger' });
   });
 }
 
@@ -205,11 +210,21 @@ export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
     const next = [...get().appointments, appt];
     set({ appointments: next });
     if (supabaseEnabled && supabase) {
-      const { error } = await supabase.from(TABLE).insert(toRow(appt));
-      if (error) {
+      try {
+        const { error } = await supabase.from(TABLE).insert(toRow(appt));
+        if (error) {
+          set({ appointments: get().appointments.filter((a) => a.id !== appt.id) });
+          console.error('[appointmentsStore] Erro ao criar agendamento:', (error as any).code, (error as any).message);
+          toast(`Erro ao criar agendamento: ${(error as any).message}`, { tone: 'danger' });
+          throw error;
+        }
+      } catch (err: unknown) {
         set({ appointments: get().appointments.filter((a) => a.id !== appt.id) });
-        toast('Não foi possível criar o agendamento — tente novamente.', { tone: 'danger' });
-        throw error;
+        console.error('[appointmentsStore] Exceção ao criar agendamento:', err);
+        if (!(err instanceof Error && err.message.includes('code'))) {
+          toast('Erro ao criar agendamento — tente novamente.', { tone: 'danger' });
+        }
+        throw err;
       }
     } else {
       persist(next);
@@ -233,11 +248,16 @@ export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
     const next = prev.filter((a) => a.id !== id);
     set({ appointments: next });
     if (supabaseEnabled && supabase) {
-      supabase.from(TABLE).delete().eq('id', id).then(({ error }) => {
+      supabase.from(TABLE).delete().eq('id', id).then(({ error }: any) => {
         if (error) {
           set({ appointments: prev });
+          console.error('[appointmentsStore] Erro ao excluir agendamento:', (error as any).code, (error as any).message);
           toast('Não foi possível excluir o agendamento — tente novamente.', { tone: 'danger' });
         }
+      }).catch((err: unknown) => {
+        set({ appointments: prev });
+        console.error('[appointmentsStore] Exceção ao excluir agendamento:', err);
+        toast('Erro ao excluir agendamento — tente novamente.', { tone: 'danger' });
       });
     } else {
       persist(next);
@@ -276,16 +296,23 @@ if (supabaseEnabled && supabase) {
     .from(TABLE)
     .select('*')
     .order('scheduled_start', { ascending: true })
-    .then(({ data, error }) => {
-      if (!error && data) {
+    .then(({ data, error }: any) => {
+      if (error) {
+        console.error('[appointmentsStore] Erro ao carregar agendamentos:', (error as any).code, (error as any).message);
+        return;
+      }
+      if (data) {
         useAppointmentsStore.setState({ appointments: (data as AppointmentRow[]).map(fromRow) });
         useAppointmentsStore.getState().sweepConfirmations();
       }
+    })
+    .catch((err: unknown) => {
+      console.error('[appointmentsStore] Exceção ao carregar agendamentos:', err);
     });
 
   supabase
     .channel('appointments-sync')
-    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, (payload) => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, (payload: any) => {
       const state = useAppointmentsStore.getState();
       if (payload.eventType === 'DELETE') {
         const oldId = (payload.old as { id?: string } | null)?.id;
