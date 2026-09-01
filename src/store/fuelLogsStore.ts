@@ -47,7 +47,7 @@ export const useFuelLogsStore = create<FuelLogsState>((set, get) => ({
     if (supabaseEnabled && supabase) {
       supabase
         .from(TABLE)
-        .insert(toSnakeRow(log as unknown as Record<string, unknown>))
+        .insert(toSnakeRow(log as unknown as Record<string, unknown>, true))
         .then(({ error }) => {
           if (error) {
             set({ logs: get().logs.filter((l) => l.id !== log.id) });

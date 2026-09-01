@@ -69,7 +69,7 @@ export const useServiceOrdersStore = create<ServiceOrdersState>((set, get) => ({
     set({ orders: next });
     if (supabaseEnabled && supabase) {
       try {
-        const { error } = await supabase.from(TABLE).insert(toSnakeRow(order as unknown as Record<string, unknown>));
+        const { error } = await supabase.from(TABLE).insert(toSnakeRow(order as unknown as Record<string, unknown>, true));
         if (error) {
           set({ orders: get().orders.filter((o) => o.id !== order.id) });
           console.error('[serviceOrdersStore] Erro ao criar ordem:', error.code, error.message);

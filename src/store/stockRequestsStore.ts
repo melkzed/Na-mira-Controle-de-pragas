@@ -65,7 +65,7 @@ export const useStockRequestsStore = create<StockRequestsState>((set, get) => ({
     if (supabaseEnabled && supabase) {
       supabase
         .from(TABLE)
-        .insert(toSnakeRow(req as unknown as Record<string, unknown>))
+        .insert(toSnakeRow(req as unknown as Record<string, unknown>, true))
         .then(({ error }) => {
           if (error) {
             set({ requests: get().requests.filter((r) => r.id !== req.id) });

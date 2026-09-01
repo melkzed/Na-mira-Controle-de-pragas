@@ -72,7 +72,7 @@ export const useTrapsStore = create<TrapsState>((set, get) => ({
     if (supabaseEnabled && supabase) {
       supabase
         .from(TRAPS_TABLE)
-        .insert(toSnakeRow(trap as unknown as Record<string, unknown>))
+        .insert(toSnakeRow(trap as unknown as Record<string, unknown>, true))
         .then(({ error }) => {
           if (error) {
             set({ traps: get().traps.filter((t) => t.id !== trap.id) });
@@ -118,7 +118,7 @@ export const useTrapsStore = create<TrapsState>((set, get) => ({
     if (supabaseEnabled && supabase) {
       supabase
         .from(TRAPS_TABLE)
-        .insert(toSnakeRow(trap as unknown as Record<string, unknown>))
+        .insert(toSnakeRow(trap as unknown as Record<string, unknown>, true))
         .then(({ error }) => {
           if (error) {
             set({ traps: get().traps.filter((t) => t.id !== trap.id) });
@@ -136,7 +136,7 @@ export const useTrapsStore = create<TrapsState>((set, get) => ({
     if (supabaseEnabled && supabase) {
       supabase
         .from(INSP_TABLE)
-        .insert(toSnakeRow(inspection as unknown as Record<string, unknown>))
+        .insert(toSnakeRow(inspection as unknown as Record<string, unknown>, true))
         .then(({ error }) => {
           if (error) {
             set({ inspections: get().inspections.filter((i) => i.id !== inspection.id) });

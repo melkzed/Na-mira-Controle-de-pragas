@@ -55,7 +55,7 @@ export const useAuditStore = create<AuditState>((set, get) => ({
     if (supabaseEnabled && supabase) {
       supabase
         .from(TABLE)
-        .insert(toSnakeRow(entry as unknown as Record<string, unknown>))
+        .insert(toSnakeRow(entry as unknown as Record<string, unknown>, true))
         .then(({ error }) => {
           // Falha silenciosa de propósito — auditoria não deve travar/avisar
           // sobre a ação real que o usuário estava tentando fazer.

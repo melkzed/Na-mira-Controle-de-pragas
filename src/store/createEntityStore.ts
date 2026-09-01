@@ -58,7 +58,7 @@ export function createEntityStore<T extends { id: string }>(storageKey: string, 
       if (supabaseEnabled && supabase) {
         supabase
           .from(table)
-          .insert(toSnakeRow(item as unknown as Record<string, unknown>))
+          .insert(toSnakeRow(item as unknown as Record<string, unknown>, true))
           .then(({ error }) => {
             if (error) {
               set({ items: get().items.filter((it) => it.id !== item.id) });

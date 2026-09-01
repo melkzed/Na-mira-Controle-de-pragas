@@ -62,6 +62,14 @@ npm run preview    # serve o build (vite preview)
   apenas focar (o campo nativo já aceita digitar nos segmentos) e move o
   calendário para um botão próprio. **Não** volte a chamar `showPicker()` no
   `onClick`/`onFocus` do campo: o seletor nativo toma o foco e impede digitar.
+- Persistência: `toSnakeRow(obj, true)` no **insert** (omite `undefined`, para o
+  banco aplicar o `default` de colunas `not null`) e `toSnakeRow(obj)` no
+  **update** (`undefined` vira `null`, que é como se limpa um campo). Mandar
+  `null` explícito num insert derruba a criação com "null value in column ...
+  violates not-null constraint".
+- Ids gerados pelo app (`uid('x')`) são texto prefixado: **confira o tipo da
+  coluna** antes de gravar. Coluna `uuid` recusa `rec-abc123` — use
+  `crypto.randomUUID()` nesses casos.
 - Ordenação alfabética: `compareText`/`sortByName` (`lib/utils.ts`), que usam
   `Intl.Collator('pt-BR')`. `localeCompare` sem locale, ou comparação crua,
   joga todo nome acentuado para o fim da lista.
