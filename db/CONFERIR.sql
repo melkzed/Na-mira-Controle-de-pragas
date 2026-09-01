@@ -152,6 +152,14 @@ portal as (
                   and policyname='cliente_licenses')),
       -- Se esta falhar, criar OS recorrente quebra em todas as visitas com
       -- "invalid input syntax for type uuid".
+      -- Gatilho que chama auth_role() sem `public.` quebra TODO update destas
+      -- tabelas, para a equipe inteira, com "function auth_role() does not exist".
+      ('gatilhos do Portal chamam public.auth_role()',
+       not exists (
+         select 1 from pg_proc p
+          where p.proname in ('portal_guard_appointments', 'portal_guard_service_orders')
+            and p.prosrc like '%coalesce(auth_role()%'
+       )),
       ('appointments.recurrence_id é text',
        exists (select 1 from information_schema.columns
                 where table_schema='public' and table_name='appointments'

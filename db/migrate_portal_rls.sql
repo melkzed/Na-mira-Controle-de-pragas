@@ -296,7 +296,8 @@ returns trigger language plpgsql security definer set search_path = '' as $$
 declare
   guardado public.appointments;
 begin
-  if coalesce(auth_role(), '') <> 'cliente' then
+  -- `public.auth_role()`: com search_path vazio, nome sem esquema não resolve.
+  if coalesce(public.auth_role(), '') <> 'cliente' then
     return new;
   end if;
   if new.status not in ('confirmado', 'reagendado', 'cancelado') then
@@ -321,7 +322,8 @@ returns trigger language plpgsql security definer set search_path = '' as $$
 declare
   guardado public.service_orders;
 begin
-  if coalesce(auth_role(), '') <> 'cliente' then
+  -- `public.auth_role()`: com search_path vazio, nome sem esquema não resolve.
+  if coalesce(public.auth_role(), '') <> 'cliente' then
     return new;
   end if;
   if new.status <> 'cancelada' then
