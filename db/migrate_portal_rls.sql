@@ -48,7 +48,11 @@ begin
       and u.is_active
     limit 1;
 
-  if app_user is not null then
+  -- FOUND, e não `app_user is not null`: num registro composto, `IS NOT NULL`
+  -- exige TODOS os campos preenchidos, e customer_id é nulo para a equipe
+  -- inteira — o hook deixaria de injetar claims para admin, funcionário e
+  -- técnico, e o RLS negaria tudo, inclusive o login.
+  if found then
     claims := jsonb_set(claims, '{org_id}', to_jsonb(app_user.org_id::text));
     claims := jsonb_set(claims, '{app_role}', to_jsonb(app_user.role));
     claims := jsonb_set(claims, '{user_id}', to_jsonb(app_user.user_id::text));
