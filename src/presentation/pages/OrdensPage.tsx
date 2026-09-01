@@ -1019,7 +1019,8 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       }),
       paymentMethod: paymentMethod || undefined,
       serviceValue: serviceValue ? Number(serviceValue) : undefined,
-      serviceValueConfirmed: serviceValue ? valueConfirmed : undefined,
+      // Coluna `not null` no banco: sem valor informado é `false`, não ausente.
+      serviceValueConfirmed: serviceValue ? valueConfirmed : false,
       associatedOrderId: associatedOrderId || undefined,
       paymentStatus,
       paymentDate: paymentStatus === 'pago' && paymentDate ? dateInputToIso(paymentDate) : undefined,
