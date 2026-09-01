@@ -44,7 +44,7 @@ export const useTimeClockStore = create<TimeClockState>((set, get) => ({
     if (supabaseEnabled && supabase) {
       supabase
         .from(TABLE)
-        .insert(toSnakeRow(entry as unknown as Record<string, unknown>))
+        .insert(toSnakeRow(entry as unknown as Record<string, unknown>, true))
         .then(({ error }) => {
           if (error) {
             set({ entries: get().entries.filter((e) => e.id !== entry.id) });

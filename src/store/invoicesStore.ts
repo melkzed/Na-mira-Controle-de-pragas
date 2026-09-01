@@ -56,7 +56,7 @@ function insertRemote(invoice: Invoice) {
   if (!supabaseEnabled || !supabase) return;
   supabase
     .from(TABLE)
-    .insert(toSnakeRow(invoice as unknown as Record<string, unknown>))
+    .insert(toSnakeRow(invoice as unknown as Record<string, unknown>, true))
     .then(({ error }) => {
       if (error) {
         useInvoicesStore.setState({ invoices: useInvoicesStore.getState().invoices.filter((i) => i.id !== invoice.id) });

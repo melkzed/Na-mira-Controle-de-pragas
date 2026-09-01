@@ -46,7 +46,7 @@ export const useCashClosingStore = create<CashClosingState>((set, get) => ({
     if (supabaseEnabled && supabase) {
       supabase
         .from(TABLE)
-        .insert(toSnakeRow(rec as unknown as Record<string, unknown>))
+        .insert(toSnakeRow(rec as unknown as Record<string, unknown>, true))
         .then(({ error }) => {
           if (error) {
             set({ closings: get().closings.filter((c) => c.id !== rec.id) });

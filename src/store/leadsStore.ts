@@ -66,7 +66,7 @@ export const useLeadsStore = create<LeadsState>((set, get) => ({
     if (supabaseEnabled && supabase) {
       supabase
         .from(TABLE)
-        .insert(toSnakeRow(lead as unknown as Record<string, unknown>))
+        .insert(toSnakeRow(lead as unknown as Record<string, unknown>, true))
         .then(({ error }) => {
           if (error) {
             set({ leads: get().leads.filter((l) => l.id !== lead.id) });

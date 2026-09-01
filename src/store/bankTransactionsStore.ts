@@ -63,7 +63,7 @@ export const useBankTransactionsStore = create<BankTransactionsState>((set, get)
     if (supabaseEnabled && supabase) {
       supabase
         .from(TABLE)
-        .insert(toSnakeRow(t as unknown as Record<string, unknown>))
+        .insert(toSnakeRow(t as unknown as Record<string, unknown>, true))
         .then(({ error }) => {
           if (error) {
             set({ transactions: get().transactions.filter((tx) => tx.id !== t.id) });
