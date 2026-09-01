@@ -114,7 +114,26 @@ portal as (
       ('org_isolation exclui o papel cliente',
        exists (select 1 from pg_policies
                 where schemaname='public' and tablename='customers'
-                  and policyname='org_isolation' and qual like '%cliente%'))
+                  and policyname='org_isolation' and qual like '%cliente%')),
+      -- Política sem RLS habilitado não protege nada: a tabela fica aberta e
+      -- as linhas acima continuariam dando ✅. Por isso o estado do RLS é
+      -- conferido junto.
+      ('RLS habilitado em customers',
+       coalesce((select c.relrowsecurity from pg_class c
+                  join pg_namespace n on n.oid = c.relnamespace
+                 where n.nspname='public' and c.relname='customers'), false)),
+      ('RLS habilitado em service_orders',
+       coalesce((select c.relrowsecurity from pg_class c
+                  join pg_namespace n on n.oid = c.relnamespace
+                 where n.nspname='public' and c.relname='service_orders'), false)),
+      -- Sem isto o hook não lê public.users, nenhum claim entra no JWT e o RLS
+      -- nega tudo para TODO MUNDO — não só para o cliente.
+      ('hook custom_access_token_hook existe',
+       exists (select 1 from pg_proc where proname = 'custom_access_token_hook')),
+      ('hook consegue ler users (auth_admin_read_users)',
+       exists (select 1 from pg_policies
+                where schemaname='public' and tablename='users'
+                  and policyname='auth_admin_read_users'))
     ) as p(peca, existe)
 )
 select * from colunas

@@ -68,6 +68,51 @@ grant execute on function public.custom_access_token_hook to supabase_auth_admin
 revoke execute on function public.custom_access_token_hook from authenticated, anon, public;
 
 -- ---------------------------------------------------------------------------
+-- 1.1) O hook precisa LER public.users.
+--
+--      Isto também está em db/auth_hook.sql, repetido aqui de propósito: sem
+--      o grant e a política, a consulta do hook roda fora de um request
+--      autenticado (auth_org_id() nulo), devolve zero linhas, nenhum claim é
+--      injetado — e aí TODAS as políticas negam tudo, para todo mundo. É a
+--      falha que deixa o sistema inteiro vazio, não só o Portal.
+-- ---------------------------------------------------------------------------
+grant select on public.users to supabase_auth_admin;
+
+drop policy if exists auth_admin_read_users on public.users;
+create policy auth_admin_read_users on public.users
+  as permissive for select
+  to supabase_auth_admin
+  using (true);
+
+-- ---------------------------------------------------------------------------
+-- 1.2) RLS LIGADO nas tabelas que o Portal alcança.
+--
+--      Política sem RLS habilitado não protege nada — e a conferência passaria
+--      a dar ✅ mesmo com a tabela aberta, que é pior do que falhar. Normalmente
+--      db/rls.sql já fez isso; repetir aqui torna este arquivo suficiente
+--      sozinho, e `enable` é idempotente.
+-- ---------------------------------------------------------------------------
+do $$
+declare t text;
+begin
+  for t in
+    select c.table_name from information_schema.columns c
+     where c.table_schema = 'public' and c.column_name = 'org_id'
+  loop
+    execute format('alter table public.%I enable row level security;', t);
+    execute format('alter table public.%I force row level security;', t);
+  end loop;
+  -- Sem org_id próprio: herdam o isolamento pela FK, mas precisam de RLS igual.
+  foreach t in array array['trap_inspections']
+  loop
+    if to_regclass('public.' || t) is not null then
+      execute format('alter table public.%I enable row level security;', t);
+      execute format('alter table public.%I force row level security;', t);
+    end if;
+  end loop;
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- 2) O isolamento por organização deixa de valer para o cliente.
 --
 --    `org_isolation` libera TODA a organização a qualquer autenticado. Um

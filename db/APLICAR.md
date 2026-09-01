@@ -26,6 +26,16 @@ supabase functions deploy login-cliente --no-verify-jwt
 
 O `--no-verify-jwt` é obrigatório: quem chama ainda não tem sessão nenhuma.
 
+> **O passo 8 é o mais fácil de esquecer.** Registrar o hook no painel é um
+> clique separado de rodar o SQL. Sem ele o hook existe no banco mas nunca é
+> chamado, nenhum claim entra no JWT — e aí o RLS nega tudo para **todo mundo**,
+> não só para o cliente: o sistema abre vazio para os funcionários também.
+>
+> O passo 9 é auto-suficiente: liga o RLS e concede o acesso do hook por conta
+> própria, então rodá-lo sozinho já deixa o banco num estado coerente. Rodar 7 e
+> 8 antes continua sendo o caminho recomendado, porque eles trazem as
+> restrições do técnico.
+
 > Os passos 5 e 6 são dois envios separados de propósito: o PostgreSQL não
 > permite usar um valor de enum na mesma transação em que ele foi criado. Se
 > aparecer `unsafe use of new value "funcionario"`, é sinal de que os dois
