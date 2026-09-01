@@ -715,6 +715,12 @@ export interface OsRecurrence {
    *  recorrência (Appointment.recurrenceId) — usado para regenerar o plano
    *  sem duplicar visitas já criadas ao editar a OS. */
   recurrenceGroupId?: string;
+  /** Por quanto tempo o contrato se repete, em meses (ex.: 12 = um ano).
+   *
+   *  É assim que a recorrência é contratada: "um ano, de mês em mês". O número
+   *  de visitas sai daqui com a periodicidade, em vez de ser digitado — quem
+   *  fecha o contrato pensa em prazo, não em contagem de visitas. */
+  durationMonths?: number;
   /** Datas efetivas de cada visita do plano (ISO), na ordem das ocorrências.
    *
    *  As fases dão a periodicidade, mas a data que sai da conta pode cair num

@@ -406,6 +406,25 @@ conferido localmente (`authenticateCustomer`).
 
 ### 3.10 Recorrência: datas combinadas e confirmação
 
+**Como o plano é montado.** A entrada é a que se usa ao fechar contrato:
+**por quanto tempo** a recorrência vale (`durationMonths`) e **de quanto em
+quanto tempo** a visita acontece. O número de visitas sai dessa conta
+(`occurrencesForDuration`) — ninguém contrata "doze visitas", contrata "um ano,
+de mês em mês". As fases (`RecurrencePhase[]`) continuam sendo o formato
+guardado, e a tela produz sempre uma; OS antiga com várias fases continua
+calculando certo.
+
+Periodicidade mensal ou maior anda em **mês de calendário**, não em blocos de
+30 dias (`proximaData`): somando dias, doze visitas em um ano terminam cinco
+dias antes de onde começaram e o dia combinado com o cliente muda sozinho. Dia
+31 em mês curto recua para o último dia do mês, que é o que "todo dia 31"
+significa.
+
+Trocar a duração ou a periodicidade **descarta as datas ajustadas à mão**: os
+ajustes são guardados por posição, então mantê-los faria a data escolhida para
+a visita 3 do plano semanal reaparecer na visita 3 do bimestral — outro dia,
+outro mês.
+
 A periodicidade calcula a data; ela nem sempre serve. A conta pode cair num
 sábado, num feriado ou num dia em que o estabelecimento não abre — e quem
 programa precisa **ver o dia da semana antes de fechar**, não descobrir depois.

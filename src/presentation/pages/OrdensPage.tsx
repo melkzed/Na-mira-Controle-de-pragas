@@ -13,8 +13,11 @@ import { ServiceOrderStatusBadge } from '../components/StatusBadge';
 import { appointmentsForCustomer, getCustomer, getPest, getProduct, getServiceType, getUser, lastOrderForCustomer } from '@/application/repository';
 import type { Pest, PaymentStatus, RecurrencePhase, ServiceOrder, ServiceType } from '@/domain/types';
 import type { AppointmentStatus, RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
-import { PAYMENT_METHODS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
-import { computeRecurrenceOccurrences, isWeekend, planDates, recurrenceSummaryLabel, totalOccurrences, weekdayLabel, withinNextYear } from '@/lib/recurrence';
+import { PAYMENT_METHODS, RECURRENCE_FREQ_DAYS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
+import {
+  computeRecurrenceOccurrences, DURACOES_RECORRENCIA, isWeekend, occurrencesForDuration, planDates,
+  recurrenceSummaryLabel, rotuloDuracao, totalOccurrences, weekdayLabel, withinNextYear,
+} from '@/lib/recurrence';
 import { isDueForConfirmation } from '@/lib/confirmation';
 import { combineDateTimeInputToIso, dateInputToIso, fmtDate, fmtTime, parseDateInput, toDateInputValue } from '@/lib/date';
 import { osStatusToAppointmentStatus } from '@/lib/misc';
@@ -452,6 +455,11 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   const [warrantyUnit, setWarrantyUnit] = useState<WarrantyUnit>('meses');
   const [warrantyType, setWarrantyType] = useState<WarrantyType>('corretivo');
   const [recEnabled, setRecEnabled] = useState(false);
+  /** Por quanto tempo o contrato se repete (meses) e de quanto em quanto
+   *  tempo. O número de visitas sai dos dois — é como a recorrência é
+   *  contratada: "um ano, de mês em mês", não "doze visitas". */
+  const [recMeses, setRecMeses] = useState(12);
+  const [recFreq, setRecFreq] = useState<RecurrenceFreq>('mensal');
   const [recPhases, setRecPhases] = useState<RecurrencePhase[]>([]);
   /** Data escolhida para cada visita do plano, por índice de ocorrência.
    *  Vazio = usa a data calculada pela periodicidade. */
@@ -542,7 +550,14 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       setWarrantyUnit(initial.warranty?.unit ?? 'meses');
       setWarrantyType(initial.warranty?.type ?? 'corretivo');
       setRecEnabled(initial.recurrence?.enabled ?? false);
-      setRecPhases(initial.recurrence?.phases?.length ? initial.recurrence.phases : (initial.recurrence?.frequency ? [{ id: uid('ph'), frequency: initial.recurrence.frequency, occurrences: 1 }] : []));
+      const fases = initial.recurrence?.phases?.length
+        ? initial.recurrence.phases
+        : (initial.recurrence?.frequency ? [{ id: uid('ph'), frequency: initial.recurrence.frequency, occurrences: 1 }] : []);
+      setRecPhases(fases);
+      setRecFreq(fases[0]?.frequency ?? 'mensal');
+      // OS antiga não guardava a duração: deduz dos meses que o plano cobre,
+      // para os controles abrirem coerentes com o que está salvo.
+      setRecMeses(initial.recurrence?.durationMonths ?? mesesDoPlano(fases));
       setRecDates(initial.recurrence?.dates ?? []);
       setExecDate(toInput(initial.executionDate));
       setExecTime(initial.executionTime ?? '');
@@ -589,6 +604,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     const arr = <T,>(k: string): T[] => (Array.isArray(d[k]) ? (d[k] as T[]) : []);
     const obj = <T,>(k: string): T => ((d[k] && typeof d[k] === 'object' ? d[k] : {}) as T);
     const bool = (k: string, def = false) => (typeof d[k] === 'boolean' ? (d[k] as boolean) : def);
+    const num = (k: string) => (typeof d[k] === 'number' ? (d[k] as number) : 0);
 
     setCustomerId(str('customerId'));
     setAppointmentId(str('appointmentId'));
@@ -617,6 +633,8 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     setWarrantyType(str('warrantyType', 'corretivo') as WarrantyType);
     setRecEnabled(bool('recEnabled'));
     setRecPhases(arr<RecurrencePhase>('recPhases'));
+    setRecMeses(num('recMeses') || 12);
+    setRecFreq((str('recFreq') as RecurrenceFreq) || 'mensal');
     setRecDates(arr<string>('recDates'));
     setExecDate(str('execDate'));
     setExecTime(str('execTime'));
@@ -645,13 +663,13 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     areaQty, customAreas, legacyAreaText, pestIds, pestValidity, duration, procedures,
     technicianMessage, paymentMethod, serviceValue, serviceValueTouched, valueConfirmed,
     associatedOrderId, paymentStatus, paymentDate, warrantyHas, warrantyValue, warrantyUnit,
-    warrantyType, recEnabled, recPhases, recDates, execDate, execTime, dueDate, validityDate,
+    warrantyType, recEnabled, recMeses, recFreq, recPhases, recDates, execDate, execTime, dueDate, validityDate,
     validityTouched, certValidityDate, certValidityTouched, equipmentIds, products, returnAt,
   }), [customerId, appointmentId, serviceTypeIds, technicianIds, sellerId, status, areaQty,
     customAreas, legacyAreaText, pestIds, pestValidity, duration, procedures, technicianMessage,
     paymentMethod, serviceValue, serviceValueTouched, valueConfirmed, associatedOrderId,
     paymentStatus, paymentDate, warrantyHas, warrantyValue, warrantyUnit, warrantyType,
-    recEnabled, recPhases, recDates, execDate, execTime, dueDate, validityDate, validityTouched,
+    recEnabled, recMeses, recFreq, recPhases, recDates, execDate, execTime, dueDate, validityDate, validityTouched,
     certValidityDate, certValidityTouched, equipmentIds, products, returnAt]);
 
   /** Guarda o rascunho a cada mudança — só na criação, e só depois que a
@@ -773,6 +791,23 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
 
   // Prévia do plano de recorrência: cada ocorrência é calculada a partir da
   // anterior (nunca de hoje) — plano com fim definido, não repetição infinita.
+  // As fases continuam sendo o formato guardado (uma OS antiga pode ter mais de
+  // uma), mas a tela agora produz sempre uma só: duração ÷ periodicidade.
+  useEffect(() => {
+    if (!recEnabled) return;
+    const visitas = occurrencesForDuration(recMeses, recFreq);
+    setRecPhases((atual) => {
+      const id = atual[0]?.id ?? uid('ph');
+      if (atual.length === 1 && atual[0].frequency === recFreq && atual[0].occurrences === visitas) return atual;
+      // Mudou o plano: as datas ajustadas à mão eram de OUTRAS visitas. Como
+      // os ajustes são guardados por posição, mantê-los faria a data escolhida
+      // para a visita 3 do plano semanal reaparecer na visita 3 do bimestral,
+      // que é outro dia e outro mês.
+      setRecDates([]);
+      return [{ id, frequency: recFreq, occurrences: visitas }];
+    });
+  }, [recEnabled, recMeses, recFreq]);
+
   const recurrenceOccurrences = useMemo(() => {
     if (!recEnabled || !recPhases.length) return [];
     const baseIso = execDate ? combineDateTimeInputToIso(execDate, execTime) : new Date().toISOString();
@@ -799,9 +834,6 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       return next;
     });
 
-  const addRecPhase = () => setRecPhases((arr) => [...arr, { id: uid('ph'), frequency: 'mensal', occurrences: 1 }]);
-  const updateRecPhase = (id: string, patch: Partial<RecurrencePhase>) => setRecPhases((arr) => arr.map((p) => (p.id === id ? { ...p, ...patch } : p)));
-  const removeRecPhase = (id: string) => setRecPhases((arr) => arr.filter((p) => p.id !== id));
 
   // Validade individual por praga — sugerida pelo cadastro da praga (ou pela
   // sugestão geral da OS), editável por praga; some quando a praga é removida.
@@ -996,6 +1028,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
         frequency: recEnabled ? recPhases[0]?.frequency : undefined,
         phases: recEnabled && recPhases.length ? recPhases : undefined,
         recurrenceGroupId: recPlan.recurrenceGroupId,
+        durationMonths: recEnabled ? recMeses : undefined,
         dates: recEnabled && recPlanDates.length ? recPlanDates : undefined,
       },
       executionDate: execDate ? dateInputToIso(execDate) : undefined,
@@ -1307,24 +1340,28 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
           <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={recEnabled} onChange={(e) => { setRecEnabled(e.target.checked); if (e.target.checked && !recPhases.length) setRecPhases([{ id: uid('ph'), frequency: 'mensal', occurrences: 1 }]); }} className="h-4 w-4 rounded border-border" /> Serviço recorrente</label>
           {recEnabled && (
             <div className="mt-3 space-y-2">
-              <p className="text-[11px] text-muted-foreground">Programe fases distintas — ex.: "Fase 1: 45 dias · 1 visita" seguida de "Fase 2: Semestral · 2 visitas". Cada data é calculada a partir da anterior; o plano tem fim definido, não é repetição infinita.</p>
-              {recPhases.map((phase, idx) => (
-                <div key={phase.id} className="flex items-center gap-2">
-                  <span className="w-14 shrink-0 text-xs text-muted-foreground">Fase {idx + 1}</span>
-                  <Select value={phase.frequency} onChange={(e) => updateRecPhase(phase.id, { frequency: e.target.value as RecurrenceFreq })} className="flex-1">
+              <p className="text-[11px] text-muted-foreground">
+                Escolha por quanto tempo o contrato se repete e de quanto em quanto tempo. As
+                visitas saem dessa conta — e cada data pode ser ajustada abaixo para cair no dia
+                que serve ao cliente.
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Field label="Duração da recorrência">
+                  <Select value={String(recMeses)} onChange={(e) => setRecMeses(Number(e.target.value))}>
+                    {DURACOES_RECORRENCIA.map((d) => <option key={d.meses} value={d.meses}>{d.label}</option>)}
+                  </Select>
+                </Field>
+                <Field label="A cada">
+                  <Select value={recFreq} onChange={(e) => setRecFreq(e.target.value as RecurrenceFreq)}>
                     {(Object.keys(RECURRENCE_FREQ_LABEL) as RecurrenceFreq[]).map((r) => <option key={r} value={r}>{RECURRENCE_FREQ_LABEL[r]}</option>)}
                   </Select>
-                  <Input type="number" min={1} max={52} value={phase.occurrences} onChange={(e) => updateRecPhase(phase.id, { occurrences: Math.max(1, Number(e.target.value) || 1) })} className="w-20" />
-                  <span className="shrink-0 text-xs text-muted-foreground">ocorrência(s)</span>
-                  <button type="button" onClick={() => removeRecPhase(phase.id)} disabled={recPhases.length <= 1} aria-label={`Remover fase ${idx + 1}`} className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-danger disabled:pointer-events-none disabled:opacity-40"><Trash2 size={14} /></button>
-                </div>
-              ))}
-              <Button type="button" size="sm" variant="outline" leftIcon={<Plus size={14} />} onClick={addRecPhase}>Adicionar fase</Button>
+                </Field>
+              </div>
               {recurrenceOccurrences.length > 0 && (
                 <div className="rounded-lg border border-brand/30 bg-brand-soft/20 p-2.5">
                   <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs font-medium text-brand">
-                      {totalOccurrences(recPhases)} visita(s) — {withinNextYear(recPlanDates).length} no próximo ano
+                      {totalOccurrences(recPhases)} visita(s) em {rotuloDuracao(recMeses)} — {withinNextYear(recPlanDates).length} no próximo ano
                     </p>
                     {recDates.some(Boolean) && (
                       <button
@@ -1484,6 +1521,13 @@ function settingsEmergency(): string {
 // desnecessário aqui, já que o técnico já captura ambas em campo
 // (CampoPage, ao finalizar o atendimento); ver so.technicianSignature/
 // so.customerSignature, ainda usados na impressão (printDocuments.ts).
+
+/** Duração aproximada de um plano já salvo, em meses — usada só para abrir os
+ *  controles coerentes numa OS criada antes de a duração existir. */
+function mesesDoPlano(fases: RecurrencePhase[]): number {
+  const dias = fases.reduce((soma, f) => soma + f.occurrences * RECURRENCE_FREQ_DAYS[f.frequency], 0);
+  return Math.max(1, Math.round(dias / 30));
+}
 
 /** Emissão de NFS-e a partir da OS concluída (Governo · NFS-e Nacional / simulação). */
 function FiscalSection({ so }: { so: ServiceOrder }) {

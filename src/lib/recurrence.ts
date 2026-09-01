@@ -1,5 +1,7 @@
 /** Cálculo de planos de recorrência multi-fase (Ordem de Serviço). */
-import { RECURRENCE_FREQ_DAYS, RECURRENCE_FREQ_LABEL, type RecurrenceFreq } from '@/domain/enums';
+import {
+  RECURRENCE_FREQ_DAYS, RECURRENCE_FREQ_LABEL, RECURRENCE_FREQ_MONTHS, type RecurrenceFreq,
+} from '@/domain/enums';
 import type { OsRecurrence, RecurrencePhase } from '@/domain/types';
 
 export interface RecurrenceOccurrence {
@@ -18,13 +20,53 @@ export function computeRecurrenceOccurrences(baseDateIso: string, phases: Recurr
   const out: RecurrenceOccurrence[] = [];
   let cursor = new Date(baseDateIso);
   phases.forEach((phase, phaseIndex) => {
-    const days = RECURRENCE_FREQ_DAYS[phase.frequency];
     for (let i = 0; i < phase.occurrences; i++) {
-      cursor = new Date(cursor.getTime() + days * 86400000);
+      cursor = proximaData(cursor, phase.frequency);
       out.push({ date: cursor.toISOString(), phaseId: phase.id, frequency: phase.frequency, phaseIndex, occurrenceIndexInPhase: i });
     }
   });
   return out;
+}
+
+/** Próxima data de uma periodicidade: mês de calendário quando a
+ *  periodicidade é mensal ou maior, senão blocos de dias. */
+export function proximaData(de: Date, freq: RecurrenceFreq): Date {
+  const meses = RECURRENCE_FREQ_MONTHS[freq];
+  const d = new Date(de);
+  if (meses) {
+    const dia = d.getDate();
+    d.setMonth(d.getMonth() + meses);
+    // 31/01 + 1 mês vira 03/03 se o mês seguinte não tem dia 31 — recua para
+    // o último dia do mês pretendido, que é o que "todo dia 31" significa.
+    if (d.getDate() !== dia) d.setDate(0);
+    return d;
+  }
+  d.setDate(d.getDate() + RECURRENCE_FREQ_DAYS[freq]);
+  return d;
+}
+
+/**
+ * Quantas visitas cabem numa recorrência de `meses`, na periodicidade dada.
+ *
+ * É a conta que o usuário faz de cabeça ao contratar: "um ano, de mês em mês"
+ * são doze visitas. Contar as datas de verdade (em vez de dividir dias) evita
+ * que fevereiro ou um mês de 31 dias mude o total.
+ */
+export function occurrencesForDuration(meses: number, freq: RecurrenceFreq): number {
+  if (meses <= 0) return 0;
+  const inicio = new Date();
+  const limite = new Date(inicio);
+  limite.setMonth(limite.getMonth() + meses);
+  let cursor = inicio;
+  let n = 0;
+  // Teto de segurança: semanal em 24 meses dá ~104 — 400 nunca é atingido na
+  // prática e impede laço infinito se alguma periodicidade vier zerada.
+  while (n < 400) {
+    cursor = proximaData(cursor, freq);
+    if (cursor > limite) break;
+    n += 1;
+  }
+  return n;
 }
 
 /** Total de ocorrências programadas em todas as fases do plano. */
@@ -68,4 +110,19 @@ export function withinNextYear(dates: string[]): string[] {
   const limite = new Date();
   limite.setFullYear(limite.getFullYear() + 1);
   return dates.filter((d) => new Date(d) <= limite);
+}
+
+/** Durações contratadas na prática. "Um ano" é de longe a mais comum, então é
+ *  o padrão da tela. */
+export const DURACOES_RECORRENCIA: { meses: number; label: string }[] = [
+  { meses: 3, label: '3 meses' },
+  { meses: 6, label: '6 meses' },
+  { meses: 12, label: '1 ano' },
+  { meses: 18, label: '1 ano e meio' },
+  { meses: 24, label: '2 anos' },
+  { meses: 36, label: '3 anos' },
+];
+
+export function rotuloDuracao(meses: number): string {
+  return DURACOES_RECORRENCIA.find((d) => d.meses === meses)?.label ?? `${meses} meses`;
 }
