@@ -14,6 +14,17 @@ precisa reiniciar nada.
 | 4 | `db/migrate_campo_verificacao.sql` | Assinatura do cliente e verificação do local na visita; acesso ao Portal do Cliente; pedido de reagendamento; áreas específicas da OS; coordenadas das armadilhas; campos novos de `users`; cancelamento pelo cliente; identificação de quem assinou o atendimento |
 | 5 | `db/migrate_papeis_1.sql` | Cria os valores novos do tipo `user_role`. **Rode sozinho e espere terminar.** |
 | 6 | `db/migrate_papeis_2.sql` | Converte os papéis antigos em `funcionario` e lista quem ficou sem setor |
+| 7 | `db/rls.sql` | Isolamento por organização e restrições do técnico (se ainda não rodou) |
+| 8 | `db/auth_hook.sql` | Claims `org_id`/`app_role`/`user_id` no JWT — **registre o hook no painel**: Authentication → Hooks → Custom Access Token → `public.custom_access_token_hook` |
+| 9 | `db/migrate_portal_rls.sql` | **Portal do Cliente com RLS**: claim `customer_id`, políticas que prendem o cliente aos próprios registros, gatilhos que limitam o que ele pode alterar, e a busca por documento usada no login |
+
+Depois do passo 9, implante a função de login do Portal:
+
+```bash
+supabase functions deploy login-cliente --no-verify-jwt
+```
+
+O `--no-verify-jwt` é obrigatório: quem chama ainda não tem sessão nenhuma.
 
 > Os passos 5 e 6 são dois envios separados de propósito: o PostgreSQL não
 > permite usar um valor de enum na mesma transação em que ele foi criado. Se

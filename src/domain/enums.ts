@@ -177,14 +177,27 @@ export const WARRANTY_TYPE_LABEL: Record<WarrantyType, string> = {
 };
 
 export const RECURRENCE_FREQ_LABEL: Record<RecurrenceFreq, string> = {
-  semanal: 'Semanal',
-  quinzenal: 'Quinzenal',
+  semanal: 'Semanal (7 dias)',
+  quinzenal: 'Quinzenal (15 dias)',
   '45dias': '45 dias',
-  mensal: 'Mensal',
-  bimestral: 'Bimestral',
-  trimestral: 'Trimestral',
-  semestral: 'Semestral',
-  anual: 'Anual',
+  mensal: 'Mensal (30 dias)',
+  bimestral: 'Bimestral (60 dias)',
+  trimestral: 'Trimestral (90 dias)',
+  semestral: 'Semestral (6 meses)',
+  anual: 'Anual (12 meses)',
+};
+
+/** Periodicidades que andam em MESES de calendário, não em blocos de dias.
+ *
+ *  "Mensal" somando 30 dias faz a visita escorregar: doze visitas em um ano
+ *  terminam cinco dias antes de onde começaram, e o dia combinado com o
+ *  cliente vai mudando sozinho. Somar um mês mantém o mesmo dia. */
+export const RECURRENCE_FREQ_MONTHS: Partial<Record<RecurrenceFreq, number>> = {
+  mensal: 1,
+  bimestral: 2,
+  trimestral: 3,
+  semestral: 6,
+  anual: 12,
 };
 
 /** Aproximação em dias de cada frequência — usada para sugerir a próxima visita na OS. */

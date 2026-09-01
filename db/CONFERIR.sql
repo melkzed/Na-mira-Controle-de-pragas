@@ -92,11 +92,36 @@ bucket as (
     'bucket atendimentos'                              as peca,
     case when exists (select 1 from storage.buckets where id = 'atendimentos')
          then '✅ OK' else '❌ FALTA' end                as situacao
+),
+-- 9 · migrate_portal_rls.sql — o Portal do Cliente depende de cada um destes.
+portal as (
+  select '9 portal rls' as migration, p.peca,
+         case when p.existe then '✅ OK' else '❌ FALTA' end as situacao
+    from (values
+      ('função auth_customer_id',
+       exists (select 1 from pg_proc where proname = 'auth_customer_id')),
+      ('função portal_cliente_por_documento',
+       exists (select 1 from pg_proc where proname = 'portal_cliente_por_documento')),
+      ('política cliente_self em customers',
+       exists (select 1 from pg_policies where schemaname='public' and tablename='customers' and policyname='cliente_self')),
+      ('política cliente_service_orders',
+       exists (select 1 from pg_policies where schemaname='public' and tablename='service_orders' and policyname='cliente_service_orders')),
+      ('gatilho portal_guard_appointments',
+       exists (select 1 from pg_trigger where tgname = 'portal_guard_appointments')),
+      ('gatilho portal_guard_service_orders',
+       exists (select 1 from pg_trigger where tgname = 'portal_guard_service_orders')),
+      -- Se esta falhar, o cliente logado enxerga a organização inteira.
+      ('org_isolation exclui o papel cliente',
+       exists (select 1 from pg_policies
+                where schemaname='public' and tablename='customers'
+                  and policyname='org_isolation' and qual like '%cliente%'))
+    ) as p(peca, existe)
 )
 select * from colunas
 union all select * from papeis
 union all select * from papel_antigo
 union all select * from bucket
+union all select * from portal
 order by situacao desc, migration, peca;
 
 

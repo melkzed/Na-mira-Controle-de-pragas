@@ -358,7 +358,72 @@ o mapeamento explícito de colunas, então os três campos foram adicionados a
 `AppointmentRow`/`fromRow`/`toRow`; `serviceOrdersStore` usa `toSnakeRow` e não
 precisou de mudança.
 
+### 3.9.1 Portal do Cliente com RLS: o cliente é um usuário de Auth
+
+O Portal nasceu com um usuário **sintético**: o cliente entrava com CPF/CNPJ +
+senha, e o app montava um `User` de papel `cliente` só na memória do navegador.
+Funciona sem backend, mas com Supabase quebra dos dois lados:
+
+- **Com RLS ligado**, o cliente não tem JWT. `auth_org_id()` é nulo, toda
+  política nega, e o Portal fica vazio.
+- **Com RLS desligado**, para "funcionar", a chave anônima — que vai no bundle,
+  à vista de qualquer um — passa a ler a tabela de clientes inteira: documento,
+  endereço, telefone e o hash da senha do portal.
+
+Não havia meio-termo, porque conferir a senha no navegador exige ler a linha do
+cliente antes de saber quem ele é.
+
+A solução tem três partes:
+
+1. **Edge Function `login-cliente`** confere o documento e a senha com a
+   Service Role (via `portal_cliente_por_documento`, `security definer` e
+   revogada de todo mundo menos `service_role`), garante um usuário de Auth
+   para aquele cliente e devolve um `token_hash` de uso único. O e-mail desse
+   usuário é sintético (`cliente.<id>@portal.invalid`, domínio reservado pela
+   RFC 2606): o e-mail do cadastro pode estar vazio, repetido, ou ser o mesmo
+   de um funcionário.
+2. **`verifyOtp`** no navegador troca o token por uma sessão real. A partir daí
+   o cliente é um autenticado comum, e o hook de Auth injeta `customer_id` nos
+   claims junto de `org_id`/`app_role`.
+3. **Políticas** (`db/migrate_portal_rls.sql`): `org_isolation` e `staff_only`
+   passam a excluir o papel `cliente` — sem isso ele veria a organização
+   inteira —, e cada tabela do Portal ganha uma política presa a
+   `auth_customer_id()`. Os catálogos (serviços, pragas, produtos) e a lista de
+   técnicos são recortados ao que aparece nos registros **dele**: o catálogo
+   inteiro traria preço de produto e serviço junto, e margem não é dado do
+   cliente.
+
+**Escrita.** O cliente confirma, pede reagendamento e cancela. RLS não sabe
+restringir coluna, e o store manda a linha inteira no update — então dois
+gatilhos (`portal_guard_appointments`, `portal_guard_service_orders`) partem de
+`OLD` e aceitam de `NEW` só os campos do Portal. Coluna criada no futuro entra
+automaticamente como "não pode mudar", que é o padrão seguro. Sem eles, o
+cliente poderia pelo console marcar a própria OS como concluída ou mexer no
+valor cobrado.
+
+O modo standalone não muda: sem Supabase, o login do cliente continua sendo
+conferido localmente (`authenticateCustomer`).
+
 ### 3.10 Recorrência: datas combinadas e confirmação
+
+**Como o plano é montado.** A entrada é a que se usa ao fechar contrato:
+**por quanto tempo** a recorrência vale (`durationMonths`) e **de quanto em
+quanto tempo** a visita acontece. O número de visitas sai dessa conta
+(`occurrencesForDuration`) — ninguém contrata "doze visitas", contrata "um ano,
+de mês em mês". As fases (`RecurrencePhase[]`) continuam sendo o formato
+guardado, e a tela produz sempre uma; OS antiga com várias fases continua
+calculando certo.
+
+Periodicidade mensal ou maior anda em **mês de calendário**, não em blocos de
+30 dias (`proximaData`): somando dias, doze visitas em um ano terminam cinco
+dias antes de onde começaram e o dia combinado com o cliente muda sozinho. Dia
+31 em mês curto recua para o último dia do mês, que é o que "todo dia 31"
+significa.
+
+Trocar a duração ou a periodicidade **descarta as datas ajustadas à mão**: os
+ajustes são guardados por posição, então mantê-los faria a data escolhida para
+a visita 3 do plano semanal reaparecer na visita 3 do bimestral — outro dia,
+outro mês.
 
 A periodicidade calcula a data; ela nem sempre serve. A conta pode cair num
 sábado, num feriado ou num dia em que o estabelecimento não abre — e quem
