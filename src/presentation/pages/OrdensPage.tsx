@@ -16,6 +16,7 @@ import type { AppointmentStatus, RecurrenceFreq, ServiceOrderStatus, WarrantyTyp
 import { PAYMENT_METHODS, RECURRENCE_FREQ_DAYS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
 import {
   computeRecurrenceOccurrences, DURACOES_RECORRENCIA, isWeekend, occurrencesForDuration, planDates,
+  recurrenceGroupId,
   recurrenceSummaryLabel, rotuloDuracao, totalOccurrences, weekdayLabel, withinNextYear,
 } from '@/lib/recurrence';
 import { isDueForConfirmation } from '@/lib/confirmation';
@@ -928,7 +929,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     if (!occurrences.length) return {};
     // O que vale é a data combinada, não a que a periodicidade calculou.
     const datas = planDates(occurrences, recDates);
-    const groupId = uid('rec');
+    const groupId = recurrenceGroupId();
     const svc = serviceTypes.find((s) => s.id === serviceTypeIds[0]);
     const durationMin = duration ? Number(duration) : (svc?.defaultDurationMin ?? 60);
     const custObj = getCustomer(customerId);
