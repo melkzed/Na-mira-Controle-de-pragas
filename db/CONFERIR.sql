@@ -149,7 +149,13 @@ portal as (
       ('cliente lê licenses (responsável técnico no laudo)',
        exists (select 1 from pg_policies
                 where schemaname='public' and tablename='licenses'
-                  and policyname='cliente_licenses'))
+                  and policyname='cliente_licenses')),
+      -- Se esta falhar, criar OS recorrente quebra em todas as visitas com
+      -- "invalid input syntax for type uuid".
+      ('appointments.recurrence_id é text',
+       exists (select 1 from information_schema.columns
+                where table_schema='public' and table_name='appointments'
+                  and column_name='recurrence_id' and data_type = 'text'))
     ) as p(peca, existe)
 )
 select * from colunas

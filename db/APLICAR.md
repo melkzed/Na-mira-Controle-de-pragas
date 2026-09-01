@@ -18,6 +18,7 @@ precisa reiniciar nada.
 | 8 | `db/auth_hook.sql` | Claims `org_id`/`app_role`/`user_id` no JWT — **registre o hook no painel**: Authentication → Hooks → Custom Access Token → `public.custom_access_token_hook` |
 | 9 | `db/migrate_portal_rls.sql` | **Portal do Cliente com RLS**: claim `customer_id`, políticas que prendem o cliente aos próprios registros, gatilhos que limitam o que ele pode alterar, e a busca por documento usada no login |
 | 10 | `db/migrate_portal_rls_2.sql` | Correções do passo 9: o cliente lê a própria linha em `users` (sem isso o login falha), e as configurações fiscais e licenças que os documentos dele precisam |
+| 11 | `db/migrate_recurrence_id_text.sql` | `appointments.recurrence_id` vira `text` — sem isso, criar OS recorrente falha em todas as visitas |
 
 Depois do passo 9, implante a função de login do Portal:
 
