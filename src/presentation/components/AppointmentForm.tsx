@@ -14,6 +14,7 @@ import { getProduct } from '@/application/repository';
 import { combineDateTimeInputToIso, toDateInputValue } from '@/lib/date';
 import { osStatusToAppointmentStatus } from '@/lib/misc';
 import type { AppointmentPriority } from '@/domain/enums';
+import { recurrenceGroupId } from '@/lib/recurrence';
 
 function toLocalInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -159,7 +160,7 @@ export function AppointmentForm({
     }
 
     const products = defaultProducts.map((dp) => ({ productId: dp.productId, plannedQty: dp.qty }));
-    const recurrenceId = recurrence !== 'none' ? 'rec-' + Math.random().toString(36).slice(2, 9) : undefined;
+    const recurrenceId = recurrence !== 'none' ? recurrenceGroupId() : undefined;
     const total = recurrence === 'none' ? 1 : Math.max(1, Math.min(52, occurrences));
 
     for (let i = 0; i < total; i++) {

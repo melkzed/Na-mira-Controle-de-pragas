@@ -126,3 +126,18 @@ export const DURACOES_RECORRENCIA: { meses: number; label: string }[] = [
 export function rotuloDuracao(meses: number): string {
   return DURACOES_RECORRENCIA.find((d) => d.meses === meses)?.label ?? `${meses} meses`;
 }
+
+/**
+ * Id do grupo de uma recorrência — as visitas de um mesmo plano.
+ *
+ * UUID de verdade, e não o `uid('rec')` usado no resto do app, porque este id
+ * vai para `appointments.recurrence_id`, que é uma coluna `uuid` no Postgres.
+ * Um id prefixado ("rec-coqspft") faz o banco recusar a inserção inteira com
+ * "invalid input syntax for type uuid" — e como uma recorrência insere uma
+ * visita por ocorrência, o plano inteiro falha de uma vez.
+ *
+ * O valor é opaco: nada no sistema lê o prefixo, só compara igualdade.
+ */
+export function recurrenceGroupId(): string {
+  return crypto.randomUUID();
+}
