@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { ServiceOrder } from '@/domain/types';
 import { serviceOrders as seed } from '@/infrastructure/seed/data';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
-import { asPromise, supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { asPromise, onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
 import { currentOrgId } from './appStore';
 
@@ -143,24 +143,28 @@ export const useServiceOrdersStore = create<ServiceOrdersState>((set, get) => ({
 }));
 
 if (supabaseEnabled && supabase) {
-  asPromise(
-    supabase
-      .from(TABLE)
-      .select('*')
-      .order('number', { ascending: false }),
-  )
-    .then(({ data, error }) => {
-      if (error) {
-        console.error('[serviceOrdersStore] Erro ao carregar ordens:', error.code, error.message);
-        return;
-      }
-      if (data) {
-        useServiceOrdersStore.setState({ orders: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<ServiceOrder>(r)) });
-      }
-    })
-    .catch((err: unknown) => {
-      console.error('[serviceOrdersStore] Exceção ao carregar ordens:', err);
-    });
+  // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+  onSupabaseSession(() => {
+    if (!supabase) return;
+    asPromise(
+      supabase
+        .from(TABLE)
+        .select('*')
+        .order('number', { ascending: false }),
+    )
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[serviceOrdersStore] Erro ao carregar ordens:', error.code, error.message);
+          return;
+        }
+        if (data) {
+          useServiceOrdersStore.setState({ orders: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<ServiceOrder>(r)) });
+        }
+      })
+      .catch((err: unknown) => {
+        console.error('[serviceOrdersStore] Exceção ao carregar ordens:', err);
+      });
+  });
 
   supabase
     .channel(`${TABLE}-sync`)

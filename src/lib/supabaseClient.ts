@@ -55,3 +55,31 @@ export async function functionErrorMessage(error: unknown, data: unknown, fallba
 export function asPromise<T>(builder: PromiseLike<T>): Promise<T> {
   return Promise.resolve(builder);
 }
+
+/**
+ * Carrega os dados de uma store quando existe sessão — e de novo a cada login.
+ *
+ * As stores disparavam o `select` inicial no import do módulo, que acontece
+ * ANTES de alguém entrar no sistema. Com RLS ligado, requisição sem sessão não
+ * enxerga linha nenhuma (`org_id = auth_org_id()` com `auth_org_id()` nulo), e
+ * como o login navega pelo router — sem recarregar a página — nada refazia a
+ * busca: o usuário entrava e via o sistema vazio até apertar F5.
+ *
+ * Registrando aqui, a carga acontece na hora certa: agora, se a sessão já foi
+ * restaurada, e outra vez a cada `SIGNED_IN`.
+ */
+const carregadores: (() => void)[] = [];
+
+export function onSupabaseSession(carregar: () => void): void {
+  if (!supabaseEnabled || !supabase) return;
+  carregadores.push(carregar);
+  void supabase.auth.getSession().then(({ data }) => {
+    if (data.session) carregar();
+  });
+}
+
+if (supabaseEnabled && supabase) {
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_IN') carregadores.forEach((c) => c());
+  });
+}

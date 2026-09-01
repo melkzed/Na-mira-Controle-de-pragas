@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { TimeClockEntry, TimeClockType } from '@/domain/types';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
 import { currentOrgId } from './appStore';
 
@@ -59,15 +59,19 @@ export const useTimeClockStore = create<TimeClockState>((set, get) => ({
 }));
 
 if (supabaseEnabled && supabase) {
-  supabase
-    .from(TABLE)
-    .select('*')
-    .order('timestamp', { ascending: false })
-    .then(({ data, error }) => {
-      if (!error && data) {
-        useTimeClockStore.setState({ entries: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<TimeClockEntry>(r)) });
-      }
-    });
+  // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+  onSupabaseSession(() => {
+    if (!supabase) return;
+    supabase
+      .from(TABLE)
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .then(({ data, error }) => {
+        if (!error && data) {
+          useTimeClockStore.setState({ entries: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<TimeClockEntry>(r)) });
+        }
+      });
+  });
 
   supabase
     .channel(`${TABLE}-sync`)

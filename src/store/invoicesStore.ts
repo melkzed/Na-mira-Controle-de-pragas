@@ -6,7 +6,7 @@ import { computeTaxes, type TaxConfig } from '@/application/fiscal/tax';
 import { getProvider } from '@/application/fiscal/providers';
 import type { FiscalConfig } from './settingsStore';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
 import { currentOrgId } from './appStore';
 
@@ -145,15 +145,19 @@ export const useInvoicesStore = create<InvoicesState>((set, get) => ({
 }));
 
 if (supabaseEnabled && supabase) {
-  supabase
-    .from(TABLE)
-    .select('*')
-    .order('issued_at', { ascending: false })
-    .then(({ data, error }) => {
-      if (!error && data) {
-        useInvoicesStore.setState({ invoices: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<Invoice>(r)) });
-      }
-    });
+  // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+  onSupabaseSession(() => {
+    if (!supabase) return;
+    supabase
+      .from(TABLE)
+      .select('*')
+      .order('issued_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (!error && data) {
+          useInvoicesStore.setState({ invoices: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<Invoice>(r)) });
+        }
+      });
+  });
 
   supabase
     .channel(`${TABLE}-sync`)

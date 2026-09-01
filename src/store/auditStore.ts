@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { currentOrgId, useAppStore } from './appStore';
 import { auditSeed } from '@/infrastructure/seed/data';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 
 /** Registro de auditoria: quem, quando e o que mudou (#13). Dual-mode (ver
  *  docs/ARCHITECTURE.md §3.1/§3.2) — só insere, nunca edita/remove. */
@@ -77,16 +77,20 @@ export function logChange(action: string, entityType: string, description: strin
 }
 
 if (supabaseEnabled && supabase) {
-  supabase
-    .from(TABLE)
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(CAP)
-    .then(({ data, error }) => {
-      if (!error && data) {
-        useAuditStore.setState({ entries: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<AuditEntry>(r)) });
-      }
-    });
+  // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+  onSupabaseSession(() => {
+    if (!supabase) return;
+    supabase
+      .from(TABLE)
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(CAP)
+      .then(({ data, error }) => {
+        if (!error && data) {
+          useAuditStore.setState({ entries: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<AuditEntry>(r)) });
+        }
+      });
+  });
 
   supabase
     .channel(`${TABLE}-sync`)

@@ -255,6 +255,23 @@ export function CustomerForm({
     return () => clearTimeout(debounce.current);
   }, [form, open, isEdit, touched]);
 
+  const todosClientes = useCustomersStore((s) => s.customers);
+
+  /** Já existe outro cadastro com este CPF/CNPJ?
+   *
+   *  Cliente duplicado não é só bagunça na lista: o histórico e o financeiro
+   *  se dividem entre os dois cadastros, e o login do Portal procura o
+   *  documento com `find` — o segundo cliente com o mesmo CPF simplesmente
+   *  nunca consegue entrar. */
+  const documentoDuplicado = useMemo(() => {
+    const digitos = documentDigits(form.document);
+    if (digitos.length !== 11 && digitos.length !== 14) return undefined;
+    const outro = todosClientes.find(
+      (c) => c.id !== initial?.id && documentDigits(c.document ?? '') === digitos,
+    );
+    return outro?.name;
+  }, [form.document, todosClientes, initial?.id]);
+
   const errors = useMemo(() => {
     const e: Partial<Record<keyof FormState, string>> = {};
     if (!form.name.trim()) e.name = 'Informe o nome.';
@@ -262,9 +279,10 @@ export function CustomerForm({
     // desatualizado/inválido (ex.: dados de exemplo) — só valida quando o
     // usuário de fato altera o campo.
     if (form.document.trim() && form.document !== (initial?.document ?? '') && !isValidDocument(form.document)) e.document = 'Documento inválido.';
+    else if (documentoDuplicado) e.document = `Já existe um cliente com este documento: ${documentoDuplicado}.`;
     if (form.email.trim() && !isEmail(form.email)) e.email = 'E-mail inválido.';
     return e;
-  }, [form, initial]);
+  }, [form, initial, documentoDuplicado]);
 
   const set = (k: keyof FormState, v: string | boolean) => {
     setTouched(true);
@@ -337,7 +355,14 @@ export function CustomerForm({
 
   const submit = () => {
     setTouched(true);
-    if (Object.keys(errors).length) return;
+    // Botão desabilitado não explica o que falta: quem abre o cadastro e clica
+    // em Adicionar fica sem resposta nenhuma. Dizer o motivo é o padrão do
+    // resto do sistema (ver a validação da O.S.).
+    const pendencias = Object.values(errors);
+    if (pendencias.length) {
+      toast(pendencias.join(' '), { tone: 'warning' });
+      return;
+    }
     const input: CustomerInput = {
       ...toInput(form),
       registrationTier: tier,
@@ -384,7 +409,7 @@ export function CustomerForm({
           </span>
           <div className="flex gap-2">
             <Button variant="outline" onClick={cancel}>Cancelar</Button>
-            <Button onClick={submit} leftIcon={<Check size={15} />} disabled={Object.keys(errors).length > 0}>
+            <Button onClick={submit} leftIcon={<Check size={15} />}>
               {isEdit ? 'Salvar' : 'Adicionar'}
             </Button>
           </div>

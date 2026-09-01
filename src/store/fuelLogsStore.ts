@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { FuelLog } from '@/domain/types';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
 import { currentOrgId } from './appStore';
 
@@ -81,15 +81,19 @@ export const useFuelLogsStore = create<FuelLogsState>((set, get) => ({
 }));
 
 if (supabaseEnabled && supabase) {
-  supabase
-    .from(TABLE)
-    .select('*')
-    .order('date', { ascending: false })
-    .then(({ data, error }) => {
-      if (!error && data) {
-        useFuelLogsStore.setState({ logs: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<FuelLog>(r)) });
-      }
-    });
+  // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+  onSupabaseSession(() => {
+    if (!supabase) return;
+    supabase
+      .from(TABLE)
+      .select('*')
+      .order('date', { ascending: false })
+      .then(({ data, error }) => {
+        if (!error && data) {
+          useFuelLogsStore.setState({ logs: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<FuelLog>(r)) });
+        }
+      });
+  });
 
   supabase
     .channel(`${TABLE}-sync`)

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { orgProfile as seedOrgProfile } from '@/infrastructure/seed/data';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
 import { useAppStore } from './appStore';
 
@@ -114,15 +114,19 @@ export const useOrgProfileStore = create<OrgProfileState>((set, get) => ({
 export const getOrgProfile = (): OrgProfile => useOrgProfileStore.getState().profile;
 
 if (supabaseEnabled && supabase) {
-  supabase
-    .from(TABLE)
-    .select('*')
-    .single()
-    .then(({ data, error }) => {
-      if (!error && data) {
-        useOrgProfileStore.setState({ profile: { ...DEFAULTS, ...fromSnakeRow<Partial<OrgProfile>>(data as Record<string, unknown>) } });
-      }
-    });
+  // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+  onSupabaseSession(() => {
+    if (!supabase) return;
+    supabase
+      .from(TABLE)
+      .select('*')
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) {
+          useOrgProfileStore.setState({ profile: { ...DEFAULTS, ...fromSnakeRow<Partial<OrgProfile>>(data as Record<string, unknown>) } });
+        }
+      });
+  });
 
   supabase
     .channel(`${TABLE}-sync`)

@@ -3,7 +3,7 @@ import type { Appointment, AppointmentProduct, ServiceOrderPhoto, VerificationIt
 import type { AppointmentStatus } from '@/domain/enums';
 import { appointments as seedAppointments } from '@/infrastructure/seed/data';
 import { isDueForConfirmation } from '@/lib/confirmation';
-import { asPromise, supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { asPromise, onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
 import { useAppStore } from './appStore';
 import { useCustomersStore } from './customersStore';
@@ -302,25 +302,29 @@ if (!supabaseEnabled) {
 }
 
 if (supabaseEnabled && supabase) {
-  asPromise(
-    supabase
-      .from(TABLE)
-      .select('*')
-      .order('scheduled_start', { ascending: true }),
-  )
-    .then(({ data, error }) => {
-      if (error) {
-        console.error('[appointmentsStore] Erro ao carregar agendamentos:', error.code, error.message);
-        return;
-      }
-      if (data) {
-        useAppointmentsStore.setState({ appointments: (data as AppointmentRow[]).map(fromRow) });
-        useAppointmentsStore.getState().sweepConfirmations();
-      }
-    })
-    .catch((err: unknown) => {
-      console.error('[appointmentsStore] Exceção ao carregar agendamentos:', err);
-    });
+  // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+  onSupabaseSession(() => {
+    if (!supabase) return;
+    asPromise(
+      supabase
+        .from(TABLE)
+        .select('*')
+        .order('scheduled_start', { ascending: true }),
+    )
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[appointmentsStore] Erro ao carregar agendamentos:', error.code, error.message);
+          return;
+        }
+        if (data) {
+          useAppointmentsStore.setState({ appointments: (data as AppointmentRow[]).map(fromRow) });
+          useAppointmentsStore.getState().sweepConfirmations();
+        }
+      })
+      .catch((err: unknown) => {
+        console.error('[appointmentsStore] Exceção ao carregar agendamentos:', err);
+      });
+  });
 
   supabase
     .channel('appointments-sync')

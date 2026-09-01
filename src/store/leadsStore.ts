@@ -3,7 +3,7 @@ import type { CrmLead } from '@/domain/types';
 import type { CrmStage } from '@/domain/enums';
 import { crmLeads as seedLeads } from '@/infrastructure/seed/data';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
 import { currentOrgId } from './appStore';
 
@@ -112,15 +112,19 @@ export const useLeadsStore = create<LeadsState>((set, get) => ({
 }));
 
 if (supabaseEnabled && supabase) {
-  supabase
-    .from(TABLE)
-    .select('*')
-    .order('created_at', { ascending: false })
-    .then(({ data, error }) => {
-      if (!error && data) {
-        useLeadsStore.setState({ leads: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<CrmLead>(r)) });
-      }
-    });
+  // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+  onSupabaseSession(() => {
+    if (!supabase) return;
+    supabase
+      .from(TABLE)
+      .select('*')
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (!error && data) {
+          useLeadsStore.setState({ leads: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<CrmLead>(r)) });
+        }
+      });
+  });
 
   supabase
     .channel(`${TABLE}-sync`)

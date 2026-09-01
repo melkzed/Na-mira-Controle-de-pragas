@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { CashClosing } from '@/domain/types';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
 import { currentOrgId } from './appStore';
 import { uid } from './createEntityStore';
@@ -61,15 +61,19 @@ export const useCashClosingStore = create<CashClosingState>((set, get) => ({
 }));
 
 if (supabaseEnabled && supabase) {
-  supabase
-    .from(TABLE)
-    .select('*')
-    .order('closed_at', { ascending: false })
-    .then(({ data, error }) => {
-      if (!error && data) {
-        useCashClosingStore.setState({ closings: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<CashClosing>(r)) });
-      }
-    });
+  // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+  onSupabaseSession(() => {
+    if (!supabase) return;
+    supabase
+      .from(TABLE)
+      .select('*')
+      .order('closed_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (!error && data) {
+          useCashClosingStore.setState({ closings: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<CashClosing>(r)) });
+        }
+      });
+  });
 
   supabase
     .channel(`${TABLE}-sync`)
