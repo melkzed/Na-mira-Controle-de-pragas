@@ -54,17 +54,42 @@ interface ServiceOrdersState {
   remove: (id: string) => Promise<void>;
 }
 
+/**
+ * Preenche as colunas que o Postgres declara `not null default …`.
+ *
+ * O domínio marca esses campos como opcionais, então eles chegam como
+ * `undefined` — e a conversão para linha transforma `undefined` em `null` no
+ * UPDATE, de propósito (é assim que se limpa um campo). Só que numa coluna
+ * `not null` o `null` derruba a gravação inteira com "null value in column …
+ * violates not-null constraint", e o `default` não socorre: ele só vale quando
+ * a coluna é omitida, o que não acontece no update.
+ *
+ * A regra mora aqui, e não em quem chama, porque é a tabela que impõe a
+ * restrição — e são vários pontos gravando OS (formulário, app de campo,
+ * Portal, confirmação de recorrência).
+ */
+function comObrigatorios(os: ServiceOrder): ServiceOrder {
+  return {
+    ...os,
+    serviceValueConfirmed: os.serviceValueConfirmed ?? false,
+    hasCustomerSignature: os.hasCustomerSignature ?? false,
+    pestIds: os.pestIds ?? [],
+    products: os.products ?? [],
+  };
+}
+
 export const useServiceOrdersStore = create<ServiceOrdersState>((set, get) => ({
   orders: load(),
   add: async (input) => {
     const nextNumber = get().orders.reduce((max, o) => Math.max(max, o.number), 1000) + 1;
-    const order: ServiceOrder = {
+    const base: ServiceOrder = {
       id: uid(),
       orgId: currentOrgId(),
       number: nextNumber,
       createdAt: input.createdAt ?? new Date().toISOString(),
       ...input,
     };
+    const order = comObrigatorios(base);
     const next = [order, ...get().orders];
     set({ orders: next });
     if (supabaseEnabled && supabase) {
@@ -94,8 +119,9 @@ export const useServiceOrdersStore = create<ServiceOrdersState>((set, get) => ({
     const next = prev.map((o) => (o.id === id ? { ...o, ...patch } : o));
     set({ orders: next });
     if (supabaseEnabled && supabase) {
-      const updated = next.find((o) => o.id === id);
-      if (!updated) return;
+      const encontrada = next.find((o) => o.id === id);
+      if (!encontrada) return;
+      const updated = comObrigatorios(encontrada);
       asPromise(
         supabase
           .from(TABLE)
