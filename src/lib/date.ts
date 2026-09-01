@@ -70,6 +70,26 @@ export function toDateInputValue(d: Date): string {
   return `${String(d.getFullYear()).padStart(4, '0')}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/**
+ * Dia LOCAL de um instante, como `YYYY-MM-DD` — a chave para agrupar e
+ * comparar "é do mesmo dia".
+ *
+ * `iso.slice(0, 10)` responde em UTC. No fuso do Brasil (UTC-3) tudo que
+ * acontece depois das 21h já está no dia seguinte em UTC, e dedetização é
+ * serviço de fim de expediente: restaurante, mercado e padaria só liberam o
+ * local depois de fechar. Sem isto, o ponto batido às 21h30 aparece no dia
+ * errado e a armadilha inspecionada à noite não conta como "hoje".
+ */
+export function localDayKey(value: string | Date = new Date()): string {
+  const d = typeof value === 'string' ? parseISO(value) : value;
+  return toDateInputValue(d);
+}
+
+/** Dois instantes caem no mesmo dia local? */
+export function isSameLocalDay(a: string | Date, b: string | Date): boolean {
+  return localDayKey(a) === localDayKey(b);
+}
+
 export function fmtDate(iso: string): string {
   return format(parseISO(iso), "dd 'de' MMM", { locale: ptBR });
 }

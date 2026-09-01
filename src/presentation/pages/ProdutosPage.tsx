@@ -18,7 +18,7 @@ import { downloadCsv } from '@/lib/export';
 import { ImportDrawer } from '../components/ImportDrawer';
 import { productsImport } from '@/lib/importModules';
 import { currentBatch, expiryLevel } from '@/lib/batches';
-import { fmtDate } from '@/lib/date';
+import { fmtDate, localDayKey } from '@/lib/date';
 
 export function ProdutosPage() {
   const { items: products, add, update, remove } = useProductsStore();
@@ -188,7 +188,7 @@ function ProductForm({ open, initial, onClose, onSave }: { open: boolean; initia
     // Anexa um novo lote ao histórico, se informado.
     let batches: Batch[] | undefined = initial?.batches ? [...initial.batches] : (f.batches ? [...f.batches] : undefined);
     if (batchCode.trim()) {
-      const b: Batch = { id: uid('b'), code: batchCode.trim(), expiresAt: batchExpiry || undefined, quantity: Number(batchQty) || 0, receivedAt: new Date().toISOString().slice(0, 10) };
+      const b: Batch = { id: uid('b'), code: batchCode.trim(), expiresAt: batchExpiry || undefined, quantity: Number(batchQty) || 0, receivedAt: localDayKey() };
       batches = [...(batches ?? []), b];
     }
     const product: Product = {

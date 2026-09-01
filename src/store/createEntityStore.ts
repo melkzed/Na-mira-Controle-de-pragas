@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
 import { toast } from '@/store/toastStore';
 
@@ -112,14 +112,18 @@ export function createEntityStore<T extends { id: string }>(storageKey: string, 
   }));
 
   if (supabaseEnabled && supabase) {
-    supabase
-      .from(table)
-      .select('*')
-      .then(({ data, error }) => {
-        if (!error && data) {
-          useStore.setState({ items: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<T>(r)) });
-        }
-      });
+    // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+    onSupabaseSession(() => {
+      if (!supabase) return;
+      supabase
+        .from(table)
+        .select('*')
+        .then(({ data, error }) => {
+          if (!error && data) {
+            useStore.setState({ items: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<T>(r)) });
+          }
+        });
+    });
 
     supabase
       .channel(`${table}-sync`)

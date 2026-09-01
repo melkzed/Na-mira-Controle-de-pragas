@@ -37,7 +37,7 @@ import {
 } from '@/application/repository';
 import { useAreasStore } from '@/store/entityStores';
 import { NC_CATEGORY_LABEL } from '@/lib/printReports';
-import { fmtDate } from '@/lib/date';
+import { fmtDate, localDayKey } from '@/lib/date';
 import { projectPoints } from '@/lib/geo';
 import type {
   Appointment, NonConformity, ServiceOrder, SignerInfo, TrapDevice, VerificationItem,
@@ -67,9 +67,9 @@ export function TrapsIndicator({ customerId, onOpen }: { customerId: string; onO
   const inspections = useTrapsStore((s) => s.inspections);
   if (traps.length === 0) return null;
 
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = localDayKey();
   const ids = new Set(traps.map((t) => t.id));
-  const feitasHoje = inspections.filter((i) => ids.has(i.trapId) && i.date.slice(0, 10) === hoje).length;
+  const feitasHoje = inspections.filter((i) => ids.has(i.trapId) && localDayKey(i.date) === hoje).length;
   const completo = feitasHoje >= traps.length;
 
   return (
@@ -567,9 +567,9 @@ function VerificacaoDrawer({ open, onClose, appt }: {
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
 
   // ── Conferência do que já foi registrado nesta visita ──────────────────
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = localDayKey();
   const trapIdsDoCliente = new Set(traps.filter((t) => t.customerId === appt.customerId).map((t) => t.id));
-  const inspecionadasHoje = inspections.filter((i) => trapIdsDoCliente.has(i.trapId) && i.date.slice(0, 10) === hoje);
+  const inspecionadasHoje = inspections.filter((i) => trapIdsDoCliente.has(i.trapId) && localDayKey(i.date) === hoje);
   const comConsumo = inspecionadasHoje.filter((i) => i.consumed).length;
   const ncsAbertas = ncs.filter((n) => n.customerId === appt.customerId && n.status !== 'resolvida').length;
   const naoConformes = items.filter((i) => i.result === 'nao_conforme').length;

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { EquipmentRequest } from '@/domain/types';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
 import { currentOrgId } from './appStore';
 import { uid } from './createEntityStore';
@@ -86,15 +86,19 @@ export const useEquipmentRequestsStore = create<EquipmentRequestsState>((set, ge
 }));
 
 if (supabaseEnabled && supabase) {
-  supabase
-    .from(TABLE)
-    .select('*')
-    .order('created_at', { ascending: false })
-    .then(({ data, error }) => {
-      if (!error && data) {
-        useEquipmentRequestsStore.setState({ requests: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<EquipmentRequest>(r)) });
-      }
-    });
+  // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+  onSupabaseSession(() => {
+    if (!supabase) return;
+    supabase
+      .from(TABLE)
+      .select('*')
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (!error && data) {
+          useEquipmentRequestsStore.setState({ requests: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<EquipmentRequest>(r)) });
+        }
+      });
+  });
 
   supabase
     .channel(`${TABLE}-sync`)

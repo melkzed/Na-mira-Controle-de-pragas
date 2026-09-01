@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { StockBalance } from '@/domain/types';
 import { stockBalances as seedBalances } from '@/infrastructure/seed/data';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
 import { useAppStore } from './appStore';
 
@@ -109,14 +109,18 @@ export const useStockStore = create<StockState>((set, get) => ({
 }));
 
 if (supabaseEnabled && supabase) {
-  supabase
-    .from(TABLE)
-    .select('*')
-    .then(({ data, error }) => {
-      if (!error && data) {
-        useStockStore.setState({ balances: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<StockBalance>(r)) });
-      }
-    });
+  // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+  onSupabaseSession(() => {
+    if (!supabase) return;
+    supabase
+      .from(TABLE)
+      .select('*')
+      .then(({ data, error }) => {
+        if (!error && data) {
+          useStockStore.setState({ balances: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<StockBalance>(r)) });
+        }
+      });
+  });
 
   supabase
     .channel(`${TABLE}-sync`)

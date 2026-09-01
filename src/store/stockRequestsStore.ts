@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { StockRequest } from '@/domain/types';
 import { stockRequests as seed } from '@/infrastructure/seed/data';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
 import { currentOrgId } from './appStore';
 
@@ -87,15 +87,19 @@ export const useStockRequestsStore = create<StockRequestsState>((set, get) => ({
 }));
 
 if (supabaseEnabled && supabase) {
-  supabase
-    .from(TABLE)
-    .select('*')
-    .order('created_at', { ascending: false })
-    .then(({ data, error }) => {
-      if (!error && data) {
-        useStockRequestsStore.setState({ requests: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<StockRequest>(r)) });
-      }
-    });
+  // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+  onSupabaseSession(() => {
+    if (!supabase) return;
+    supabase
+      .from(TABLE)
+      .select('*')
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (!error && data) {
+          useStockRequestsStore.setState({ requests: (data as Record<string, unknown>[]).map((r) => fromSnakeRow<StockRequest>(r)) });
+        }
+      });
+  });
 
   supabase
     .channel(`${TABLE}-sync`)

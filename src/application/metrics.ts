@@ -7,11 +7,12 @@ import { activeTechnicians, centralBalance } from './repository';
 import { useProductsStore } from '@/store/entityStores';
 import { expiringBatches } from '@/lib/batches';
 import { daysUntil } from '@/lib/utils';
+import { localDayKey } from '@/lib/date';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localDayKey();
 
 function isSameDay(iso: string, day: string) {
-  return iso.slice(0, 10) === day;
+  return localDayKey(iso) === day;
 }
 
 function isThisWeek(iso: string) {

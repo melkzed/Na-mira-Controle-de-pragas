@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { orgProfile } from '@/infrastructure/seed/data';
 import { DEFAULT_TAX_CONFIG, type TaxRegime } from '@/application/fiscal/tax';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { toast } from '@/store/toastStore';
 import { useAppStore } from './appStore';
 
@@ -246,15 +246,19 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 }));
 
 if (supabaseEnabled && supabase) {
-  supabase
-    .from(TABLE)
-    .select('*')
-    .maybeSingle()
-    .then(({ data, error }) => {
-      if (!error && data) {
-        useSettingsStore.setState(fromRow(data as unknown as SettingsRow));
-      }
-    });
+  // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+  onSupabaseSession(() => {
+    if (!supabase) return;
+    supabase
+      .from(TABLE)
+      .select('*')
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!error && data) {
+          useSettingsStore.setState(fromRow(data as unknown as SettingsRow));
+        }
+      });
+  });
 
   supabase
     .channel(`${TABLE}-sync`)

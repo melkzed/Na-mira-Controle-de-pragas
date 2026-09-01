@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Customer, CustomerContact, ContactSchedule, Reservoir, ServiceContract } from '@/domain/types';
 import { customers as seedCustomers } from '@/infrastructure/seed/data';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 import { useAppStore } from '@/store/appStore';
 import { toast } from '@/store/toastStore';
 
@@ -253,13 +253,17 @@ export const useCustomersStore = create<CustomersState>((set, get) => ({
 }));
 
 if (supabaseEnabled && supabase) {
-  supabase
-    .from(TABLE)
-    .select('*')
-    .order('created_at', { ascending: false })
-    .then(({ data, error }) => {
-      if (!error && data) useCustomersStore.setState({ customers: (data as CustomerRow[]).map(fromRow) });
-    });
+  // A carga inicial espera a sessão: sem ela o RLS devolve zero linhas.
+  onSupabaseSession(() => {
+    if (!supabase) return;
+    supabase
+      .from(TABLE)
+      .select('*')
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (!error && data) useCustomersStore.setState({ customers: (data as CustomerRow[]).map(fromRow) });
+      });
+  });
 
   supabase
     .channel('customers-sync')

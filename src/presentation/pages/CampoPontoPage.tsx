@@ -6,7 +6,7 @@ import { Badge } from '../components/ui/Badge';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
 import { useTimeClockStore } from '@/store/timeClockStore';
 import { toast } from '@/store/toastStore';
-import { format, parseISO } from '@/lib/date';
+import { format, localDayKey, parseISO } from '@/lib/date';
 
 /** "Meu Ponto" — controle de jornada do técnico: entrada/saída e histórico. */
 export function CampoPontoPage() {
@@ -18,8 +18,8 @@ export function CampoPontoPage() {
   const last = mine[0];
   const isIn = last?.type === 'entrada';
 
-  const today = new Date().toISOString().slice(0, 10);
-  const todayEntries = mine.filter((e) => e.timestamp.slice(0, 10) === today).slice().reverse();
+  const today = localDayKey();
+  const todayEntries = mine.filter((e) => localDayKey(e.timestamp) === today).slice().reverse();
 
   const doClock = () => {
     const type = isIn ? 'saida' : 'entrada';
