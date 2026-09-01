@@ -195,7 +195,10 @@ function SanitaryLicensePanel() {
 
 // ── Departamento ─────────────────────────────────────────────────────────
 function DepartamentoTab() {
-  const users = useUsersStore((s) => s.items);
+  // Fora da lista da equipe: o login do Portal também vira uma linha em
+  // `users` (papel `cliente`), porque é dela que o JWT tira org e customer_id.
+  // Não é gente da empresa, e não tem setor para configurar aqui.
+  const users = useUsersStore((s) => sortByName(s.items.filter((u) => u.role !== 'cliente')));
   const updateUser = useUsersStore((s) => s.update);
   const departments = useDepartmentsStore((s) => s.items);
   const addDept = useDepartmentsStore((s) => s.add);

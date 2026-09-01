@@ -58,11 +58,13 @@ function initUserStandalone(): User | null {
   return useUsersStore.getState().items.find((u) => u.id === id && u.isActive) ?? null;
 }
 
-/** A sessão salva é de um cliente do Portal? O acesso do cliente vem do
- *  cadastro dele, não do Supabase Auth — então reidrata igual nos dois modos,
- *  e não há sessão remota a esperar. */
+/** A sessão salva é de um cliente do Portal em modo standalone?
+ *
+ *  Só vale sem Supabase. Com Supabase, o cliente passou a ter sessão de Auth
+ *  de verdade (ver `authenticateCustomerRemote`) — é ela que reidrata, como
+ *  para qualquer outro usuário, e é ela que faz o RLS liberar os dados dele. */
 function hasCustomerSession(): boolean {
-  return (localStorage.getItem(USER_KEY) ?? '').startsWith(CLIENTE_PREFIX);
+  return !supabaseEnabled && (localStorage.getItem(USER_KEY) ?? '').startsWith(CLIENTE_PREFIX);
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -81,8 +83,9 @@ export const useAppStore = create<AppState>((set) => ({
   login: async (email, password) => {
     const { user } = await authenticate(email, password);
     if (user) {
-      // Cliente sempre persiste local: o Portal não passa pelo Supabase Auth.
-      if (!supabaseEnabled || user.role === 'cliente') localStorage.setItem(USER_KEY, user.id);
+      // Sem Supabase, a sessão é este id no localStorage — inclusive a do
+      // cliente. Com Supabase, quem guarda a sessão é o próprio Auth.
+      if (!supabaseEnabled) localStorage.setItem(USER_KEY, user.id);
       set({ currentUser: user });
     }
     return user;

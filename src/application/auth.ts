@@ -13,7 +13,7 @@ import { useUsersStore } from '@/store/entityStores';
 import { useCustomersStore } from '@/store/customersStore';
 import { localPassword } from '@/store/localPasswords';
 import { documentDigits, looksLikeDocument, verifyPassword } from '@/lib/password';
-import { supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { functionErrorMessage, supabase, supabaseEnabled } from '@/lib/supabaseClient';
 
 /** Senha única de demonstração — vale só no modo standalone (sem Supabase). */
 export const DEMO_PASSWORD = 'namira123';
@@ -32,6 +32,8 @@ interface UsersRow {
   avatar_url: string | null;
   role: UserRole;
   is_active: boolean;
+  /** Preenchido só no papel `cliente` — é por ele que o Portal filtra tudo. */
+  customer_id: string | null;
 }
 
 function rowToUser(row: UsersRow): User {
@@ -44,6 +46,7 @@ function rowToUser(row: UsersRow): User {
     avatarUrl: row.avatar_url ?? undefined,
     role: row.role,
     isActive: row.is_active,
+    customerId: row.customer_id ?? undefined,
   };
 }
 
@@ -53,7 +56,7 @@ async function fetchAppUser(authUserId: string): Promise<User | null> {
   if (!supabase) return null;
   const { data, error } = await supabase
     .from('users')
-    .select('id, org_id, name, email, phone, avatar_url, role, is_active')
+    .select('id, org_id, name, email, phone, avatar_url, role, is_active, customer_id')
     .eq('auth_user_id', authUserId)
     .eq('is_active', true)
     .maybeSingle();
@@ -73,6 +76,10 @@ async function fetchAppUser(authUserId: string): Promise<User | null> {
  * `customerId`; é por esse campo que o Portal filtra tudo.
  */
 async function authenticateCustomer(login: string, password: string): Promise<AuthResult> {
+  // Com Supabase, a conferência acontece no servidor e o cliente sai daqui com
+  // uma sessão de verdade — ver `authenticateCustomerRemote`.
+  if (supabaseEnabled && supabase) return authenticateCustomerRemote(login, password);
+
   const digits = documentDigits(login);
   const customer = useCustomersStore
     .getState()
@@ -91,6 +98,49 @@ async function authenticateCustomer(login: string, password: string): Promise<Au
       customerId: customer.id,
     },
   };
+}
+
+/**
+ * Login do Portal com Supabase.
+ *
+ * A senha do cliente vive em `customers.portal_password_hash`. Conferir isso no
+ * navegador exigiria que qualquer visitante pudesse ler a tabela de clientes —
+ * e a chave anônima vai no bundle, então "qualquer visitante" é literal. Por
+ * isso a conferência é feita pela Edge Function `login-cliente`, com a Service
+ * Role, que devolve um token de uso único.
+ *
+ * Trocar esse token por uma sessão (`verifyOtp`) é o que faz o Portal
+ * funcionar com RLS: sem JWT o cliente não lê nem os próprios atendimentos.
+ * A sessão carrega `app_role: 'cliente'` e `customer_id` nos claims, e as
+ * políticas de db/migrate_portal_rls.sql o prendem aos próprios registros.
+ */
+async function authenticateCustomerRemote(login: string, password: string): Promise<AuthResult> {
+  if (!supabase) return { user: null, error: 'unknown' };
+  const { data, error } = await supabase.functions.invoke('login-cliente', {
+    body: { documento: login, senha: password },
+  });
+  if (error || !(data as { token_hash?: string } | null)?.token_hash) {
+    const msg = await functionErrorMessage(error, data, '');
+    // A função devolve a mesma recusa para documento inexistente e senha
+    // errada, de propósito: distinguir os dois entrega quais CPFs existem.
+    if (/inválidos/i.test(msg)) return { user: null, error: 'invalid_password' };
+    console.error('[auth] login do portal falhou:', msg || error);
+    return { user: null, error: 'unknown' };
+  }
+
+  const { token_hash: tokenHash } = data as { token_hash: string };
+  const { data: sessao, error: erroSessao } = await supabase.auth.verifyOtp({
+    token_hash: tokenHash,
+    type: 'magiclink',
+  });
+  if (erroSessao || !sessao?.user) {
+    console.error('[auth] verifyOtp do portal falhou:', erroSessao);
+    return { user: null, error: 'unknown' };
+  }
+
+  const appUser = await fetchAppUser(sessao.user.id);
+  if (!appUser) return { user: null, error: 'unknown' };
+  return { user: appUser };
 }
 
 /** Reconstrói o usuário sintético do cliente a partir do cadastro — usado

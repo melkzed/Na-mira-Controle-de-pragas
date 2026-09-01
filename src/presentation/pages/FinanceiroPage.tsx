@@ -537,7 +537,7 @@ function RecurringForm({ open, onClose, onSave }: { open: boolean; onClose: () =
 
   return (
     <Drawer open={open} onClose={onClose} title="Nova conta recorrente" subtitle="Gera lançamentos a pagar automaticamente"
-      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha descrição, valor e primeiro vencimento.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!valid}>Cadastrar</Button></div></div>}>
+      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha descrição, valor e primeiro vencimento.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Cadastrar</Button></div></div>}>
       <div className="space-y-4">
         <Field label="Descrição" required><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Aluguel da sede" /></Field>
         <div className="grid grid-cols-2 gap-4">
@@ -623,7 +623,7 @@ function FinanceForm({ open, defaultType, onClose, onSave }: { open: boolean; de
 
   return (
     <Drawer open={open} onClose={onClose} title="Novo lançamento" subtitle="Receita ou despesa"
-      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha descrição e valor.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!valid}>Lançar</Button></div></div>}>
+      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha descrição e valor.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Lançar</Button></div></div>}>
       <div className="space-y-4">
         <Segmented value={type} onChange={setType} options={[{ value: 'receita', label: 'Receita' }, { value: 'despesa', label: 'Despesa' }]} />
         <Field label="Descrição" required><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Contrato mensal · Cliente X" /></Field>
@@ -741,7 +741,7 @@ function BankAccountForm({ open, onClose, onSave }: { open: boolean; onClose: ()
 
   return (
     <Drawer open={open} onClose={onClose} title="Nova conta bancária" subtitle="Saldo por banco e contas"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!valid}>Cadastrar</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Cadastrar</Button></div>}>
       <div className="space-y-4">
         <Field label="Banco" required><Input value={bank} onChange={(e) => setBank(e.target.value)} placeholder="Ex.: Banco do Brasil" />{touched && !bank.trim() && <span className="mt-1 block text-xs text-danger">Informe o banco.</span>}</Field>
         <Field label="Apelido"><Input value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="Ex.: Conta principal" /></Field>
@@ -908,7 +908,7 @@ function CheckForm({ open, onClose, onSave }: { open: boolean; onClose: () => vo
 
   return (
     <Drawer open={open} onClose={onClose} title="Emitir cheque" subtitle="Controle de compensação"
-      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha número, banco e valor.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Banknote size={15} />} disabled={!valid}>Emitir</Button></div></div>}>
+      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha número, banco e valor.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Banknote size={15} />}>Emitir</Button></div></div>}>
       <div className="grid grid-cols-2 gap-4">
         <Field label="Número" required><Input value={number} onChange={(e) => setNumber(e.target.value)} /></Field>
         <Field label="Banco" required><Input value={bank} onChange={(e) => setBank(e.target.value)} /></Field>
@@ -984,7 +984,7 @@ function LoanForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
 
   return (
     <Drawer open={open} onClose={onClose} title="Novo empréstimo/aplicação" subtitle="Controle de saldo real, histórico e teórico"
-      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha descrição e principal.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!valid}>Cadastrar</Button></div></div>}>
+      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha descrição e principal.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Cadastrar</Button></div></div>}>
       <div className="space-y-4">
         <Segmented value={kind} onChange={setKind} options={[{ value: 'emprestimo', label: 'Empréstimo' }, { value: 'aplicacao', label: 'Aplicação' }]} />
         <Field label="Descrição" required><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Capital de giro · Banco X" /></Field>
