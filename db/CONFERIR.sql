@@ -133,7 +133,23 @@ portal as (
       ('hook consegue ler users (auth_admin_read_users)',
        exists (select 1 from pg_policies
                 where schemaname='public' and tablename='users'
-                  and policyname='auth_admin_read_users'))
+                  and policyname='auth_admin_read_users')),
+      -- Sem esta, o login do Portal falha: o app não acha a própria linha do
+      -- cliente em public.users e não descobre org, papel nem customer_id.
+      ('cliente lê a própria linha em users (cliente_own_user)',
+       exists (select 1 from pg_policies
+                where schemaname='public' and tablename='users'
+                  and policyname='cliente_own_user')),
+      -- Sem estas, os documentos do Portal saem sem cabeçalho da empresa,
+      -- sem informações toxicológicas e sem responsável técnico.
+      ('cliente lê fiscal_settings (documentos)',
+       exists (select 1 from pg_policies
+                where schemaname='public' and tablename='fiscal_settings'
+                  and policyname='cliente_fiscal_settings')),
+      ('cliente lê licenses (responsável técnico no laudo)',
+       exists (select 1 from pg_policies
+                where schemaname='public' and tablename='licenses'
+                  and policyname='cliente_licenses'))
     ) as p(peca, existe)
 )
 select * from colunas
