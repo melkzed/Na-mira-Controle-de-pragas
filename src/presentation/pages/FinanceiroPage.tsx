@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import {
-  ArrowLeftRight, Banknote, Check, CheckCheck, Clock, Landmark, Lock, Paperclip,
-  PiggyBank, Plus, Repeat, ThumbsDown, ThumbsUp, Trash2, TriangleAlert, Upload,
-} from 'lucide-react';
+import { ArrowLeftRight, Banknote, Check, CheckCheck, Clock, Landmark, Lock, Paperclip, Pencil, PiggyBank, Plus, Repeat, ThumbsDown, ThumbsUp, Trash2, TriangleAlert, Upload } from 'lucide-react';
 import { PageHeader, Stagger } from '../components/ui/misc';
 import { StatCard } from '../components/StatCard';
 import { Button } from '../components/ui/Button';
@@ -432,6 +429,7 @@ function PaymentDialog({ entries, onClose }: { entries: FinanceEntry[] | null; o
  *  reflete o lançamento (FinanceEntry) mais relevante gerado por ela. */
 function RecurringPayablesPanel() {
   const { items, add, update, remove } = useRecurringPayablesStore();
+  const [editing, setEditing] = useState<RecurringPayable | null>(null);
   const entries = useFinanceStore((s) => s.items);
   const [formOpen, setFormOpen] = useState(false);
   const [payDialogEntries, setPayDialogEntries] = useState<FinanceEntry[] | null>(null);
@@ -455,7 +453,7 @@ function RecurringPayablesPanel() {
       <CardHeader
         title={<span className="flex items-center gap-2"><Repeat size={16} className="text-brand" /> Contas a pagar recorrentes</span>}
         subtitle="Aluguel, salários, água, energia, contratos — geram lançamentos automaticamente"
-        action={<div className="flex gap-2"><Button size="sm" variant="outline" onClick={gerar}>Gerar próximos</Button><Button size="sm" leftIcon={<Plus size={14} />} onClick={() => setFormOpen(true)}>Nova conta</Button></div>}
+        action={<div className="flex gap-2"><Button size="sm" variant="outline" onClick={gerar}>Gerar próximos</Button><Button size="sm" leftIcon={<Plus size={14} />} onClick={() => { setEditing(null); setFormOpen(true); }}>Nova conta</Button></div>}
       />
       <CardBody className="space-y-2">
         {items.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma conta recorrente cadastrada.</p>}
@@ -478,18 +476,37 @@ function RecurringPayablesPanel() {
                 <Button size="sm" onClick={() => setPayDialogEntries([next])}>Pagar</Button>
               )}
               <Button size="sm" variant="ghost" onClick={() => update(p.id, { active: !p.active })}>{p.active ? 'Pausar' : 'Ativar'}</Button>
+              <button onClick={() => { setEditing(p); setFormOpen(true); }} aria-label={`Editar ${p.description}`} className="rounded-md p-1 text-muted-foreground hover:text-foreground"><Pencil size={15} /></button>
               <button onClick={() => { remove(p.id); toast('Conta recorrente removida.', { tone: 'danger', action: { label: 'Desfazer', onClick: () => add(p) } }); }} aria-label={`Excluir ${p.description}`} className="rounded-md p-1 text-muted-foreground hover:text-danger"><Trash2 size={15} /></button>
             </div>
           );
         })}
       </CardBody>
-      <RecurringForm open={formOpen} onClose={() => setFormOpen(false)} onSave={(p) => { add(p); setFormOpen(false); generateRecurring(3); toast('Conta recorrente cadastrada.', { tone: 'success' }); }} />
+      <RecurringForm
+        open={formOpen}
+        initial={editing}
+        onClose={() => { setFormOpen(false); setEditing(null); }}
+        onSave={(p) => {
+          if (editing) {
+            update(p.id, p);
+            toast('Conta recorrente atualizada. Os lançamentos já gerados continuam como estão.', { tone: 'success' });
+          } else {
+            add(p);
+            generateRecurring(3);
+            toast('Conta recorrente cadastrada.', { tone: 'success' });
+          }
+          setFormOpen(false);
+          setEditing(null);
+        }}
+      />
       <PaymentDialog entries={payDialogEntries} onClose={() => setPayDialogEntries(null)} />
     </Card>
   );
 }
 
-function RecurringForm({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (p: RecurringPayable) => void }) {
+function RecurringForm({ open, onClose, onSave, initial }: {
+  open: boolean; onClose: () => void; onSave: (p: RecurringPayable) => void; initial?: RecurringPayable | null;
+}) {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Aluguel');
   const [amount, setAmount] = useState('');
@@ -505,10 +522,26 @@ function RecurringForm({ open, onClose, onSave }: { open: boolean; onClose: () =
 
   useEffect(() => {
     if (!open) return;
+    setTouched(false);
+    if (initial) {
+      // Edição: o intervalo personalizado é reconstruído de volta para o
+      // 'custom' da tela, que é onde ele existe.
+      setDescription(initial.description);
+      setCategory(initial.category ?? 'Aluguel');
+      setAmount(String(initial.amount));
+      setFrequency(initial.customIntervalMonths ? 'custom' : initial.frequency);
+      setCustomInterval(initial.customIntervalMonths ? String(initial.customIntervalMonths) : '');
+      setDurationKind(initial.durationKind ?? 'indeterminado');
+      setOccurrences(initial.occurrences ? String(initial.occurrences) : '12');
+      setEndDate(initial.endDate ?? '');
+      setStartDate(initial.startDate ?? toDateInputValue(new Date()));
+      return;
+    }
     setDescription(''); setCategory('Aluguel'); setAmount(''); setFrequency('mensal');
     setCustomInterval(''); setDurationKind('indeterminado'); setOccurrences('12'); setEndDate('');
-    setStartDate(toDateInputValue(new Date())); setTouched(false);
-  }, [open]);
+    setStartDate(toDateInputValue(new Date()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial?.id]);
 
   const usaCustom = frequency === 'custom';
   const valid = !!description.trim() && Number(amount) > 0 && !!startDate
@@ -521,7 +554,10 @@ function RecurringForm({ open, onClose, onSave }: { open: boolean; onClose: () =
     if (!valid) return;
     const dueDay = Math.min(Math.max(parseDateInput(startDate).getDate(), 1), 28);
     onSave({
-      id: uid('rp'), orgId: currentOrgId(),
+      // Editando, o id é preservado: os lançamentos já gerados apontam para
+      // ele por `recurringId`, e trocá-lo os deixaria órfãos.
+      id: initial?.id ?? uid('rp'),
+      orgId: initial?.orgId ?? currentOrgId(),
       description: description.trim(), category: category.trim() || undefined,
       amount: Number(amount),
       // No modo personalizado a frequência padrão perde o sentido — grava
@@ -531,13 +567,15 @@ function RecurringForm({ open, onClose, onSave }: { open: boolean; onClose: () =
       durationKind,
       occurrences: durationKind === 'ocorrencias' ? Number(occurrences) : undefined,
       endDate: durationKind === 'ate_data' ? endDate : undefined,
-      dueDay, startDate, active: true, createdAt: new Date().toISOString(),
+      dueDay, startDate,
+      active: initial?.active ?? true,
+      createdAt: initial?.createdAt ?? new Date().toISOString(),
     });
   };
 
   return (
-    <Drawer open={open} onClose={onClose} title="Nova conta recorrente" subtitle="Gera lançamentos a pagar automaticamente"
-      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha descrição, valor e primeiro vencimento.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Cadastrar</Button></div></div>}>
+    <Drawer open={open} onClose={onClose} title={initial ? 'Editar conta recorrente' : 'Nova conta recorrente'} subtitle="Gera lançamentos a pagar automaticamente"
+      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha descrição, valor e primeiro vencimento.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>{initial ? 'Salvar' : 'Cadastrar'}</Button></div></div>}>
       <div className="space-y-4">
         <Field label="Descrição" required><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Aluguel da sede" /></Field>
         <div className="grid grid-cols-2 gap-4">

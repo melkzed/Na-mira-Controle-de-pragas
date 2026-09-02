@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, FileText, Plus, ShieldCheck, Trash2, X } from 'lucide-react';
+import { Check, FileText, Pencil, Plus, ShieldCheck, Trash2, X } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
@@ -23,7 +23,8 @@ import { daysUntil, formatCurrency } from '@/lib/utils';
 import { dateInputToIso, fmtDate } from '@/lib/date';
 
 export function FiscalPage() {
-  const { items: licenses, add, remove } = useLicensesStore();
+  const { items: licenses, add, update, remove } = useLicensesStore();
+  const [editing, setEditing] = useState<License | null>(null);
   const org = useOrgProfileStore((s) => s.profile);
   const fiscal = useSettingsStore((s) => s.fiscal);
   const [formOpen, setFormOpen] = useState(false);
@@ -42,7 +43,10 @@ export function FiscalPage() {
       return <Badge tone="success" dot>Ativa</Badge>;
     } },
     { key: 'act', header: '', align: 'right', render: (l) => (
-      <button onClick={(ev) => { ev.stopPropagation(); remove(l.id); toast('Licença removida.', { tone: 'danger', action: { label: 'Desfazer', onClick: () => add(l) } }); }} aria-label={`Excluir ${l.name}`} className="text-muted-foreground hover:text-danger"><Trash2 size={15} /></button>
+      <div className="flex justify-end gap-1">
+        <button onClick={(ev) => { ev.stopPropagation(); setEditing(l); setFormOpen(true); }} aria-label={`Editar ${l.name}`} className="text-muted-foreground hover:text-foreground"><Pencil size={15} /></button>
+        <button onClick={(ev) => { ev.stopPropagation(); remove(l.id); toast('Licença removida.', { tone: 'danger', action: { label: 'Desfazer', onClick: () => add(l) } }); }} aria-label={`Excluir ${l.name}`} className="text-muted-foreground hover:text-danger"><Trash2 size={15} /></button>
+      </div>
     ) },
   ];
 
@@ -51,7 +55,7 @@ export function FiscalPage() {
       <PageHeader
         title="Fiscal & Conformidade"
         description="Licenças, alvarás, tributação e documentos regulatórios"
-        actions={<Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Nova licença</Button>}
+        actions={<Button leftIcon={<Plus size={16} />} onClick={() => { setEditing(null); setFormOpen(true); }}>Nova licença</Button>}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -101,12 +105,24 @@ export function FiscalPage() {
         <Table columns={columns} rows={licenses} keyField={(l) => l.id} />
       </div>
 
-      <LicenseForm open={formOpen} onClose={() => setFormOpen(false)} onSave={(l) => { add(l); setFormOpen(false); toast('Licença cadastrada.', { tone: 'success' }); }} />
+      <LicenseForm
+        open={formOpen}
+        initial={editing}
+        onClose={() => { setFormOpen(false); setEditing(null); }}
+        onSave={(l) => {
+          if (editing) { update(l.id, l); toast('Licença atualizada.', { tone: 'success' }); }
+          else { add(l); toast('Licença cadastrada.', { tone: 'success' }); }
+          setFormOpen(false);
+          setEditing(null);
+        }}
+      />
     </div>
   );
 }
 
-function LicenseForm({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (l: License) => void }) {
+function LicenseForm({ open, onClose, onSave, initial }: {
+  open: boolean; onClose: () => void; onSave: (l: License) => void; initial?: License | null;
+}) {
   const [name, setName] = useState('');
   const [issuer, setIssuer] = useState('');
   const [number, setNumber] = useState('');
@@ -116,22 +132,34 @@ function LicenseForm({ open, onClose, onSave }: { open: boolean; onClose: () => 
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
-    if (open) { setName(''); setIssuer(''); setNumber(''); setResponsibleId(''); setIssuedAt(''); setExpiresAt(''); setTouched(false); }
-  }, [open]);
+    if (!open) return;
+    setTouched(false);
+    // Renovação é o caso comum: muda o número e a validade, o resto continua.
+    // Sem edição, era preciso excluir e recadastrar — e o registro anterior,
+    // que é o que comprova a regularidade no período passado, se perdia.
+    const iso = (v?: string) => (v ? v.slice(0, 10) : '');
+    setName(initial?.name ?? '');
+    setIssuer(initial?.issuer ?? '');
+    setNumber(initial?.number ?? '');
+    setResponsibleId(initial?.responsibleId ?? '');
+    setIssuedAt(iso(initial?.issuedAt));
+    setExpiresAt(iso(initial?.expiresAt));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial?.id]);
 
   const submit = () => {
     setTouched(true);
     if (!name.trim()) return;
     const status = expiresAt && dateInputToIso(expiresAt) < new Date().toISOString() ? 'vencida' : 'ativa';
     onSave({
-      id: uid('lic'), orgId: currentOrgId(), name: name.trim(), issuer: issuer.trim() || undefined, number: number.trim() || undefined,
+      id: initial?.id ?? uid('lic'), orgId: initial?.orgId ?? currentOrgId(), name: name.trim(), issuer: issuer.trim() || undefined, number: number.trim() || undefined,
       responsibleId: responsibleId || undefined, issuedAt: issuedAt ? dateInputToIso(issuedAt) : undefined,
       expiresAt: expiresAt ? dateInputToIso(expiresAt) : undefined, status,
     });
   };
 
   return (
-    <Drawer open={open} onClose={onClose} title="Nova licença" subtitle="Licença, alvará ou registro regulatório"
+    <Drawer open={open} onClose={onClose} title={initial ? 'Editar licença' : 'Nova licença'} subtitle="Licença, alvará ou registro regulatório"
       footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!name.trim()}>Cadastrar</Button></div>}>
       <div className="grid grid-cols-2 gap-4">
         <Field label="Documento" required className="col-span-2"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Alvará Sanitário" />{touched && !name.trim() && <span className="mt-1 block text-xs text-danger">Informe o documento.</span>}</Field>
