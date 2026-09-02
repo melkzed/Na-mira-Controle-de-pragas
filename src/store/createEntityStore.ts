@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { onSupabaseSession, supabase, supabaseEnabled } from '@/lib/supabaseClient';
+import { dbErrorMessage } from '@/lib/dbError';
 import { fromSnakeRow, toSnakeRow } from '@/lib/caseConvert';
 import { toast } from '@/store/toastStore';
 
@@ -45,9 +46,12 @@ export function createEntityStore<T extends { id: string }>(storageKey: string, 
       /* cota excedida — ignora */
     }
   };
-  const failToast = (error?: { message?: string; code?: string }) => {
+  const failToast = (error?: { message?: string; code?: string }, acao = 'salvar') => {
     if (error) console.error(`[${table}] Supabase error`, error.code, error.message);
-    toast('Não foi possível salvar — verifique a configuração do banco e tente novamente.', { tone: 'danger' });
+    // A mensagem antiga ("verifique a configuração do banco") não servia a
+    // ninguém: quem cadastra não configura banco, e quem configura não está
+    // vendo a tela. `dbErrorMessage` diz a causa concreta.
+    toast(dbErrorMessage(error, acao), { tone: 'danger' });
   };
 
   const useStore = create<EntityStore<T>>((set, get) => ({
@@ -62,7 +66,7 @@ export function createEntityStore<T extends { id: string }>(storageKey: string, 
           .then(({ error }) => {
             if (error) {
               set({ items: get().items.filter((it) => it.id !== item.id) });
-              failToast(error);
+              failToast(error, 'criar');
             }
           });
       } else {
@@ -83,7 +87,7 @@ export function createEntityStore<T extends { id: string }>(storageKey: string, 
           .then(({ error }) => {
             if (error) {
               set({ items: prev });
-              failToast(error);
+              failToast(error, 'salvar');
             }
           });
       } else {
@@ -102,7 +106,7 @@ export function createEntityStore<T extends { id: string }>(storageKey: string, 
           .then(({ error }) => {
             if (error) {
               set({ items: prev });
-              failToast(error);
+              failToast(error, 'excluir');
             }
           });
       } else {
