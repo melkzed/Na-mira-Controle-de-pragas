@@ -715,6 +715,14 @@ export interface OsRecurrence {
    *  recorrência (Appointment.recurrenceId) — usado para regenerar o plano
    *  sem duplicar visitas já criadas ao editar a OS. */
   recurrenceGroupId?: string;
+  /** Intervalo até a PRIMEIRA visita do plano, quando ele difere do intervalo
+   *  das demais.
+   *
+   *  É o caso comum em dedetização: depois da aplicação inicial a volta é em
+   *  45 dias — para pegar o ciclo do que eclodiu — e só a partir daí o
+   *  contrato entra no ritmo mensal ou trimestral. Vazio significa que a
+   *  primeira visita segue a mesma periodicidade das outras. */
+  firstVisitFreq?: RecurrenceFreq;
   /** Por quanto tempo o contrato se repete, em meses (ex.: 12 = um ano).
    *
    *  É assim que a recorrência é contratada: "um ano, de mês em mês". O número

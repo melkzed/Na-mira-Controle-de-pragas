@@ -52,7 +52,13 @@ export function proximaData(de: Date, freq: RecurrenceFreq): Date {
  * são doze visitas. Contar as datas de verdade (em vez de dividir dias) evita
  * que fevereiro ou um mês de 31 dias mude o total.
  */
-export function occurrencesForDuration(meses: number, freq: RecurrenceFreq): number {
+export function occurrencesForDuration(
+  meses: number,
+  freq: RecurrenceFreq,
+  /** Intervalo da primeira visita, quando difere das demais (ver
+   *  `OsRecurrence.firstVisitFreq`). */
+  primeira?: RecurrenceFreq,
+): number {
   if (meses <= 0) return 0;
   const inicio = new Date();
   const limite = new Date(inicio);
@@ -62,11 +68,33 @@ export function occurrencesForDuration(meses: number, freq: RecurrenceFreq): num
   // Teto de segurança: semanal em 24 meses dá ~104 — 400 nunca é atingido na
   // prática e impede laço infinito se alguma periodicidade vier zerada.
   while (n < 400) {
-    cursor = proximaData(cursor, freq);
+    cursor = proximaData(cursor, n === 0 && primeira ? primeira : freq);
     if (cursor > limite) break;
     n += 1;
   }
   return n;
+}
+
+/**
+ * Fases de um plano "primeira visita em X, depois a cada Y".
+ *
+ * O modelo guardado já sabia encadear fases; o que faltava era a tela oferecer
+ * isso. A primeira vira uma fase de uma ocorrência só, e o resto do prazo vira
+ * a segunda — que é exatamente como o contrato é vendido.
+ */
+export function phasesFor(
+  meses: number,
+  freq: RecurrenceFreq,
+  primeira: RecurrenceFreq | undefined,
+  novoId: () => string,
+): RecurrencePhase[] {
+  const total = occurrencesForDuration(meses, freq, primeira);
+  if (!primeira || primeira === freq || total === 0) {
+    return [{ id: novoId(), frequency: freq, occurrences: total }];
+  }
+  const fases: RecurrencePhase[] = [{ id: novoId(), frequency: primeira, occurrences: 1 }];
+  if (total > 1) fases.push({ id: novoId(), frequency: freq, occurrences: total - 1 });
+  return fases;
 }
 
 /** Total de ocorrências programadas em todas as fases do plano. */
