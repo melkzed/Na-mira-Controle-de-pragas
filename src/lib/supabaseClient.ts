@@ -80,6 +80,12 @@ export function onSupabaseSession(carregar: () => void): void {
 
 if (supabaseEnabled && supabase) {
   supabase.auth.onAuthStateChange((event) => {
-    if (event === 'SIGNED_IN') carregadores.forEach((c) => c());
+    if (event !== 'SIGNED_IN') return;
+    // FORA do callback, de propósito. O supabase-js mantém um lock interno
+    // enquanto executa este handler, e toda chamada ao banco espera esse mesmo
+    // lock para pegar o token — chamar as buscas aqui dentro trava todas elas,
+    // sem erro nenhum: as promessas simplesmente nunca resolvem, e o sistema
+    // abre com todas as listas vazias, como se os dados tivessem sumido.
+    setTimeout(() => carregadores.forEach((carregar) => carregar()), 0);
   });
 }
