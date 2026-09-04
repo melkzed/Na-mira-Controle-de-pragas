@@ -70,6 +70,22 @@ export function asPromise<T>(builder: PromiseLike<T>): Promise<T> {
  */
 const carregadores: (() => void)[] = [];
 
+/**
+ * Refaz as buscas iniciais de todas as stores.
+ *
+ * Usado depois de uma operação que cria registros em várias tabelas de uma vez
+ * — criar uma OS grava a ordem, o agendamento dela e, havendo recorrência, uma
+ * visita por ocorrência. A escrita otimista já atualiza a tela, mas ela é feita
+ * store a store: se qualquer uma das gravações não voltar (rede, RLS, Realtime
+ * desligado na tabela), a Agenda fica sem a visita até alguém recarregar a
+ * página. Reler do banco é o que garante que o que está na tela é o que está
+ * gravado.
+ */
+export function recarregarDados(): void {
+  if (!supabaseEnabled) return;
+  carregadores.forEach((carregar) => carregar());
+}
+
 export function onSupabaseSession(carregar: () => void): void {
   if (!supabaseEnabled || !supabase) return;
   carregadores.push(carregar);

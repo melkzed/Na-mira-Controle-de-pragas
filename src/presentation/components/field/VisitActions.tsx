@@ -11,10 +11,7 @@
  * aparece no sistema da empresa na hora.
  */
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Bug, CheckCircle2, ClipboardCheck, ClipboardList, Eye, PenLine, Radar,
-  Settings2, TriangleAlert,
-} from 'lucide-react';
+import { Bug, CheckCircle2, ClipboardCheck, ClipboardList, Eye, PenLine, Plus, Radar, Settings2, TriangleAlert } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Drawer } from '../ui/Drawer';
@@ -26,7 +23,7 @@ import { signerMissing } from '@/lib/signer';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import { useTrapsStore } from '@/store/trapsStore';
-import { useNonConformitiesStore } from '@/store/entityStores';
+import { useNonConformitiesStore, useTrapTypesStore } from '@/store/entityStores';
 import { useSettingsStore } from '@/store/settingsStore';
 import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
@@ -268,10 +265,16 @@ function ArmadilhasDrawer({ open, onClose, appt, techId }: {
   const traps = useTrapsStore((s) => s.traps.filter((t) => t.customerId === appt.customerId));
   const inspections = useTrapsStore((s) => s.inspections);
   const addInspection = useTrapsStore((s) => s.addInspection);
+  const addTrap = useTrapsStore((s) => s.addTrap);
+  const trapTypes = useTrapTypesStore((s) => s.items.filter((t) => t.isActive !== false));
   const [selected, setSelected] = useState<TrapDevice | null>(null);
   const [view, setView] = useState<'lista' | 'mapa'>('lista');
+  /** Instalar aqui, no dia: quem coloca a armadilha é quem sabe o código que
+   *  colou nela e em que ponto ela ficou. Cadastrar depois, no escritório,
+   *  significa alguém transcrevendo de memória ou de um papel. */
+  const [instalando, setInstalando] = useState(false);
 
-  useEffect(() => { if (!open) { setSelected(null); setView('lista'); } }, [open]);
+  useEffect(() => { if (!open) { setSelected(null); setView('lista'); setInstalando(false); } }, [open]);
 
   const lastOf = (trapId: string) =>
     inspections.filter((i) => i.trapId === trapId).sort((a, b) => b.date.localeCompare(a.date))[0];
@@ -283,7 +286,25 @@ function ArmadilhasDrawer({ open, onClose, appt, techId }: {
 
   return (
     <Drawer open={open} onClose={onClose} title="Monitorar armadilhas" subtitle={getCustomer(appt.customerId)?.name}>
-      {selected ? (
+      {instalando ? (
+        <InstalarArmadilhaForm
+          tipos={trapTypes.map((t) => t.name)}
+          onCancel={() => setInstalando(false)}
+          onSave={(dados) => {
+            const nova = addTrap({
+              customerId: appt.customerId,
+              code: dados.code,
+              type: dados.type,
+              location: dados.location || undefined,
+              installedAt: new Date().toISOString(),
+              responsibleId: techId,
+            });
+            logChange('criação', 'monitoramento', `Armadilha ${nova.code} instalada em ${dados.location || 'local não informado'}`, nova.id);
+            toast(`${nova.code} instalada.`, { tone: 'success' });
+            setInstalando(false);
+          }}
+        />
+      ) : selected ? (
         <InspecaoForm
           trap={selected}
           onCancel={() => setSelected(null)}
@@ -296,7 +317,11 @@ function ArmadilhasDrawer({ open, onClose, appt, techId }: {
         />
       ) : (
         <div className="space-y-3">
-          {traps.length === 0 && <Vazio>Este cliente não tem armadilhas cadastradas.</Vazio>}
+          <Button size="sm" variant="outline" leftIcon={<Plus size={14} />} onClick={() => setInstalando(true)} className="w-full">
+            Instalar armadilha aqui
+          </Button>
+
+          {traps.length === 0 && <Vazio>Este cliente ainda não tem armadilhas. Instale a primeira pelo botão acima.</Vazio>}
 
           {traps.length > 0 && comCoordenadas.length > 0 && (
             <Segmented
@@ -447,6 +472,53 @@ function InspecaoForm({ trap, onCancel, onSave }: {
         <Button leftIcon={<CheckCircle2 size={15} />} onClick={() => onSave({ consumed, action, notes: notes.trim() || undefined })}>
           Registrar inspeção
         </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Instalação de armadilha em campo.
+ *
+ * Pede só o que quem está no local sabe e o escritório não tem como saber: o
+ * código colado no dispositivo e onde ele ficou. Data de instalação é hoje —
+ * é a instalação acontecendo — e o responsável é o técnico que está ali.
+ */
+function InstalarArmadilhaForm({ tipos, onCancel, onSave }: {
+  tipos: string[];
+  onCancel: () => void;
+  onSave: (d: { code: string; type: string; location: string }) => void;
+}) {
+  const [code, setCode] = useState('');
+  const [type, setType] = useState(tipos[0] ?? 'Porta-isca');
+  const [location, setLocation] = useState('');
+
+  const salvar = () => {
+    if (!code.trim()) { toast('Informe o código da armadilha (ex.: Porta Isca 001).', { tone: 'warning' }); return; }
+    if (!location.trim()) { toast('Informe o local de instalação (ex.: Área da lixeira).', { tone: 'warning' }); return; }
+    onSave({ code: code.trim(), type, location: location.trim() });
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">
+        Registre a armadilha no momento em que instalar — o código e o ponto ficam gravados
+        com a data de hoje e no seu nome.
+      </p>
+      <Field label="Código" required>
+        <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Ex.: Porta Isca 001" />
+      </Field>
+      <Field label="Tipo" required>
+        <Select value={type} onChange={(e) => setType(e.target.value)}>
+          {tipos.map((t) => <option key={t} value={t}>{t}</option>)}
+        </Select>
+      </Field>
+      <Field label="Local de instalação" required>
+        <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Ex.: Área da lixeira" />
+      </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="outline" onClick={onCancel}>Cancelar</Button>
+        <Button leftIcon={<CheckCircle2 size={15} />} onClick={salvar}>Instalar</Button>
       </div>
     </div>
   );

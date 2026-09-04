@@ -15,7 +15,7 @@ import type { Pest, PaymentStatus, RecurrencePhase, ServiceOrder, ServiceType } 
 import type { AppointmentStatus, RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
 import { PAYMENT_METHODS, RECURRENCE_FREQ_DAYS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
 import {
-  computeRecurrenceOccurrences, DURACOES_RECORRENCIA, isWeekend, occurrencesForDuration, planDates,
+  computeRecurrenceOccurrences, DURACOES_RECORRENCIA, isWeekend, phasesFor, planDates,
   recurrenceGroupId,
   recurrenceSummaryLabel, rotuloDuracao, totalOccurrences, weekdayLabel, withinNextYear,
 } from '@/lib/recurrence';
@@ -40,6 +40,7 @@ import { computeTaxes } from '@/application/fiscal/tax';
 import { providerLabel } from '@/application/fiscal/providers';
 import { cn, formatCurrency } from '@/lib/utils';
 import { formatAddress, googleMapsAddressUrl } from '@/lib/geo';
+import { recarregarDados } from '@/lib/supabaseClient';
 import { signerDocumentLabel } from '@/lib/signer';
 import { canSeeFinancialValues } from '@/application/permissions';
 import { useAppStore } from '@/store/appStore';
@@ -305,6 +306,12 @@ export function OrdensPage() {
                 );
               })()}
 
+              {/* Recorrência: as OS irmãs. Um contrato recorrente é um
+                  histórico, não um evento solto — quem abre a OS de hoje
+                  precisa ver o que foi feito nas visitas anteriores para saber
+                  se o problema está cedendo. */}
+              <HistoricoRecorrencia atual={selected} onAbrir={(os) => { setSelected(os); setEditMode(false); }} />
+
               <Section title="Detalhes">
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   <Info label="Serviços" value={(selected.serviceTypeIds?.length ? selected.serviceTypeIds : [selected.serviceTypeId]).map((id) => getServiceType(id)?.name).filter(Boolean).join(', ') || '—'} />
@@ -461,6 +468,10 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
    *  contratada: "um ano, de mês em mês", não "doze visitas". */
   const [recMeses, setRecMeses] = useState(12);
   const [recFreq, setRecFreq] = useState<RecurrenceFreq>('mensal');
+  /** Intervalo da primeira visita, quando difere das demais. Em dedetização é
+   *  a regra, não a exceção: a volta depois da aplicação é em 45 dias e só
+   *  depois o contrato entra no ritmo contratado. */
+  const [recPrimeira, setRecPrimeira] = useState<RecurrenceFreq | ''>('');
   const [recPhases, setRecPhases] = useState<RecurrencePhase[]>([]);
   /** Data escolhida para cada visita do plano, por índice de ocorrência.
    *  Vazio = usa a data calculada pela periodicidade. */
@@ -555,7 +566,9 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
         ? initial.recurrence.phases
         : (initial.recurrence?.frequency ? [{ id: uid('ph'), frequency: initial.recurrence.frequency, occurrences: 1 }] : []);
       setRecPhases(fases);
-      setRecFreq(fases[0]?.frequency ?? 'mensal');
+      // Duas fases = "primeira visita diferente"; uma só = ritmo único.
+      setRecPrimeira(fases.length > 1 ? (fases[0]?.frequency ?? '') : '');
+      setRecFreq((fases.length > 1 ? fases[1]?.frequency : fases[0]?.frequency) ?? 'mensal');
       // OS antiga não guardava a duração: deduz dos meses que o plano cobre,
       // para os controles abrirem coerentes com o que está salvo.
       setRecMeses(initial.recurrence?.durationMonths ?? mesesDoPlano(fases));
@@ -636,6 +649,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     setRecPhases(arr<RecurrencePhase>('recPhases'));
     setRecMeses(num('recMeses') || 12);
     setRecFreq((str('recFreq') as RecurrenceFreq) || 'mensal');
+    setRecPrimeira((str('recPrimeira') as RecurrenceFreq) || '');
     setRecDates(arr<string>('recDates'));
     setExecDate(str('execDate'));
     setExecTime(str('execTime'));
@@ -664,13 +678,13 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     areaQty, customAreas, legacyAreaText, pestIds, pestValidity, duration, procedures,
     technicianMessage, paymentMethod, serviceValue, serviceValueTouched, valueConfirmed,
     associatedOrderId, paymentStatus, paymentDate, warrantyHas, warrantyValue, warrantyUnit,
-    warrantyType, recEnabled, recMeses, recFreq, recPhases, recDates, execDate, execTime, dueDate, validityDate,
+    warrantyType, recEnabled, recMeses, recFreq, recPrimeira, recPhases, recDates, execDate, execTime, dueDate, validityDate,
     validityTouched, certValidityDate, certValidityTouched, equipmentIds, products, returnAt,
   }), [customerId, appointmentId, serviceTypeIds, technicianIds, sellerId, status, areaQty,
     customAreas, legacyAreaText, pestIds, pestValidity, duration, procedures, technicianMessage,
     paymentMethod, serviceValue, serviceValueTouched, valueConfirmed, associatedOrderId,
     paymentStatus, paymentDate, warrantyHas, warrantyValue, warrantyUnit, warrantyType,
-    recEnabled, recMeses, recFreq, recPhases, recDates, execDate, execTime, dueDate, validityDate, validityTouched,
+    recEnabled, recMeses, recFreq, recPrimeira, recPhases, recDates, execDate, execTime, dueDate, validityDate, validityTouched,
     certValidityDate, certValidityTouched, equipmentIds, products, returnAt]);
 
   /** Guarda o rascunho a cada mudança — só na criação, e só depois que a
@@ -713,7 +727,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
 
   const clearFill = () => {
     setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
-    setPestIds([]); setPestValidity({}); setAreaQty({}); setCustomAreas([]); setLegacyAreaText(''); setPaymentMethod(''); setRecEnabled(false); setRecPhases([]); setRecDates([]); setFilledFrom(null);
+    setPestIds([]); setPestValidity({}); setAreaQty({}); setCustomAreas([]); setLegacyAreaText(''); setPaymentMethod(''); setRecEnabled(false); setRecPhases([]); setRecDates([]); setRecPrimeira(''); setFilledFrom(null);
     setValidityDate(''); setValidityTouched(false);
     setProducts([]); setEquipmentIds([]); setProcedures(''); setTechnicianMessage('');
     setExecDate(''); setExecTime(''); setDuration('');
@@ -796,18 +810,19 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   // uma), mas a tela agora produz sempre uma só: duração ÷ periodicidade.
   useEffect(() => {
     if (!recEnabled) return;
-    const visitas = occurrencesForDuration(recMeses, recFreq);
+    const primeira = recPrimeira || undefined;
+    const novas = phasesFor(recMeses, recFreq, primeira, () => uid('ph'));
     setRecPhases((atual) => {
-      const id = atual[0]?.id ?? uid('ph');
-      if (atual.length === 1 && atual[0].frequency === recFreq && atual[0].occurrences === visitas) return atual;
+      const assinatura = (fs: RecurrencePhase[]) => JSON.stringify(fs.map((f) => [f.frequency, f.occurrences]));
+      if (assinatura(atual) === assinatura(novas)) return atual;
       // Mudou o plano: as datas ajustadas à mão eram de OUTRAS visitas. Como
       // os ajustes são guardados por posição, mantê-los faria a data escolhida
       // para a visita 3 do plano semanal reaparecer na visita 3 do bimestral,
       // que é outro dia e outro mês.
       setRecDates([]);
-      return [{ id, frequency: recFreq, occurrences: visitas }];
+      return novas;
     });
-  }, [recEnabled, recMeses, recFreq]);
+  }, [recEnabled, recMeses, recFreq, recPrimeira]);
 
   const recurrenceOccurrences = useMemo(() => {
     if (!recEnabled || !recPhases.length) return [];
@@ -1031,6 +1046,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
         phases: recEnabled && recPhases.length ? recPhases : undefined,
         recurrenceGroupId: recPlan.recurrenceGroupId,
         durationMonths: recEnabled ? recMeses : undefined,
+        firstVisitFreq: recEnabled && recPrimeira ? recPrimeira : undefined,
         dates: recEnabled && recPlanDates.length ? recPlanDates : undefined,
       },
       executionDate: execDate ? dateInputToIso(execDate) : undefined,
@@ -1172,6 +1188,10 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     clearOsDraft();
     hydratedRef.current = false;
     toast(`OS #${so.number} criada e adicionada à Agenda.`, { tone: 'success' });
+    // Uma OS grava em várias tabelas: a ordem, o agendamento dela e, havendo
+    // recorrência, uma visita por ocorrência. Reler do banco garante que a
+    // Agenda mostre tudo isso na hora, sem depender de recarregar a página.
+    recarregarDados();
     onSaved(so);
     } finally {
       submittingRef.current = false;
@@ -1358,6 +1378,16 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
                     {(Object.keys(RECURRENCE_FREQ_LABEL) as RecurrenceFreq[]).map((r) => <option key={r} value={r}>{RECURRENCE_FREQ_LABEL[r]}</option>)}
                   </Select>
                 </Field>
+                <Field
+                  label="Primeira visita"
+                  className="sm:col-span-2"
+                  hint="Depois da aplicação inicial a volta costuma ser mais cedo — 45 dias, para pegar o que eclodiu — e só então o contrato entra no ritmo acima."
+                >
+                  <Select value={recPrimeira} onChange={(e) => setRecPrimeira(e.target.value as RecurrenceFreq | '')}>
+                    <option value="">Mesmo intervalo das demais</option>
+                    {(Object.keys(RECURRENCE_FREQ_LABEL) as RecurrenceFreq[]).map((r) => <option key={r} value={r}>{RECURRENCE_FREQ_LABEL[r]}</option>)}
+                  </Select>
+                </Field>
               </div>
               {recurrenceOccurrences.length > 0 && (
                 <div className="rounded-lg border border-brand/30 bg-brand-soft/20 p-2.5">
@@ -1529,6 +1559,53 @@ function settingsEmergency(): string {
 function mesesDoPlano(fases: RecurrencePhase[]): number {
   const dias = fases.reduce((soma, f) => soma + f.occurrences * RECURRENCE_FREQ_DAYS[f.frequency], 0);
   return Math.max(1, Math.round(dias / 30));
+}
+
+/** As demais OS do mesmo plano de recorrência, da mais recente para a mais
+ *  antiga. Vazio quando a OS não pertence a um plano — aí não há o que mostrar. */
+function HistoricoRecorrencia({ atual, onAbrir }: { atual: ServiceOrder; onAbrir: (os: ServiceOrder) => void }) {
+  const orders = useServiceOrdersStore((s) => s.orders);
+  const grupo = atual.recurrence?.recurrenceGroupId;
+  const irmas = useMemo(() => {
+    if (!grupo) return [];
+    return orders
+      .filter((o) => o.recurrence?.recurrenceGroupId === grupo)
+      .sort((a, b) => (b.executionDate ?? b.createdAt).localeCompare(a.executionDate ?? a.createdAt));
+  }, [orders, grupo]);
+
+  if (!grupo || irmas.length <= 1) return null;
+
+  return (
+    <Section title={`Atendimentos desta recorrência (${irmas.length})`}>
+      <div className="space-y-1.5">
+        {irmas.map((os) => {
+          const ehAtual = os.id === atual.id;
+          return (
+            <button
+              key={os.id}
+              type="button"
+              onClick={() => !ehAtual && onAbrir(os)}
+              disabled={ehAtual}
+              className={cn(
+                'flex w-full flex-wrap items-center gap-2 rounded-lg border p-2.5 text-left transition',
+                ehAtual ? 'border-brand bg-brand-soft/30' : 'border-border/60 hover:border-brand hover:bg-muted/40',
+              )}
+            >
+              <span className="font-semibold text-foreground">OS #{os.number}</span>
+              <span className="text-xs text-muted-foreground">
+                {os.executionDate ? fmtDate(os.executionDate) : fmtDate(os.createdAt)}
+                {os.executionTime ? ` · ${os.executionTime}` : ''}
+              </span>
+              <span className="ml-auto flex items-center gap-2">
+                {ehAtual && <span className="text-[11px] font-medium text-brand">esta OS</span>}
+                <ServiceOrderStatusBadge status={os.status} cancelledBy={os.cancelledBy} />
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </Section>
+  );
 }
 
 /** Emissão de NFS-e a partir da OS concluída (Governo · NFS-e Nacional / simulação). */
