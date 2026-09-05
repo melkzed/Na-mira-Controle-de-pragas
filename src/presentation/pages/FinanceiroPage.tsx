@@ -802,7 +802,8 @@ function DepositDialog({ account, onClose }: { account: BankAccount | null; onCl
 
   const submit = () => {
     const v = Number(amount);
-    if (!(v > 0)) return;
+    // Sem aviso o botão parecia quebrado: o clique não fazia nada.
+    if (!(v > 0)) { toast('Informe um valor maior que zero.', { tone: 'warning' }); return; }
     addTransaction({ accountId: account.id, type: 'deposito', amount: v, date: toDateInputValue(new Date()), description: description.trim() || 'Depósito' });
     toast(`Depósito de ${formatCurrency(v)} registrado em ${account.alias ?? account.bank}.`, { tone: 'success' });
     onClose();
@@ -810,7 +811,7 @@ function DepositDialog({ account, onClose }: { account: BankAccount | null; onCl
 
   return (
     <Drawer open={!!account} onClose={onClose} title="Registrar depósito" subtitle={account.alias ?? account.bank}
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!(Number(amount) > 0)}>Depositar</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Depositar</Button></div>}>
       <div className="space-y-4">
         <Field label="Valor (R$)" required><Input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
         <Field label="Descrição"><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Depósito em espécie" /></Field>
@@ -830,7 +831,8 @@ function TransferDialog({ account, accounts, onClose }: { account: BankAccount |
   const submit = () => {
     const v = Number(amount);
     const dest = accounts.find((a) => a.id === toId);
-    if (!(v > 0) || !dest) return;
+    if (!dest) { toast('Escolha a conta de destino.', { tone: 'warning' }); return; }
+    if (!(v > 0)) { toast('Informe um valor maior que zero.', { tone: 'warning' }); return; }
     const pairId = uid('xfer');
     const date = toDateInputValue(new Date());
     addTransaction({ accountId: account.id, type: 'transferencia_saida', amount: v, date, description: `Transferência para ${dest.alias ?? dest.bank}`, transferPairId: pairId });
@@ -841,7 +843,7 @@ function TransferDialog({ account, accounts, onClose }: { account: BankAccount |
 
   return (
     <Drawer open={!!account} onClose={onClose} title="Transferência bancária" subtitle={`De ${account.alias ?? account.bank}`}
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<ArrowLeftRight size={15} />} disabled={!(Number(amount) > 0) || !toId}>Transferir</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<ArrowLeftRight size={15} />}>Transferir</Button></div>}>
       <div className="space-y-4">
         <Field label="Conta destino" required>
           <Select value={toId} onChange={(e) => setToId(e.target.value)}>

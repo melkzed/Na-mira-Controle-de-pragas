@@ -160,7 +160,7 @@ function LicenseForm({ open, onClose, onSave, initial }: {
 
   return (
     <Drawer open={open} onClose={onClose} title={initial ? 'Editar licença' : 'Nova licença'} subtitle="Licença, alvará ou registro regulatório"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!name.trim()}>Cadastrar</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Cadastrar</Button></div>}>
       <div className="grid grid-cols-2 gap-4">
         <Field label="Documento" required className="col-span-2"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Alvará Sanitário" />{touched && !name.trim() && <span className="mt-1 block text-xs text-danger">Informe o documento.</span>}</Field>
         <Field label="Órgão emissor"><Input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="Vigilância Sanitária" /></Field>

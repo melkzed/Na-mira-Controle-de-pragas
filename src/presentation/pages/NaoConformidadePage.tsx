@@ -142,7 +142,7 @@ function NcForm({ open, onClose, onSave }: { open: boolean; onClose: () => void;
 
   return (
     <Drawer open={open} onClose={onClose} title="Nova não conformidade" subtitle="Registro de irregularidade no local"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!description.trim()}>Registrar</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Registrar</Button></div>}>
       <div className="space-y-4">
         <Field label="Categoria" required>
           <Select value={category} onChange={(e) => setCategory(e.target.value as NonConformityCategory)}>

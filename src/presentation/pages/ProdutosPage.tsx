@@ -219,7 +219,7 @@ function ProductForm({ open, initial, onClose, onSave }: { open: boolean; initia
 
   return (
     <Drawer open={open} onClose={onClose} title={isEdit ? 'Editar produto' : 'Novo produto'} subtitle="Catálogo de produtos"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!f.name?.trim()}>{isEdit ? 'Salvar' : 'Adicionar'}</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>{isEdit ? 'Salvar' : 'Adicionar'}</Button></div>}>
       <div className="grid grid-cols-2 gap-4">
         <Field label="Nome" required className="col-span-2"><Input value={f.name ?? ''} onChange={(e) => set('name', e.target.value)} />{nameErr && <span className="mt-1 block text-xs text-danger">Informe o nome.</span>}</Field>
         <Field label="Categoria"><Select value={f.categoryId ?? ''} onChange={(e) => set('categoryId', e.target.value)}>{seed.productCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>

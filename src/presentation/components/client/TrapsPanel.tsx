@@ -110,7 +110,7 @@ function TrapForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
 
   return (
     <Drawer open={open} onClose={onClose} title="Nova armadilha" subtitle="Cadastro de dispositivo de monitoramento"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!code.trim()}>Adicionar</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Adicionar</Button></div>}>
       <div className="space-y-4">
         <Field label="Identificação / numeração" required><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Porta Isca 005" />{touched && !code.trim() && <span className="mt-1 block text-xs text-danger">Informe a identificação.</span>}</Field>
         <Field label="Tipo"><Select value={type} onChange={(e) => setType(e.target.value)}>{trapTypes.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}</Select></Field>
