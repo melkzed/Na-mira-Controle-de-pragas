@@ -725,8 +725,20 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   useEffect(() => { if (customerId && !initial) { applyHistory(customerId); setAppointmentId(''); } }, [customerId]); // eslint-disable-line react-hooks/exhaustive-deps
   const customerAppointments = customerId ? appointmentsForCustomer(customerId) : [];
 
+  /** "Começar em branco": descarta o preenchimento automático e volta aos
+   *  MESMOS padrões de uma O.S. nova.
+   *
+   *  Antes deixava a equipe vazia, enquanto abrir uma "Nova O.S." já vinha com
+   *  o primeiro técnico marcado — duas telas de aparência idêntica começando
+   *  diferente, e a segunda recusando o salvamento por um campo que a primeira
+   *  preenchia sozinha.
+   *
+   *  O cliente NÃO é tocado, e isso é essencial: trocar `customerId` dispara o
+   *  preenchimento pelo histórico daquele cliente, que repopularia serviços,
+   *  pragas e áreas — exatamente o que este botão acabou de limpar. */
   const clearFill = () => {
     setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
+    setTechnicianIds(technicianUsers[0] ? [technicianUsers[0].id] : []);
     setPestIds([]); setPestValidity({}); setAreaQty({}); setCustomAreas([]); setLegacyAreaText(''); setPaymentMethod(''); setRecEnabled(false); setRecPhases([]); setRecDates([]); setRecPrimeira(''); setFilledFrom(null);
     setValidityDate(''); setValidityTouched(false);
     setProducts([]); setEquipmentIds([]); setProcedures(''); setTechnicianMessage('');
