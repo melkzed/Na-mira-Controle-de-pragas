@@ -136,6 +136,21 @@ foram criados):
   cômodos) e `recurring_payables.start_date` (primeiro vencimento com
   dia/mês/ano, antes só existia o dia).
 
+## Conteúdo inicial (não são migrations)
+
+Scripts `db/seed_*.sql` só inserem linhas — não mexem em tabela, coluna, RLS
+nem Realtime. Por isso ficam fora da lista ordenada acima e podem rodar a
+qualquer momento, mais de uma vez.
+
+- `db/seed_local_structures.sql` — Estrutura do local (a tabela `treated_areas`,
+  renomeada só na interface). Acrescenta **Produção, Câmara Fria e Refeitório**
+  em cada organização. Eram três dos sete ambientes que ficavam fixos no código
+  do formulário do cliente e não valiam para o cliente seguinte; os outros
+  quatro já estavam no cadastro. O seed do frontend não alcança o Supabase
+  (`createEntityStore` devolve `[]` quando `supabaseEnabled`), então uma
+  organização que já roda em banco precisa deste script — ou pode digitar os
+  três na própria tela de cadastro.
+
 ## Convenções
 
 - **Multi-tenant** por `org_id` em toda tabela de negócio (habilite RLS no Supabase).

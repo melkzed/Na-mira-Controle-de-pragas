@@ -668,7 +668,14 @@ export interface Pest {
   isActive?: boolean;
 }
 
-/** Área/ambiente tratado (cadastro reutilizável na OS). */
+/** Área/ambiente tratado (cadastro reutilizável na OS).
+ *
+ *  Na interface esta entidade se chama **"Estrutura do local"**: é o mesmo
+ *  cadastro que alimenta os ambientes da ficha do cliente (Cadastro Completo →
+ *  Estrutura do local) e as opções de "Áreas tratadas" da OS. O nome do tipo e
+ *  o da tabela (`treated_areas`) foram mantidos porque os ids já estão gravados
+ *  em OS antigas (`ServiceOrder.areaIds`/`areaQty`) — renomear custaria uma
+ *  migration sem trocar nada que o usuário veja. */
 export interface TreatedArea {
   id: string;
   orgId: string;

@@ -11,7 +11,7 @@ import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
 import { ServiceOrderStatusBadge } from '../components/StatusBadge';
 import { appointmentsForCustomer, getCustomer, getPest, getProduct, getServiceType, getUser, lastOrderForCustomer } from '@/application/repository';
-import type { Pest, PaymentStatus, RecurrencePhase, ServiceOrder, ServiceType } from '@/domain/types';
+import type { Pest, PaymentStatus, RecurrencePhase, ServiceOrder, ServiceType, TreatedArea } from '@/domain/types';
 import type { AppointmentStatus, RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
 import { PAYMENT_METHODS, RECURRENCE_FREQ_DAYS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
 import {
@@ -39,7 +39,7 @@ import { Combobox, MultiCombobox } from '../components/ui/Combobox';
 import { useSettingsStore } from '@/store/settingsStore';
 import { computeTaxes } from '@/application/fiscal/tax';
 import { providerLabel } from '@/application/fiscal/providers';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, compareText, formatCurrency } from '@/lib/utils';
 import { formatAddress, googleMapsAddressUrl } from '@/lib/geo';
 import { recarregarDados } from '@/lib/supabaseClient';
 import { signerDocumentLabel } from '@/lib/signer';
@@ -65,6 +65,31 @@ interface OsFormHandle { submit: () => void }
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button type="button" onClick={onClick} className={`rounded-full border px-2.5 py-1 text-xs transition ${active ? 'border-brand bg-brand-soft text-brand' : 'border-border text-muted-foreground hover:bg-muted'}`}>{children}</button>
+  );
+}
+
+/** Chip de área tratada: toggle mais quantidade (+ / −) quando selecionado.
+ *  `qty` nulo significa não selecionado. Serve às três origens do campo — a
+ *  estrutura cadastrada no cliente, o catálogo geral e a área específica desta
+ *  OS —, que só diferem em onde a quantidade é guardada. */
+function AreaChip({ name, qty, onToggle, onQty, title }: {
+  name: string; qty: number | null; onToggle: () => void; onQty: (qty: number) => void; title?: string;
+}) {
+  const active = qty != null;
+  return (
+    <div
+      title={title}
+      className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition ${active ? 'border-brand bg-brand-soft text-brand' : 'border-border text-muted-foreground hover:bg-muted'}`}
+    >
+      <button type="button" onClick={onToggle}>{name}</button>
+      {active && (
+        <span className="flex items-center gap-1 border-l border-brand/30 pl-1">
+          <button type="button" aria-label={`Diminuir quantidade de ${name}`} onClick={() => onQty(qty - 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">−</button>
+          <span className="w-3.5 text-center font-semibold">{qty}</span>
+          <button type="button" aria-label={`Aumentar quantidade de ${name}`} onClick={() => onQty(qty + 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">+</button>
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -513,16 +538,60 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   const selectablePests = pests.filter((p) => p.isActive !== false || pestIds.includes(p.id));
   const selectableAreas = areas.filter((a) => a.isActive !== false || areaIds.includes(a.id));
 
+  /** Estrutura do local cadastrada no cliente escolhido (nome → quantidade).
+   *  Cadastro antigo só guardou a lista de nomes; nesse caso cada ambiente
+   *  conta como 1 — mesma leitura que a ficha do cliente faz. */
+  const customerStructure = useMemo<Record<string, number>>(() => {
+    if (!cust) return {};
+    if (cust.localStructureQty && Object.keys(cust.localStructureQty).length) return cust.localStructureQty;
+    return Object.fromEntries((cust.localStructure ?? []).map((n) => [n, 1]));
+  }, [cust]);
+
+  /** Os ambientes do cliente saem em destaque, separados em dois grupos: os que
+   *  existem no cadastro viram chip normal (guardados por id em `areaQty`), e os
+   *  próprios daquele cliente — digitados na ficha dele, sem par no cadastro —
+   *  entram como área específica desta OS (`customAreas`, por nome). Assim
+   *  nenhum campo ou coluna nova é preciso. A comparação usa `compareText`,
+   *  que ignora acento e caixa: "Camara fria" casa com "Câmara Fria". */
+  const { structureAreas, structureExtras } = useMemo(() => {
+    const doCadastro: { area: TreatedArea; qty: number }[] = [];
+    const proprios: { name: string; qty: number }[] = [];
+    for (const [nome, qty] of Object.entries(customerStructure)) {
+      const area = areas.find((a) => compareText(a.name, nome) === 0);
+      if (area) doCadastro.push({ area, qty });
+      else proprios.push({ name: nome, qty });
+    }
+    return { structureAreas: doCadastro, structureExtras: proprios };
+  }, [customerStructure, areas]);
+
+  const temEstrutura = structureAreas.length + structureExtras.length > 0;
+  /** O catálogo mostra o que sobrou — o que já subiu para a faixa do cliente
+   *  não se repete embaixo. */
+  const catalogAreas = selectableAreas.filter((a) => !structureAreas.some((s) => s.area.id === a.id));
+  /** Área específica digitada com o botão + nesta OS. As que vieram da estrutura
+   *  do cliente já aparecem na faixa de cima, então saem daqui. */
+  const looseCustomAreas = customAreas.filter((a) => !structureExtras.some((e) => compareText(e.name, a.name) === 0));
+
   /** Só equipamentos disponíveis (sem dono fixo) podem ser retirados temporariamente
    *  para a OS — o kit fixo/permanente do técnico não deve aparecer aqui. Em modo
    *  edição, mantém visível o que já está retirado nesta própria OS. */
   const availableEquipment = equipment.filter((e) => (!e.assignedTo && e.status === 'disponivel') || (initial && e.checkedOutOsId === initial.id));
 
-  const toggleArea = (id: string) => setAreaQty((m) => {
+  /** `defaultQty` traz a quantidade cadastrada no cliente ("3 Quartos") já ao
+   *  marcar o ambiente — no catálogo geral não há quantidade, então é 1. */
+  const toggleArea = (id: string, defaultQty = 1) => setAreaQty((m) => {
     if (m[id] != null) { const n = { ...m }; delete n[id]; return n; }
-    return { ...m, [id]: 1 };
+    return { ...m, [id]: Math.max(1, defaultQty) };
   });
   const setAreaQtyVal = (id: string, qty: number) => setAreaQty((m) => ({ ...m, [id]: Math.max(1, qty) }));
+
+  /** Ambiente próprio do cliente: não tem id de cadastro, então liga/desliga
+   *  direto em `customAreas` (por nome), como uma área específica desta OS. */
+  const toggleCustomArea = (name: string, defaultQty = 1) => setCustomAreas((prev) => (
+    prev.some((a) => compareText(a.name, name) === 0)
+      ? prev.filter((a) => compareText(a.name, name) !== 0)
+      : [...prev, { name, qty: Math.max(1, defaultQty) }]
+  ));
 
   /** Converte um ISO (armazenado) de volta para o formato de <input type=date>,
    *  usando getters locais — evita o desvio de fuso do bug de datas. */
@@ -1292,34 +1361,65 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
         </Field>
 
         <Field label="Áreas tratadas" hint="Toque para selecionar; ajuste a quantidade com + / −">
+          {temEstrutura && (
+            <>
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Deste cliente</p>
+              <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                {structureAreas.map(({ area, qty }) => (
+                  <AreaChip
+                    key={area.id}
+                    name={area.name}
+                    qty={areaQty[area.id] ?? null}
+                    title={`Estrutura cadastrada neste cliente (${qty})`}
+                    onToggle={() => toggleArea(area.id, qty)}
+                    onQty={(n) => setAreaQtyVal(area.id, n)}
+                  />
+                ))}
+                {structureExtras.map(({ name, qty }) => {
+                  const atual = customAreas.find((a) => compareText(a.name, name) === 0);
+                  return (
+                    <AreaChip
+                      key={name}
+                      name={name}
+                      qty={atual?.qty ?? null}
+                      title={`Ambiente próprio deste cliente (${qty})`}
+                      onToggle={() => toggleCustomArea(name, qty)}
+                      onQty={(n) => setCustomQty(atual?.name ?? name, n)}
+                    />
+                  );
+                })}
+              </div>
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Catálogo</p>
+            </>
+          )}
           <div className="flex flex-wrap items-center gap-1.5">
-            {selectableAreas.map((a) => (
-              <div key={a.id} className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition ${areaQty[a.id] != null ? 'border-brand bg-brand-soft text-brand' : 'border-border text-muted-foreground hover:bg-muted'}`}>
-                <button type="button" onClick={() => toggleArea(a.id)}>{a.name}</button>
-                {areaQty[a.id] != null && (
-                  <span className="flex items-center gap-1 border-l border-brand/30 pl-1">
-                    <button type="button" aria-label={`Diminuir quantidade de ${a.name}`} onClick={() => setAreaQtyVal(a.id, areaQty[a.id] - 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">−</button>
-                    <span className="w-3.5 text-center font-semibold">{areaQty[a.id]}</span>
-                    <button type="button" aria-label={`Aumentar quantidade de ${a.name}`} onClick={() => setAreaQtyVal(a.id, areaQty[a.id] + 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">+</button>
-                  </span>
-                )}
-              </div>
+            {catalogAreas.map((a) => (
+              <AreaChip
+                key={a.id}
+                name={a.name}
+                qty={areaQty[a.id] ?? null}
+                onToggle={() => toggleArea(a.id)}
+                onQty={(n) => setAreaQtyVal(a.id, n)}
+              />
             ))}
-            {customAreas.map((a) => (
-              <div key={a.name} className="flex items-center gap-1 rounded-full border border-brand bg-brand-soft px-2 py-1 text-xs text-brand">
-                <span title="Área específica desta OS">{a.name}</span>
-                <span className="flex items-center gap-1 border-l border-brand/30 pl-1">
-                  <button type="button" aria-label={`Diminuir quantidade de ${a.name}`} onClick={() => setCustomQty(a.name, a.qty - 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">−</button>
-                  <span className="w-3.5 text-center font-semibold">{a.qty}</span>
-                  <button type="button" aria-label={`Aumentar quantidade de ${a.name}`} onClick={() => setCustomQty(a.name, a.qty + 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">+</button>
-                </span>
-              </div>
+            {looseCustomAreas.map((a) => (
+              <AreaChip
+                key={a.name}
+                name={a.name}
+                qty={a.qty}
+                title="Área específica desta OS"
+                onToggle={() => setCustomQty(a.name, 0)}
+                onQty={(n) => setCustomQty(a.name, n)}
+              />
             ))}
             <QuickAddChip label="área" onAdd={quickAddArea} />
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">
+            {temEstrutura
+              ? 'Em destaque, a estrutura do local cadastrada neste cliente — marcar já traz a quantidade dele. '
+              : ''}
             O <span className="font-medium">+</span> cria uma área específica desta OS (ex.: "Câmara fria do estoque").
-            Ela fica registrada só aqui — para virar opção fixa de todos os clientes, cadastre em Configurações → Cadastro.
+            Ela fica registrada só aqui — para virar opção fixa de todos os clientes, cadastre em Configurações → Cadastro → Estrutura do local.
           </p>
         </Field>
 
