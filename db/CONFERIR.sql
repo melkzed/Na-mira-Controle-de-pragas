@@ -162,10 +162,14 @@ portal as (
           where p.proname in ('portal_guard_appointments', 'portal_guard_service_orders')
             and p.prosrc like '%coalesce(auth_role()%'
        )),
-      ('appointments.recurrence_id é text',
+      -- O app gera o id da recorrência com crypto.randomUUID(), então a coluna
+      -- pode ser `uuid` (schema original) ou `text` (quem rodou
+      -- migrate_recurrence_id_text.sql, hoje dispensável). As duas funcionam;
+      -- o que não pode é a coluna não existir.
+      ('appointments.recurrence_id existe (uuid ou text)',
        exists (select 1 from information_schema.columns
                 where table_schema='public' and table_name='appointments'
-                  and column_name='recurrence_id' and data_type = 'text'))
+                  and column_name='recurrence_id' and data_type in ('uuid', 'text')))
     ) as p(peca, existe)
 )
 select * from colunas
