@@ -13,7 +13,7 @@ import { toast } from '@/store/toastStore';
 import { useTrapTypesStore, useUsersStore } from '@/store/entityStores';
 import type { TrapDevice } from '@/domain/types';
 import { TRAP_STATUS_META } from '@/domain/trapMeta';
-import { dateInputToIso, fmtDate } from '@/lib/date';
+import { dateInputToIso, fmtDate, toDateInputValue } from '@/lib/date';
 import { sortByName } from '@/lib/utils';
 
 /** Painel de armadilhas/monitoramento de um cliente — usado tanto embutido no
@@ -30,6 +30,10 @@ export function TrapsPanel({ customerId, compact = false }: { customerId: string
   const [historyTrap, setHistoryTrap] = useState<TrapDevice | null>(null);
 
   const overdue = custTraps.filter((t) => t.nextInspectionAt && new Date(t.nextInspectionAt) < new Date()).length;
+  // Quem instalou a armadilha e quando: registrado desde o app do técnico, mas
+  // até então só aparecia dentro do histórico — a lista escondia a informação.
+  const staff = useUsersStore((s) => s.items);
+  const instaladaPor = (t: TrapDevice) => staff.find((u) => u.id === t.responsibleId)?.name;
 
   return (
     <div>
@@ -56,6 +60,11 @@ export function TrapsPanel({ customerId, compact = false }: { customerId: string
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-foreground">{t.code}</p>
                     <p className="truncate text-xs text-muted-foreground"><MapPin size={11} className="mr-1 inline" />{t.type}{t.location ? ` · ${t.location}` : ''}</p>
+                    {(t.installedAt || t.responsibleId) && (
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        Instalada{t.installedAt ? ` em ${fmtDate(t.installedAt)}` : ''}{instaladaPor(t) ? ` por ${instaladaPor(t)}` : ''}
+                      </p>
+                    )}
                     {t.nextInspectionAt && <p className={`text-[11px] ${late ? 'text-danger' : 'text-muted-foreground'}`}>Próxima inspeção: {fmtDate(t.nextInspectionAt)}{late ? ' (atrasada)' : ''}</p>}
                   </div>
                 </div>
@@ -96,7 +105,9 @@ function TrapForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
   const [installedAt, setInstalledAt] = useState('');
   const [responsibleId, setResponsibleId] = useState('');
   const [touched, setTouched] = useState(false);
-  useEffect(() => { if (open) { setCode(''); setType(trapTypes[0]?.name ?? ''); setLocation(''); setInstalledAt(''); setResponsibleId(technicians[0]?.id ?? ''); setTouched(false); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A data nasce com hoje: quem cadastra no escritório está registrando uma
+  // armadilha que acabou de ser instalada, e um campo vazio virava ficha sem data.
+  useEffect(() => { if (open) { setCode(''); setType(trapTypes[0]?.name ?? ''); setLocation(''); setInstalledAt(toDateInputValue(new Date())); setResponsibleId(technicians[0]?.id ?? ''); setTouched(false); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = () => {
     setTouched(true);
@@ -110,7 +121,7 @@ function TrapForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
 
   return (
     <Drawer open={open} onClose={onClose} title="Nova armadilha" subtitle="Cadastro de dispositivo de monitoramento"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!code.trim()}>Adicionar</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Adicionar</Button></div>}>
       <div className="space-y-4">
         <Field label="Identificação / numeração" required><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Porta Isca 005" />{touched && !code.trim() && <span className="mt-1 block text-xs text-danger">Informe a identificação.</span>}</Field>
         <Field label="Tipo"><Select value={type} onChange={(e) => setType(e.target.value)}>{trapTypes.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}</Select></Field>

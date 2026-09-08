@@ -12,7 +12,7 @@ import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge
 import { Badge } from '../components/ui/Badge';
 import { DateInput, Select } from '../components/ui/Field';
 import { AppointmentForm } from '../components/AppointmentForm';
-import { getCustomer, getServiceType, primaryContactPhone, techniciansForAppointment } from '@/application/repository';
+import { getCustomer, getServiceType, getUser, primaryContactPhone, techniciansForAppointment } from '@/application/repository';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import { toast } from '@/store/toastStore';
@@ -26,7 +26,8 @@ import { useUsersStore } from '@/store/entityStores';
 import { buildWhatsMessage, WHATS_TYPE_LABEL } from '@/lib/whatsapp';
 import { MessageCircle } from 'lucide-react';
 import { APPOINTMENT_STATUS_META, type AppointmentStatus } from '@/domain/enums';
-import type { Appointment, Customer } from '@/domain/types';
+import { appointmentColor, COR_CONCLUIDO, technicianColor } from '@/lib/agendaColor';
+import type { Appointment, Customer, User } from '@/domain/types';
 import { addDays, fmtDate, fmtTime, isSameDay, isToday, parseISO, weekDays, weekRangeLabel } from '@/lib/date';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -218,6 +219,8 @@ export function AgendaPage() {
         </button>
       )}
 
+      <LegendaCores technicians={technicians} />
+
       {view === 'semana' && <WeekView refDate={ref} appts={appts} onSelect={setSelected} />}
       {view === 'dia' && <DayView refDate={ref} appts={appts} onSelect={setSelected} />}
       {view === 'mes' && <MonthView refDate={ref} appts={appts} onSelect={setSelected} />}
@@ -313,6 +316,8 @@ function WeekView({ refDate, appts, onSelect }: { refDate: Date; appts: Appointm
                     // Nunca ultrapassa o fim da grade (fica contido na célula cinza).
                     const height = Math.max(24, Math.min(rawHeight, GRID_H - top) - 3);
                     const st = getServiceType(a.serviceTypeId);
+                    // Cor do técnico responsável; finalizados saem todos em verde.
+                    const cor = appointmentColor(a, getUser);
                     const widthPct = 100 / cols;
                     return (
                       <motion.button
@@ -326,8 +331,8 @@ function WeekView({ refDate, appts, onSelect }: { refDate: Date; appts: Appointm
                           height,
                           left: `calc(${col * widthPct}% + 4px)`,
                           width: `calc(${widthPct}% - 8px)`,
-                          background: `${st?.color}1a`,
-                          borderColor: st?.color,
+                          background: `${cor}1a`,
+                          borderColor: cor,
                         }}
                       >
                         <p className="truncate text-[11px] font-semibold leading-tight text-foreground">{fmtTime(a.scheduledStart)} {getCustomer(a.customerId)?.name}</p>
@@ -381,10 +386,10 @@ function MonthView({ refDate, appts, onSelect }: { refDate: Date; appts: Appoint
               <p className={cn('mb-1 text-xs font-medium', isToday(d) ? 'flex h-5 w-5 items-center justify-center rounded-full bg-brand text-brand-foreground' : inMonth ? 'text-foreground' : 'text-muted-foreground/50')}>{format(d, 'd')}</p>
               <div className="space-y-0.5">
                 {dayAppts.slice(0, 3).map((a) => {
-                  const st = getServiceType(a.serviceTypeId);
+                  const cor = appointmentColor(a, getUser);
                   return (
-                    <button key={a.id} onClick={() => onSelect(a)} className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[10px] hover:bg-muted" style={{ color: st?.color }}>
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: st?.color }} />
+                    <button key={a.id} onClick={() => onSelect(a)} className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[10px] hover:bg-muted" style={{ color: cor }}>
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: cor }} />
                       <span className="truncate text-foreground">{fmtTime(a.scheduledStart)} {getCustomer(a.customerId)?.name}</span>
                     </button>
                   );
@@ -443,10 +448,10 @@ function MapView({ appts, onSelect }: { appts: Appointment[]; onSelect: (a: Appo
       <Card className="relative overflow-hidden lg:col-span-2">
         <div className="dot-grid relative h-[460px] w-full bg-muted/30">
           {today.map((a) => {
-            const st = getServiceType(a.serviceTypeId);
+            const cor = appointmentColor(a, getUser);
             return (
               <button key={a.id} onClick={() => onSelect(a)} className="absolute -translate-x-1/2 -translate-y-1/2" style={pos(a)}>
-                <motion.span whileHover={{ scale: 1.25 }} className="flex h-8 w-8 items-center justify-center rounded-full text-white shadow-elevated ring-2 ring-surface" style={{ background: st?.color }}>
+                <motion.span whileHover={{ scale: 1.25 }} className="flex h-8 w-8 items-center justify-center rounded-full text-white shadow-elevated ring-2 ring-surface" style={{ background: cor }}>
                   <MapPin size={16} />
                 </motion.span>
                 <span className="absolute left-1/2 top-9 -translate-x-1/2 whitespace-nowrap rounded bg-surface px-1.5 py-0.5 text-[10px] font-medium shadow-soft">{a.routeOrder}. {getCustomer(a.customerId)?.name}</span>
@@ -466,6 +471,25 @@ function MapView({ appts, onSelect }: { appts: Appointment[]; onSelect: (a: Appo
   );
 }
 
+/** Legenda das cores da agenda — sem ela, a cor de cada técnico é adivinhação. */
+function LegendaCores({ technicians }: { technicians: User[] }) {
+  if (technicians.length === 0) return null;
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+      {technicians.map((t) => (
+        <span key={t.id} className="inline-flex items-center gap-1.5 text-muted-foreground">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: technicianColor(t) }} />
+          {t.name.split(' ')[0]}
+        </span>
+      ))}
+      <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+        <span className="h-2.5 w-2.5 rounded-full" style={{ background: COR_CONCLUIDO }} />
+        Finalizada
+      </span>
+    </div>
+  );
+}
+
 function ApptRow({ a, onSelect, compact }: { a: Appointment; onSelect: (a: Appointment) => void; compact?: boolean }) {
   const cust = getCustomer(a.customerId);
   const st = getServiceType(a.serviceTypeId);
@@ -478,7 +502,7 @@ function ApptRow({ a, onSelect, compact }: { a: Appointment; onSelect: (a: Appoi
         <p className="text-sm font-semibold text-foreground">{fmtTime(a.scheduledStart)}</p>
         <p className="text-[10px] text-muted-foreground">{a.estimatedMinutes}min</p>
       </div>
-      <span className="h-9 w-1 rounded-full" style={{ background: st?.color }} />
+      <span className="h-9 w-1 rounded-full" style={{ background: appointmentColor(a, getUser) }} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">{cust?.name}</p>
         <p className="truncate text-xs text-muted-foreground">{st?.name}{!compact && ` · ${a.address}`}</p>

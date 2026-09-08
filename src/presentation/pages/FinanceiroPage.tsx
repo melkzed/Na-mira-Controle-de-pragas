@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { ArrowLeftRight, Banknote, Check, CheckCheck, Clock, Landmark, Lock, Paperclip, Pencil, PiggyBank, Plus, Repeat, ThumbsDown, ThumbsUp, Trash2, TriangleAlert, Upload } from 'lucide-react';
+import { ArrowLeftRight, Banknote, Check, CheckCheck, Clock, Landmark, Lock, Paperclip, Pencil, PiggyBank, Plus, Repeat, Trash2, TriangleAlert, Upload } from 'lucide-react';
 import { PageHeader, Stagger } from '../components/ui/misc';
 import { StatCard } from '../components/StatCard';
 import { Button } from '../components/ui/Button';
@@ -9,10 +9,11 @@ import { Badge } from '../components/ui/Badge';
 import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
 import * as seed from '@/infrastructure/seed/data';
-import { getCustomer } from '@/application/repository';
+import { getCustomer, getServiceOrder } from '@/application/repository';
 import { useFinanceStore, useRecurringPayablesStore, useBankAccountsStore, useChecksStore, useLoansStore } from '@/store/entityStores';
 import { useBankTransactionsStore, accountBalance, TRANSACTION_SIGN } from '@/store/bankTransactionsStore';
 import { useCashClosingStore } from '@/store/cashClosingStore';
+import { useInvoicesStore } from '@/store/invoicesStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
@@ -108,7 +109,7 @@ function generateRecurring(count = 3): number {
       const monthKey = toDateStr(date).slice(0, 7);
       const dup = finance.items.some((e) => e.recurringId === p.id && (e.dueDate ?? '').slice(0, 7) === monthKey);
       if (!dup) {
-        finance.add({ id: uid('fe'), orgId: currentOrgId(), type: 'despesa', status: date < today ? 'atrasado' : 'pendente', description: p.description, amount: p.amount, dueDate: toDateStr(date), recurringId: p.id, approvalStatus: 'pendente', createdAt: new Date().toISOString() });
+        finance.add({ id: uid('fe'), orgId: currentOrgId(), type: 'despesa', status: date < today ? 'atrasado' : 'pendente', description: p.description, amount: p.amount, dueDate: toDateStr(date), recurringId: p.id, createdAt: new Date().toISOString() });
         created += 1;
       }
     });
@@ -147,7 +148,7 @@ export function FinanceiroPage() {
   );
 }
 
-/** Visão geral: KPIs, DRE, contas a pagar/receber (com aprovação, desconto, agrupamento, prorrogação e emissão de pagamento). */
+/** Visão geral: KPIs, DRE, contas a pagar/receber (desconto, agrupamento, prorrogação e emissão de pagamento). */
 function VisaoGeralTab() {
   const { items: entries, add, update } = useFinanceStore();
   const [subTab, setSubTab] = useState<'receber' | 'pagar'>('receber');
@@ -181,11 +182,6 @@ function VisaoGeralTab() {
     reader.readAsDataURL(file);
   };
 
-  const approve = (e: FinanceEntry, ok: boolean) => {
-    update(e.id, ok ? { approvalStatus: 'aprovado' } : { approvalStatus: 'reprovado', status: 'cancelado' });
-    toast(ok ? 'Pagamento aprovado.' : 'Pagamento reprovado.', { tone: ok ? 'success' : 'danger' });
-  };
-
   const postpone = (e: FinanceEntry) => {
     const base = e.dueDate ? parseDateInput(e.dueDate) : new Date();
     base.setDate(base.getDate() + 30);
@@ -196,41 +192,79 @@ function VisaoGeralTab() {
   const toggleSelect = (id: string) => setSelectedIds((arr) => (arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]));
   const payableSelected = entries.filter((e) => selectedIds.includes(e.id));
 
+  // Nº da nota emitida para aquele atendimento — a coluna "Nº NF" das contas
+  // a receber. Nota cancelada não conta como nota emitida.
+  const invoices = useInvoicesStore((s) => s.invoices);
+  const notaDaOs = (serviceOrderId?: string) => (serviceOrderId
+    ? invoices.find((i) => i.serviceOrderId === serviceOrderId && i.status !== 'cancelada')
+    : undefined);
+
   const columns: Column<FinanceEntry>[] = [
     ...(subTab === 'pagar' ? [{
-      key: 'sel', header: '', render: (e: FinanceEntry) => (
-        (e.status === 'pendente' || e.status === 'atrasado') && (e.approvalStatus ?? 'aprovado') === 'aprovado' ? (
+      key: 'sel', header: '', hideOnCard: true, render: (e: FinanceEntry) => (
+        (e.status === 'pendente' || e.status === 'atrasado') ? (
           <input type="checkbox" checked={selectedIds.includes(e.id)} onChange={() => toggleSelect(e.id)} onClick={(ev) => ev.stopPropagation()} className="h-4 w-4 rounded border-border" aria-label={`Selecionar ${e.description}`} />
         ) : null
       ),
     } as Column<FinanceEntry>] : []),
-    { key: 'desc', header: 'Descrição', render: (e) => (
-      <div>
-        <p className="font-medium">{e.description}</p>
-        <div className="mt-0.5 flex flex-wrap items-center gap-1">
-          {e.customerId && <span className="text-xs text-muted-foreground">{getCustomer(e.customerId)?.name}</span>}
-          {e.taxKind && <Badge tone="info" className="text-[10px]">{taxKindLabel(e.taxKind)}</Badge>}
-          {e.discount ? <Badge tone="brand" className="text-[10px]">desconto {formatCurrency(e.discount)}</Badge> : null}
-          {e.postponedFrom && <Badge tone="warning" className="text-[10px]">prorrogada</Badge>}
+    // Nas contas a receber a origem é o atendimento: número da OS, cliente,
+    // data de execução e nota emitida — é por esses campos que se procura um
+    // recebimento, não pela descrição do lançamento.
+    ...(subTab === 'receber' ? [
+      { key: 'os', header: 'OS', hideBelow: 'lg', render: (e: FinanceEntry) => {
+        const os = e.serviceOrderId ? getServiceOrder(e.serviceOrderId) : undefined;
+        return os ? <span className="font-medium tabular-nums">#{os.number}</span> : <span className="text-muted-foreground">—</span>;
+      } } as Column<FinanceEntry>,
+      { key: 'cliente', header: 'Cliente', primary: true, render: (e: FinanceEntry) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium">{e.customerId ? getCustomer(e.customerId)?.name ?? e.description : e.description}</p>
+          <p className="truncate text-xs text-muted-foreground">{e.description}</p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1">
+            {e.discount ? <Badge tone="brand" className="text-[10px]">desconto {formatCurrency(e.discount)}</Badge> : null}
+            {e.postponedFrom && <Badge tone="warning" className="text-[10px]">prorrogada</Badge>}
+          </div>
         </div>
-      </div>
-    ) },
-    { key: 'due', header: 'Vencimento', render: (e) => {
+      ) } as Column<FinanceEntry>,
+      { key: 'pgto', header: 'Pagamento', hideBelow: 'xl', render: (e: FinanceEntry) => (
+        e.paymentMethod ? PAYMENT_METHOD_LABEL[e.paymentMethod] : <span className="text-muted-foreground">—</span>
+      ) } as Column<FinanceEntry>,
+      { key: 'exec', header: 'Dt. Execução', hideBelow: 'xl', render: (e: FinanceEntry) => {
+        const os = e.serviceOrderId ? getServiceOrder(e.serviceOrderId) : undefined;
+        const data = os?.executionDate ?? os?.finishedAt ?? os?.startedAt;
+        return data ? fmtDate(data.slice(0, 10)) : <span className="text-muted-foreground">—</span>;
+      } } as Column<FinanceEntry>,
+    ] : [
+      { key: 'desc', header: 'Descrição', primary: true, render: (e: FinanceEntry) => (
+        <div>
+          <p className="font-medium">{e.description}</p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1">
+            {e.customerId && <span className="text-xs text-muted-foreground">{getCustomer(e.customerId)?.name}</span>}
+            {e.taxKind && <Badge tone="info" className="text-[10px]">{taxKindLabel(e.taxKind)}</Badge>}
+            {e.discount ? <Badge tone="brand" className="text-[10px]">desconto {formatCurrency(e.discount)}</Badge> : null}
+            {e.postponedFrom && <Badge tone="warning" className="text-[10px]">prorrogada</Badge>}
+          </div>
+        </div>
+      ) } as Column<FinanceEntry>,
+    ]),
+    { key: 'due', header: subTab === 'receber' ? 'Dt. Vencimento' : 'Vencimento', render: (e) => {
       if (!e.dueDate) return '—';
       const d = daysUntil(e.dueDate) ?? 99;
       const warn = (e.status === 'pendente' || e.status === 'atrasado') && d <= 7;
       return <span className={warn ? (d < 0 ? 'font-semibold text-danger' : 'font-semibold text-warning') : 'text-foreground'}>{fmtDate(e.dueDate)}{warn ? (d < 0 ? ` · venceu` : d === 0 ? ' · hoje' : ` · em ${d}d`) : ''}</span>;
     } },
-    { key: 'amount', header: 'Valor', align: 'right', render: (e) => <span className={subTab === 'receber' ? 'font-semibold text-success' : 'font-semibold text-foreground'}>{formatCurrency(netAmount(e))}</span> },
+    ...(subTab === 'receber' ? [
+      { key: 'nf', header: 'Nº NF', hideBelow: 'lg', render: (e: FinanceEntry) => {
+        const nf = notaDaOs(e.serviceOrderId);
+        return nf ? <span className="tabular-nums">{nf.number}</span> : <span className="text-muted-foreground">—</span>;
+      } } as Column<FinanceEntry>,
+    ] : []),
+    { key: 'amount', header: subTab === 'receber' ? 'Total' : 'Valor', align: 'right', render: (e) => <span className={subTab === 'receber' ? 'font-semibold text-success' : 'font-semibold text-foreground'}>{formatCurrency(netAmount(e))}</span> },
     { key: 'status', header: 'Status', align: 'right', render: (e) => {
       const overdue = e.status === 'pendente' && e.dueDate && (daysUntil(e.dueDate) ?? 1) < 0;
       const st = overdue ? 'atrasado' : e.status;
       return (
         <div className="flex flex-col items-end gap-1">
           <Badge tone={statusMeta[st].tone} dot>{statusMeta[st].label}</Badge>
-          {e.type === 'despesa' && (e.status === 'pendente' || e.status === 'atrasado') && (e.approvalStatus ?? 'pendente') !== 'aprovado' && (
-            <Badge tone="warning" className="text-[10px]">aprovação pendente</Badge>
-          )}
           {e.status === 'pago' && e.paidAt && <span className="text-[10px] text-muted-foreground">pago em {fmtDate(e.paidAt)}</span>}
           {e.paymentMethod && <span className="text-[10px] text-muted-foreground">{PAYMENT_METHOD_LABEL[e.paymentMethod]}</span>}
         </div>
@@ -239,14 +273,6 @@ function VisaoGeralTab() {
     { key: 'acoes', header: 'Ações', align: 'right', render: (e) => {
       if (e.status === 'pago' || e.status === 'cancelado') {
         return e.fiscalDocumentUrl ? <a href={e.fiscalDocumentUrl} target="_blank" rel="noreferrer" onClick={(ev) => ev.stopPropagation()} className="text-xs text-brand underline">nota fiscal</a> : null;
-      }
-      if (e.type === 'despesa' && (e.approvalStatus ?? 'pendente') === 'pendente') {
-        return (
-          <div className="flex justify-end gap-1" onClick={(ev) => ev.stopPropagation()}>
-            <button onClick={() => approve(e, true)} aria-label="Aprovar" className="rounded-md p-1.5 text-success hover:bg-success-soft"><ThumbsUp size={14} /></button>
-            <button onClick={() => approve(e, false)} aria-label="Reprovar" className="rounded-md p-1.5 text-danger hover:bg-danger-soft"><ThumbsDown size={14} /></button>
-          </div>
-        );
       }
       return (
         <div className="flex justify-end gap-1" onClick={(ev) => ev.stopPropagation()}>
@@ -257,7 +283,7 @@ function VisaoGeralTab() {
             <Paperclip size={14} />
             <input type="file" className="hidden" onChange={(ev) => { const f = ev.target.files?.[0]; if (f) attachFiscalDoc(e.id, f); ev.target.value = ''; }} />
           </label>
-          <Button size="sm" onClick={() => setPayDialogEntries([e])}>Pagar</Button>
+          <Button size="sm" onClick={() => setPayDialogEntries([e])}>{e.type === 'receita' ? 'Baixar recebimento' : 'Pagar'}</Button>
         </div>
       );
     } },
@@ -362,18 +388,32 @@ function PaymentDialog({ entries, onClose }: { entries: FinanceEntry[] | null; o
   const [paidAt, setPaidAt] = useState(toDateInputValue(new Date()));
 
   useEffect(() => { if (entries) { setMethod('eletronico'); setAccountId(accounts[0]?.id ?? ''); setCheckNumber(''); setPaidAt(toDateInputValue(new Date())); } }, [entries]); // eslint-disable-line react-hooks/exhaustive-deps
+  // As contas podem chegar depois do drawer abrir (carregamento do Supabase).
+  // Sem isto o campo continuaria vazio e a baixa seria recusada.
+  useEffect(() => { if (entries && !accountId && accounts[0]) setAccountId(accounts[0].id); }, [accounts, entries, accountId]);
 
   if (!entries || entries.length === 0) return null;
   const total = entries.reduce((s, e) => s + netAmount(e), 0);
   const isReceita = entries[0].type === 'receita';
   const account = accounts.find((a) => a.id === accountId);
+  const precisaConta = method === 'debito_conta' || method === 'eletronico';
 
   const confirm = () => {
-    const effectiveDate = paidAt || toDateInputValue(new Date());
+    // `bank_account_id` tem chave estrangeira: gravar string vazia (nenhuma
+    // conta escolhida, ou nenhuma cadastrada) derrubava a baixa inteira com
+    // erro de vínculo, e a tela não dizia o porquê.
+    if (precisaConta && !account) {
+      toast(accounts.length === 0
+        ? 'Cadastre uma conta bancária na aba Bancos antes de dar baixa por débito ou transferência.'
+        : 'Escolha a conta bancária da movimentação.', { tone: 'warning' });
+      return;
+    }
+    if (!paidAt) { toast('Informe a data do pagamento.', { tone: 'warning' }); return; }
+    const effectiveDate = paidAt;
     const groupId = entries.length > 1 ? uid('grp') : undefined;
-    entries.forEach((e) => update(e.id, { status: 'pago', paidAt: effectiveDate, paymentMethod: method, bankAccountId: (method === 'debito_conta' || method === 'eletronico') ? accountId : undefined, groupId }));
+    entries.forEach((e) => update(e.id, { status: 'pago', paidAt: effectiveDate, paymentMethod: method, bankAccountId: precisaConta ? account?.id : undefined, groupId }));
 
-    if ((method === 'debito_conta' || method === 'eletronico') && account) {
+    if (precisaConta && account) {
       addTransaction({
         accountId: account.id,
         type: isReceita ? 'recebimento' : 'pagamento',
@@ -389,7 +429,8 @@ function PaymentDialog({ entries, onClose }: { entries: FinanceEntry[] | null; o
         bank: account?.bank ?? 'Banco', amount: total, issueDate: effectiveDate, status: 'emitido', financeEntryId: entries[0].id,
       });
     }
-    toast(entries.length > 1 ? `${entries.length} lançamentos pagos (${formatCurrency(total)}).` : `Lançamento pago (${formatCurrency(total)}).`, { tone: 'success' });
+    const verbo = isReceita ? 'recebido' : 'pago';
+    toast(entries.length > 1 ? `${entries.length} lançamentos ${verbo}s (${formatCurrency(total)}).` : `Lançamento ${verbo} (${formatCurrency(total)}).`, { tone: 'success' });
     onClose();
   };
 
@@ -400,20 +441,26 @@ function PaymentDialog({ entries, onClose }: { entries: FinanceEntry[] | null; o
         <div className="space-y-1.5 rounded-lg border border-border bg-muted/30 p-3">
           {entries.map((e) => <div key={e.id} className="flex items-center justify-between text-sm"><span className="text-foreground">{e.description}</span><span className="font-medium text-foreground">{formatCurrency(netAmount(e))}</span></div>)}
         </div>
-        <Field label="Data do pagamento" hint="Pré-preenchida com hoje — ajuste se o pagamento foi antecipado ou já ocorreu em outra data">
+        <Field label={isReceita ? 'Data do recebimento' : 'Data do pagamento'} required hint="Pré-preenchida com hoje — ajuste se já ocorreu em outra data">
           <DateInput type="date" value={paidAt} onChange={(ev) => setPaidAt(ev.target.value)} />
         </Field>
-        <Field label="Forma de pagamento">
+        <Field label={isReceita ? 'Forma de recebimento' : 'Forma de pagamento'}>
           <Select value={method} onChange={(ev) => setMethod(ev.target.value as PaymentMethodKind)}>
             {(Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethodKind[]).map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABEL[m]}</option>)}
           </Select>
         </Field>
         {(method === 'debito_conta' || method === 'eletronico') && (
-          <Field label="Conta bancária" hint="Débito interligado com o banco — gera a movimentação no extrato">
+          <Field label="Conta bancária" required hint="Gera a movimentação no extrato da conta">
             <Select value={accountId} onChange={(ev) => setAccountId(ev.target.value)}>
               {accounts.length === 0 && <option value="">Nenhuma conta cadastrada</option>}
               {accounts.map((a) => <option key={a.id} value={a.id}>{a.alias ?? a.bank} · {a.bank}</option>)}
             </Select>
+            {accounts.length === 0 && (
+              <span className="mt-1 block text-xs text-danger">
+                Nenhuma conta bancária cadastrada. Cadastre uma na aba Bancos ou escolha outra forma
+                (dinheiro, cheque) para dar baixa.
+              </span>
+            )}
           </Field>
         )}
         {method === 'cheque' && (
@@ -653,7 +700,6 @@ function FinanceForm({ open, defaultType, onClose, onSave }: { open: boolean; de
       discount: discount ? Number(discount) : undefined,
       dueDate: dueDate || undefined,
       paidAt: status === 'pago' ? (dueDate || toDateInputValue(new Date())) : undefined,
-      approvalStatus: type === 'despesa' ? 'pendente' : undefined,
       taxKind: type === 'despesa' && taxKind ? taxKind : undefined,
       createdAt: new Date().toISOString(),
     });
@@ -802,7 +848,8 @@ function DepositDialog({ account, onClose }: { account: BankAccount | null; onCl
 
   const submit = () => {
     const v = Number(amount);
-    if (!(v > 0)) return;
+    // Sem aviso o botão parecia quebrado: o clique não fazia nada.
+    if (!(v > 0)) { toast('Informe um valor maior que zero.', { tone: 'warning' }); return; }
     addTransaction({ accountId: account.id, type: 'deposito', amount: v, date: toDateInputValue(new Date()), description: description.trim() || 'Depósito' });
     toast(`Depósito de ${formatCurrency(v)} registrado em ${account.alias ?? account.bank}.`, { tone: 'success' });
     onClose();
@@ -810,7 +857,7 @@ function DepositDialog({ account, onClose }: { account: BankAccount | null; onCl
 
   return (
     <Drawer open={!!account} onClose={onClose} title="Registrar depósito" subtitle={account.alias ?? account.bank}
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!(Number(amount) > 0)}>Depositar</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Depositar</Button></div>}>
       <div className="space-y-4">
         <Field label="Valor (R$)" required><Input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
         <Field label="Descrição"><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Depósito em espécie" /></Field>
@@ -830,7 +877,8 @@ function TransferDialog({ account, accounts, onClose }: { account: BankAccount |
   const submit = () => {
     const v = Number(amount);
     const dest = accounts.find((a) => a.id === toId);
-    if (!(v > 0) || !dest) return;
+    if (!dest) { toast('Escolha a conta de destino.', { tone: 'warning' }); return; }
+    if (!(v > 0)) { toast('Informe um valor maior que zero.', { tone: 'warning' }); return; }
     const pairId = uid('xfer');
     const date = toDateInputValue(new Date());
     addTransaction({ accountId: account.id, type: 'transferencia_saida', amount: v, date, description: `Transferência para ${dest.alias ?? dest.bank}`, transferPairId: pairId });
@@ -841,7 +889,7 @@ function TransferDialog({ account, accounts, onClose }: { account: BankAccount |
 
   return (
     <Drawer open={!!account} onClose={onClose} title="Transferência bancária" subtitle={`De ${account.alias ?? account.bank}`}
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<ArrowLeftRight size={15} />} disabled={!(Number(amount) > 0) || !toId}>Transferir</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<ArrowLeftRight size={15} />}>Transferir</Button></div>}>
       <div className="space-y-4">
         <Field label="Conta destino" required>
           <Select value={toId} onChange={(e) => setToId(e.target.value)}>

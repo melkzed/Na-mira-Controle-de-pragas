@@ -143,7 +143,7 @@ function LeadForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
 
   return (
     <Drawer open={open} onClose={onClose} title="Novo lead" subtitle="Cadastro no funil de vendas"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!name.trim()}>Adicionar</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Adicionar</Button></div>}>
       <div className="space-y-4">
         <Field label="Nome / contato" required><Input value={name} onChange={(e) => setName(e.target.value)} />{touched && !name.trim() && <span className="mt-1 block text-xs text-danger">Informe o nome.</span>}</Field>
         <Field label="Empresa"><Input value={company} onChange={(e) => setCompany(e.target.value)} /></Field>

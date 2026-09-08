@@ -10,10 +10,11 @@ import { Award, FileCheck2, FileText, Receipt } from 'lucide-react';
 import { PageHeader } from '../../components/ui/misc';
 import { Card, CardBody } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
-import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Field';
 import { getServiceType } from '@/application/repository';
 import { printServiceOrder } from '@/lib/printOrder';
+import type { DocumentOutput } from '@/lib/printDocuments';
+import { DocumentActions } from '@/presentation/components/DocumentActions';
 import { printCertificate, printLaudo } from '@/lib/printDocuments';
 import { fmtDate } from '@/lib/date';
 import { formatCurrency } from '@/lib/utils';
@@ -43,10 +44,10 @@ export function PortalDocumentosPage() {
     return alvo.includes(busca.toLowerCase());
   });
 
-  const abrir = (so: ServiceOrder, kind: DocKind) => {
-    if (kind === 'os' || kind === 'recibo') printServiceOrder(so);
-    else if (kind === 'certificado') printCertificate(so);
-    else printLaudo(so);
+  const abrir = (so: ServiceOrder, kind: DocKind, output: DocumentOutput) => {
+    if (kind === 'os' || kind === 'recibo') printServiceOrder(so, output);
+    else if (kind === 'certificado') printCertificate(so, output);
+    else printLaudo(so, output);
   };
 
   return (
@@ -74,9 +75,7 @@ export function PortalDocumentosPage() {
 
               <div className="flex flex-wrap gap-2">
                 {(['os', 'certificado', 'laudo'] as DocKind[]).map((kind) => (
-                  <Button key={kind} size="sm" variant="outline" leftIcon={DOC_META[kind].icon} onClick={() => abrir(so, kind)}>
-                    {DOC_META[kind].label}
-                  </Button>
+                  <DocumentActions key={kind} label={DOC_META[kind].label} icon={DOC_META[kind].icon} onGenerate={(o) => abrir(so, kind, o)} />
                 ))}
               </div>
             </CardBody>

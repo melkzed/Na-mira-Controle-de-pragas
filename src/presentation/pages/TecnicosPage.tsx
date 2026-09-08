@@ -23,6 +23,7 @@ import { MIN_PASSWORD, createEmployee, resetEmployeePassword } from '@/applicati
 import { ImportDrawer } from '../components/ImportDrawer';
 import { techniciansImport } from '@/lib/importModules';
 import { toast } from '@/store/toastStore';
+import { CORES_TECNICO, technicianColor } from '@/lib/agendaColor';
 import { getProduct, appointmentsHistoryForTechnician, getCustomer, getServiceType, serviceOrdersForTechnician } from '@/application/repository';
 import { isEquipmentOverdue } from './EquipamentosPage';
 import { EQUIPMENT_STATUS_META as statusMeta } from '@/domain/equipmentMeta';
@@ -214,6 +215,7 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
   const [isActive, setIsActive] = useState(true);
   const [fieldAppAccess, setFieldAppAccess] = useState(true);
   const [signature, setSignature] = useState<string | undefined>();
+  const [color, setColor] = useState<string>(CORES_TECNICO[0].value);
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -226,6 +228,7 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
     setName(editing?.name ?? ''); setEmail(editing?.email ?? ''); setPhone(editing?.phone ?? '');
     setIsActive(editing?.isActive ?? true); setFieldAppAccess(editing?.fieldAppAccess ?? true); setTouched(false);
     setSignature(editing ? savedSignatures[editing.id] : undefined);
+    setColor(editing ? technicianColor(editing) : CORES_TECNICO[0].value);
     setPassword(''); setPasswordConfirm(''); setShowPassword(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing]);
@@ -251,7 +254,7 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
     setTouched(true);
     if (!name.trim() || !email.trim() || passwordError || emailDuplicado) return;
     if (editing) {
-      update(editing.id, { name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, isActive, fieldAppAccess });
+      update(editing.id, { name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, isActive, fieldAppAccess, color });
       setUserSignature(editing.id, signature);
       if (password) {
         setSaving(true);
@@ -282,8 +285,10 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
         isActive,
         fieldAppAccess,
       });
-      // Só depois de criado existe o id para vincular a assinatura do formulário.
+      // Só depois de criado existe o id para vincular a assinatura e a cor —
+      // a criação passa pela Edge Function, que não recebe esses campos.
       if (signature) setUserSignature(newId, signature);
+      update(newId, { color });
       toast('Técnico cadastrado! Passe para ele o e-mail e a senha que você definiu.', { tone: 'success' });
       onClose();
     } catch (e) {
@@ -315,6 +320,22 @@ function TechnicianForm({ open, editing, onClose }: { open: boolean; editing: Us
           )}
         </Field>
         <Field label="Telefone"><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-0000" /></Field>
+        <Field label="Cor na agenda" hint="Os atendimentos deste técnico aparecem nesta cor. Quando finalizados, todos ficam verdes.">
+          <div className="flex flex-wrap gap-2">
+            {CORES_TECNICO.map((c) => (
+              <button
+                key={c.value}
+                type="button"
+                onClick={() => setColor(c.value)}
+                aria-label={`Cor ${c.label}`}
+                aria-pressed={color === c.value}
+                title={c.label}
+                className={`h-8 w-8 rounded-full transition ${color === c.value ? 'ring-2 ring-foreground ring-offset-2 ring-offset-surface' : 'ring-1 ring-border'}`}
+                style={{ background: c.value }}
+              />
+            ))}
+          </div>
+        </Field>
         <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/30 p-3">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="h-4 w-4 rounded border-border" id="tec-ativo" />
           <label htmlFor="tec-ativo" className="text-sm text-foreground">Técnico ativo</label>

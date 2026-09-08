@@ -65,9 +65,9 @@ export function EquipamentosPage() {
 
   const columns: Column<Equipment>[] = [
     { key: 'name', header: 'Equipamento', render: (e) => (<div><p className="font-medium">{e.name}</p><p className="text-xs text-muted-foreground">{e.code} · Patrimônio {e.assetNumber}</p></div>) },
-    { key: 'kind', header: 'Tipo', render: (e) => <Badge tone="neutral">{e.kind}</Badge> },
+    { key: 'kind', header: 'Tipo', hideBelow: 'lg', render: (e) => <Badge tone="neutral">{e.kind}</Badge> },
     { key: 'resp', header: 'Responsável', render: (e) => getUser(e.checkedOutTo ?? e.assignedTo)?.name ?? '—' },
-    { key: 'ret', header: 'Devolução prevista', render: (e) => e.status === 'em_uso'
+    { key: 'ret', header: 'Devolução prevista', hideBelow: 'xl', render: (e) => e.status === 'em_uso'
       ? <span className={isEquipmentOverdue(e) ? 'font-semibold text-danger' : 'text-foreground'}>{fmtDateTime(e.expectedReturnAt)}{isEquipmentOverdue(e) ? ' · atrasado' : ''}</span>
       : <span className="text-muted-foreground">—</span> },
     { key: 'status', header: 'Status', align: 'right', render: (e) => isEquipmentOverdue(e)
@@ -155,7 +155,7 @@ function EquipmentForm({ open, onClose, onSave }: { open: boolean; onClose: () =
 
   return (
     <Drawer open={open} onClose={onClose} title="Novo equipamento" subtitle="Cadastro de equipamento"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!name.trim()}>Adicionar</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Adicionar</Button></div>}>
       <div className="grid grid-cols-2 gap-4">
         <Field label="Nome" required className="col-span-2"><Input value={name} onChange={(e) => setName(e.target.value)} />{touched && !name.trim() && <span className="mt-1 block text-xs text-danger">Informe o nome.</span>}</Field>
         <Field label="Código"><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="PC-01" /></Field>

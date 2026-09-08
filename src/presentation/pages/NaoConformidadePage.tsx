@@ -19,6 +19,7 @@ import type { AppointmentPriority } from '@/domain/enums';
 import type { NonConformity, NonConformityCategory, NonConformityStatus } from '@/domain/types';
 import { fmtDate } from '@/lib/date';
 import { NC_CATEGORY_LABEL, printNonConformityReport } from '@/lib/printReports';
+import { DocumentActions } from '@/presentation/components/DocumentActions';
 
 const STATUS_META: Record<NonConformityStatus, { label: string; tone: 'warning' | 'brand' | 'success' }> = {
   aberta: { label: 'Aberta', tone: 'warning' },
@@ -50,7 +51,10 @@ export function NaoConformidadePage() {
         description="Registro de frestas, falhas estruturais, limpeza e armazenamento inadequados"
         actions={
           <>
-            <Button variant="outline" leftIcon={<FileText size={16} />} disabled={!customer || list.length === 0} onClick={() => customer && printNonConformityReport(customer, list)}>Gerar PDF</Button>
+            <DocumentActions label="Gerar PDF" icon={<FileText size={16} />} size="md" onGenerate={(o) => {
+              if (!customer || list.length === 0) { toast('Escolha um cliente com não conformidades registradas.', { tone: 'warning' }); return; }
+              printNonConformityReport(customer, list, o);
+            }} />
             <Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Nova não conformidade</Button>
           </>
         }
@@ -142,7 +146,7 @@ function NcForm({ open, onClose, onSave }: { open: boolean; onClose: () => void;
 
   return (
     <Drawer open={open} onClose={onClose} title="Nova não conformidade" subtitle="Registro de irregularidade no local"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!description.trim()}>Registrar</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Registrar</Button></div>}>
       <div className="space-y-4">
         <Field label="Categoria" required>
           <Select value={category} onChange={(e) => setCategory(e.target.value as NonConformityCategory)}>

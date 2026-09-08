@@ -33,8 +33,8 @@ export function FiscalPage() {
     { key: 'name', header: 'Documento', render: (l) => (
       <div><p className="font-medium">{l.name}</p><p className="text-xs text-muted-foreground">{l.issuer} · nº {l.number}</p></div>
     ) },
-    { key: 'resp', header: 'Responsável', render: (l) => getUser(l.responsibleId)?.name ?? '—' },
-    { key: 'issued', header: 'Emissão', render: (l) => l.issuedAt ? fmtDate(l.issuedAt) : '—' },
+    { key: 'resp', header: 'Responsável', hideBelow: 'xl', render: (l) => getUser(l.responsibleId)?.name ?? '—' },
+    { key: 'issued', header: 'Emissão', hideBelow: 'lg', render: (l) => l.issuedAt ? fmtDate(l.issuedAt) : '—' },
     { key: 'exp', header: 'Vencimento', render: (l) => l.expiresAt ? fmtDate(l.expiresAt) : '—' },
     { key: 'status', header: 'Situação', render: (l) => {
       const d = daysUntil(l.expiresAt) ?? 999;
@@ -160,7 +160,7 @@ function LicenseForm({ open, onClose, onSave, initial }: {
 
   return (
     <Drawer open={open} onClose={onClose} title={initial ? 'Editar licença' : 'Nova licença'} subtitle="Licença, alvará ou registro regulatório"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!name.trim()}>Cadastrar</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Cadastrar</Button></div>}>
       <div className="grid grid-cols-2 gap-4">
         <Field label="Documento" required className="col-span-2"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Alvará Sanitário" />{touched && !name.trim() && <span className="mt-1 block text-xs text-danger">Informe o documento.</span>}</Field>
         <Field label="Órgão emissor"><Input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="Vigilância Sanitária" /></Field>
@@ -311,8 +311,8 @@ function NotasFiscais() {
   const columns: Column<Invoice>[] = [
     { key: 'num', header: 'Nota', render: (i) => <span className="font-semibold">#{i.number} <span className="text-xs text-muted-foreground">{i.series}</span></span> },
     { key: 'cust', header: 'Tomador', render: (i) => getCustomer(i.customerId ?? '')?.name ?? i.description },
-    { key: 'date', header: 'Emissão', render: (i) => fmtDate(i.issuedAt) },
-    { key: 'iss', header: 'ISS', align: 'right', render: (i) => formatCurrency(i.taxAmount) },
+    { key: 'date', header: 'Emissão', hideBelow: 'lg', render: (i) => fmtDate(i.issuedAt) },
+    { key: 'iss', header: 'ISS', align: 'right', hideBelow: 'xl', render: (i) => formatCurrency(i.taxAmount) },
     { key: 'amount', header: 'Valor', align: 'right', render: (i) => <span className="font-semibold">{formatCurrency(i.amount)}</span> },
     { key: 'status', header: 'Status', align: 'right', render: (i) => {
       const map = {

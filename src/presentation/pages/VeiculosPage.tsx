@@ -123,7 +123,7 @@ function VehicleForm({ open, initial, onClose, onSave }: { open: boolean; initia
 
   return (
     <Drawer open={open} onClose={onClose} title={isEdit ? 'Editar veículo' : 'Novo veículo'} subtitle={isEdit ? initial?.plate : 'Cadastro de veículo da frota'}
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!plate.trim()}>{isEdit ? 'Salvar' : 'Adicionar'}</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>{isEdit ? 'Salvar' : 'Adicionar'}</Button></div>}>
       <div className="grid grid-cols-2 gap-4">
         <Field label="Placa" required><Input value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} placeholder="ABC-1D23" />{touched && !plate.trim() && <span className="mt-1 block text-xs text-danger">Informe a placa.</span>}</Field>
         <Field label="Modelo"><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="Fiat Fiorino" /></Field>

@@ -13,6 +13,8 @@ import { useLicensesStore, useProductsStore, useUsersStore } from '@/store/entit
 import { useCustomersStore } from '@/store/customersStore';
 import { downloadCsv, downloadXls } from '@/lib/export';
 import { printDataReport, type ReportColumn } from '@/lib/printReports';
+import type { DocumentOutput } from '@/lib/printDocuments';
+import { DocumentActions } from '@/presentation/components/DocumentActions';
 import { fmtDate, toDateInputValue } from '@/lib/date';
 import { formatCurrency, sortByName } from '@/lib/utils';
 import { SERVICE_ORDER_STATUS_META, type ServiceOrderStatus } from '@/domain/enums';
@@ -357,7 +359,7 @@ export function RelatoriosPage() {
     return `${group} · ${parts.filter(Boolean).join(' · ')}`;
   };
 
-  const exportPdf = (group: string, name: string) => { const { columns, rows, summary } = buildReport(group, f, name); printDataReport(name, subtitleFor(group), columns, rows, summary); };
+  const exportPdf = (group: string, name: string, output: DocumentOutput = 'imprimir') => { const { columns, rows, summary } = buildReport(group, f, name); printDataReport(name, subtitleFor(group), columns, rows, summary, output); };
   const exportXls = (group: string, name: string) => { const { columns, rows } = buildReport(group, f, name); downloadXls(fileName(name), rows, columns, `${name} — ${rangeLabel}`); };
   const exportCsv = (group: string, name: string) => { const { columns, rows } = buildReport(group, f, name); downloadCsv(fileName(name), rows, columns); };
 
@@ -452,7 +454,7 @@ export function RelatoriosPage() {
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5">
-                      <Button variant="outline" size="sm" leftIcon={<FileText size={13} />} onClick={() => exportPdf(section.group, r.name)}>PDF</Button>
+                      <DocumentActions label="PDF" icon={<FileText size={13} />} onGenerate={(o) => exportPdf(section.group, r.name, o)} />
                       <Button variant="outline" size="sm" leftIcon={<FileSpreadsheet size={13} />} onClick={() => exportXls(section.group, r.name)}>Excel</Button>
                       <Button variant="ghost" size="sm" leftIcon={<Download size={13} />} onClick={() => exportCsv(section.group, r.name)}>CSV</Button>
                     </div>

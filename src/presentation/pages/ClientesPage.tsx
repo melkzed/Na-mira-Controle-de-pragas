@@ -23,6 +23,7 @@ import { downloadCsv } from '@/lib/export';
 import { customersImport } from '@/lib/importModules';
 import { fmtDate } from '@/lib/date';
 import { printServiceOrder } from '@/lib/printOrder';
+import { DocumentActions } from '@/presentation/components/DocumentActions';
 import { printCertificate, printLaudo } from '@/lib/printDocuments';
 
 const CONTRACT_STATUS_LABEL: Record<ContractStatus, string> = {
@@ -334,9 +335,9 @@ function ClienteDetail({
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     <Button size="sm" variant="outline" leftIcon={<ExternalLink size={13} />} onClick={(e) => { e.stopPropagation(); openOs(so.id); }}>Abrir OS</Button>
-                    <Button size="sm" variant="outline" leftIcon={<Download size={13} />} onClick={(e) => { e.stopPropagation(); printServiceOrder(so); }}>PDF</Button>
-                    <Button size="sm" variant="outline" leftIcon={<Award size={13} />} onClick={(e) => { e.stopPropagation(); printCertificate(so); }}>Certificado</Button>
-                    <Button size="sm" variant="outline" leftIcon={<FileText size={13} />} onClick={(e) => { e.stopPropagation(); printLaudo(so); }}>Laudo</Button>
+                    <DocumentActions label="PDF" icon={<Download size={13} />} onGenerate={(o) => printServiceOrder(so, o)} />
+                    <DocumentActions label="Certificado" icon={<Award size={13} />} onGenerate={(o) => printCertificate(so, o)} />
+                    <DocumentActions label="Laudo" icon={<FileText size={13} />} onGenerate={(o) => printLaudo(so, o)} />
                   </div>
                 </div>
               );

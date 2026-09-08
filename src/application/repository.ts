@@ -120,6 +120,14 @@ export function serviceOrdersForCustomer(customerId: string): ServiceOrder[] {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+/** Versão atual da OS na store.
+ *  As telas guardam a OS selecionada em estado local; depois de uma edição,
+ *  esse objeto pode estar desatualizado. Quem gera documento passa por aqui
+ *  para imprimir sempre o que está gravado. */
+export function getServiceOrder(id: string): ServiceOrder | undefined {
+  return useServiceOrdersStore.getState().orders.find((so) => so.id === id);
+}
+
 /** Última Ordem de Serviço do cliente — base para o preenchimento inteligente. */
 export function lastOrderForCustomer(customerId: string): ServiceOrder | undefined {
   return serviceOrdersForCustomer(customerId)[0];

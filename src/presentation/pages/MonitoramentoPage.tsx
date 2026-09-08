@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { FileText, Radar } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
-import { Button } from '../components/ui/Button';
 import { Card, CardBody } from '../components/ui/Card';
 import { Select } from '../components/ui/Field';
 import { useCustomersStore } from '@/store/customersStore';
 import { useTrapsStore } from '@/store/trapsStore';
 import { TrapsPanel } from '../components/client/TrapsPanel';
 import { printMipReport, printTrapReport } from '@/lib/printReports';
+import { DocumentActions } from '@/presentation/components/DocumentActions';
 
 /**
  * Monitoramento de armadilhas — visão consolidada para navegação livre entre
@@ -48,8 +48,8 @@ export function MonitoramentoPage() {
         description="Controle de dispositivos, inspeções e MIP dos clientes com monitoramento"
         actions={
           <>
-            <Button variant="outline" leftIcon={<FileText size={16} />} onClick={() => customer && printMipReport(customer, custTraps, inspections)}>Relatório MIP</Button>
-            <Button variant="outline" leftIcon={<FileText size={16} />} onClick={() => customer && printTrapReport(customer, custTraps, inspections)}>Rel. Armadilhas</Button>
+            <DocumentActions label="Relatório MIP" icon={<FileText size={16} />} size="md" onGenerate={(o) => customer && printMipReport(customer, custTraps, inspections, o)} />
+            <DocumentActions label="Rel. Armadilhas" icon={<FileText size={16} />} size="md" onGenerate={(o) => customer && printTrapReport(customer, custTraps, inspections, o)} />
           </>
         }
       />

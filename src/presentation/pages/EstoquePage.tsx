@@ -125,7 +125,9 @@ function EntryForm({ open, onClose }: { open: boolean; onClose: () => void }) {
 
   const submit = () => {
     const n = Number(qty);
-    if (!productId || !n || n <= 0) return;
+    // Sem isto o clique não fazia nada e nada explicava por quê.
+    if (!productId) { toast('Escolha o produto que está entrando.', { tone: 'warning' }); return; }
+    if (!n || n <= 0) { toast('Informe uma quantidade maior que zero.', { tone: 'warning' }); return; }
     entry(locationId, productId, n);
     const prod = products.find((p) => p.id === productId);
     toast(`Entrada registrada: +${n} ${prod?.unit ?? ''} de ${prod?.name ?? ''}`, { tone: 'success' });
@@ -134,7 +136,7 @@ function EntryForm({ open, onClose }: { open: boolean; onClose: () => void }) {
 
   return (
     <Drawer open={open} onClose={onClose} title="Entrada de estoque" subtitle="Compra ou ajuste de saldo"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!productId || !(Number(qty) > 0)}>Registrar entrada</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Registrar entrada</Button></div>}>
       <div className="space-y-4">
         <Field label="Produto" required>
           <Select value={productId} onChange={(e) => setProductId(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
@@ -173,10 +175,15 @@ function TransferForm({ open, onClose }: { open: boolean; onClose: () => void })
 
   const available = productId ? balanceOf(fromLoc, productId) : 0;
   const n = Number(qty);
-  const valid = !!productId && !!toLoc && fromLoc !== toLoc && n > 0 && n <= available;
 
   const submit = () => {
-    if (!valid) return;
+    // Cada recusa diz o que falta: "não acontece nada" obriga a pessoa a
+    // adivinhar qual dos cinco campos está errado.
+    if (!productId) { toast('Escolha o produto a transferir.', { tone: 'warning' }); return; }
+    if (!toLoc) { toast('Escolha o local de destino.', { tone: 'warning' }); return; }
+    if (fromLoc === toLoc) { toast('Origem e destino são o mesmo local.', { tone: 'warning' }); return; }
+    if (!n || n <= 0) { toast('Informe uma quantidade maior que zero.', { tone: 'warning' }); return; }
+    if (n > available) { toast(`Saldo insuficiente: há ${available} disponível na origem.`, { tone: 'warning' }); return; }
     const ok = transfer(fromLoc, toLoc, productId, n);
     const prod = products.find((p) => p.id === productId);
     if (ok) { toast(`Transferido ${n} ${prod?.unit ?? ''} de ${prod?.name ?? ''}`, { tone: 'success' }); onClose(); }
@@ -185,7 +192,7 @@ function TransferForm({ open, onClose }: { open: boolean; onClose: () => void })
 
   return (
     <Drawer open={open} onClose={onClose} title="Transferir estoque" subtitle="Movimentação entre locais"
-      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />} disabled={!valid}>Transferir</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Transferir</Button></div>}>
       <div className="space-y-4">
         <Field label="Produto" required>
           <Select value={productId} onChange={(e) => setProductId(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
@@ -220,7 +227,7 @@ function CentralStock() {
         </div>
       );
     } },
-    { key: 'loc', header: 'Local', render: (p) => <span className="text-muted-foreground">{p.storageLocation ?? '—'}</span> },
+    { key: 'loc', header: 'Local', hideBelow: 'lg', render: (p) => <span className="text-muted-foreground">{p.storageLocation ?? '—'}</span> },
     { key: 'status', header: 'Status', align: 'right', render: (p) => {
       const qty = centralBalance(p.id);
       return qty <= p.minQuantity ? <Badge tone="danger" dot>Repor</Badge> : qty <= p.minQuantity * 1.5 ? <Badge tone="warning" dot>Baixo</Badge> : <Badge tone="success" dot>OK</Badge>;
@@ -266,9 +273,9 @@ function BatchStock() {
     .sort((a, b) => (a.batch.expiresAt ?? '') < (b.batch.expiresAt ?? '') ? -1 : 1);
   const columns: Column<(typeof rows)[number]>[] = [
     { key: 'product', header: 'Produto', render: (r) => <span className="font-medium">{r.product.name}</span> },
-    { key: 'batch', header: 'Lote', render: (r) => <span className="text-muted-foreground">{r.batch.code}</span> },
+    { key: 'batch', header: 'Lote', hideBelow: 'lg', render: (r) => <span className="text-muted-foreground">{r.batch.code}</span> },
     { key: 'qty', header: 'Qtd.', render: (r) => `${r.batch.quantity} ${r.product.unit}` },
-    { key: 'exp', header: 'Validade', render: (r) => r.batch.expiresAt ? fmtDate(r.batch.expiresAt) : '—' },
+    { key: 'exp', header: 'Validade', hideBelow: 'lg', render: (r) => r.batch.expiresAt ? fmtDate(r.batch.expiresAt) : '—' },
     { key: 'status', header: 'Situação', align: 'right', render: (r) => {
       const d = daysUntil(r.batch.expiresAt) ?? 999;
       if (d < 0) return <Badge tone="danger" dot><TriangleAlert size={11} className="mr-1" />Vencido</Badge>;
