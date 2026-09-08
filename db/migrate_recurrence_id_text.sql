@@ -1,4 +1,13 @@
 -- ============================================================================
+-- DISPENSÁVEL desde que o app passou a gerar o id da recorrência com
+-- crypto.randomUUID() (ver `recurrenceGroupId` em src/lib/recurrence.ts).
+-- A coluna `uuid` do schema original aceita esse valor sem conversão alguma.
+--
+-- Mantido só para quem já rodou: `text` também funciona, e desfazer não traz
+-- benefício. Não rode em base nova.
+-- ============================================================================
+
+-- ============================================================================
 -- Na Mira · Controle de Pragas — recurrence_id passa a ser text
 --
 -- Sintoma: criar uma OS recorrente falha em TODAS as visitas, com
