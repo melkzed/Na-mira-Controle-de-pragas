@@ -19,7 +19,7 @@ precisa reiniciar nada.
 | 9 | `db/migrate_portal_rls.sql` | **Portal do Cliente com RLS**: claim `customer_id`, políticas que prendem o cliente aos próprios registros, gatilhos que limitam o que ele pode alterar, e a busca por documento usada no login |
 | 10 | `db/migrate_portal_rls_2.sql` | Correções do passo 9: o cliente lê a própria linha em `users` (sem isso o login falha), e as configurações fiscais e licenças que os documentos dele precisam |
 | 11 | `db/migrate_recurrence_id_text.sql` | `appointments.recurrence_id` vira `text` — sem isso, criar OS recorrente falha em todas as visitas |
-| 12 | `db/migrate_cor_e_aprovacao.sql` | `users.color` (cor do técnico na agenda) e `fiscal_settings.require_expense_approval` (aprovação de despesa, opcional) |
+| 12 | `db/migrate_cor_tecnico.sql` | `users.color` — grava a cor que cada técnico escolhe no cadastro e que a agenda usa |
 
 Depois do passo 9, implante a função de login do Portal:
 
@@ -53,16 +53,12 @@ usando a autorização antiga (papel `supervisor`, que deixou de existir):
 npx supabase functions deploy convidar-tecnico --project-ref SEU_PROJECT_REF
 ```
 
-## 12) Cor do técnico e aprovação de despesas
+## 12) Cor do técnico na agenda
 
-`db/migrate_cor_e_aprovacao.sql` cria duas colunas:
-
-- `users.color` — a cor que cada técnico escolhe no cadastro e que a agenda
-  usa para pintar os atendimentos. Sem rodar, a tela continua funcionando (a
-  cor é derivada da id do técnico), mas a escolha não persiste.
-- `fiscal_settings.require_expense_approval` — liga/desliga a exigência de
-  aprovação antes de pagar uma despesa (Configurações → Operacional). Nasce
-  desligada.
+`db/migrate_cor_tecnico.sql` cria `users.color`, a cor que cada técnico escolhe
+no cadastro e que a agenda usa para pintar os atendimentos. Sem rodar, a tela
+continua funcionando (a cor é derivada da id do técnico), mas a escolha não
+fica gravada.
 
 ## Conferências rápidas
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { ArrowLeftRight, Banknote, Check, CheckCheck, Clock, Landmark, Lock, Paperclip, Pencil, PiggyBank, Plus, Repeat, ThumbsDown, ThumbsUp, Trash2, TriangleAlert, Upload } from 'lucide-react';
+import { ArrowLeftRight, Banknote, Check, CheckCheck, Clock, Landmark, Lock, Paperclip, Pencil, PiggyBank, Plus, Repeat, Trash2, TriangleAlert, Upload } from 'lucide-react';
 import { PageHeader, Stagger } from '../components/ui/misc';
 import { StatCard } from '../components/StatCard';
 import { Button } from '../components/ui/Button';
@@ -109,7 +109,7 @@ function generateRecurring(count = 3): number {
       const monthKey = toDateStr(date).slice(0, 7);
       const dup = finance.items.some((e) => e.recurringId === p.id && (e.dueDate ?? '').slice(0, 7) === monthKey);
       if (!dup) {
-        finance.add({ id: uid('fe'), orgId: currentOrgId(), type: 'despesa', status: date < today ? 'atrasado' : 'pendente', description: p.description, amount: p.amount, dueDate: toDateStr(date), recurringId: p.id, approvalStatus: 'pendente', createdAt: new Date().toISOString() });
+        finance.add({ id: uid('fe'), orgId: currentOrgId(), type: 'despesa', status: date < today ? 'atrasado' : 'pendente', description: p.description, amount: p.amount, dueDate: toDateStr(date), recurringId: p.id, createdAt: new Date().toISOString() });
         created += 1;
       }
     });
@@ -148,7 +148,7 @@ export function FinanceiroPage() {
   );
 }
 
-/** Visão geral: KPIs, DRE, contas a pagar/receber (com aprovação, desconto, agrupamento, prorrogação e emissão de pagamento). */
+/** Visão geral: KPIs, DRE, contas a pagar/receber (desconto, agrupamento, prorrogação e emissão de pagamento). */
 function VisaoGeralTab() {
   const { items: entries, add, update } = useFinanceStore();
   const [subTab, setSubTab] = useState<'receber' | 'pagar'>('receber');
@@ -182,18 +182,6 @@ function VisaoGeralTab() {
     reader.readAsDataURL(file);
   };
 
-  // Aprovação de despesa é opcional: quem lança e quem paga costuma ser a
-  // mesma pessoa, e aí o passo só atrasa a baixa. Ligada em Configurações,
-  // a despesa passa a exigir um "de acordo" antes de poder ser paga.
-  const exigeAprovacao = useSettingsStore((st) => st.requireExpenseApproval);
-  const aguardandoAprovacao = (e: FinanceEntry) =>
-    exigeAprovacao && e.type === 'despesa' && (e.approvalStatus ?? 'pendente') === 'pendente';
-
-  const approve = (e: FinanceEntry, ok: boolean) => {
-    update(e.id, ok ? { approvalStatus: 'aprovado' } : { approvalStatus: 'reprovado', status: 'cancelado' });
-    toast(ok ? 'Pagamento aprovado.' : 'Pagamento reprovado.', { tone: ok ? 'success' : 'danger' });
-  };
-
   const postpone = (e: FinanceEntry) => {
     const base = e.dueDate ? parseDateInput(e.dueDate) : new Date();
     base.setDate(base.getDate() + 30);
@@ -214,7 +202,7 @@ function VisaoGeralTab() {
   const columns: Column<FinanceEntry>[] = [
     ...(subTab === 'pagar' ? [{
       key: 'sel', header: '', hideOnCard: true, render: (e: FinanceEntry) => (
-        (e.status === 'pendente' || e.status === 'atrasado') && !aguardandoAprovacao(e) ? (
+        (e.status === 'pendente' || e.status === 'atrasado') ? (
           <input type="checkbox" checked={selectedIds.includes(e.id)} onChange={() => toggleSelect(e.id)} onClick={(ev) => ev.stopPropagation()} className="h-4 w-4 rounded border-border" aria-label={`Selecionar ${e.description}`} />
         ) : null
       ),
@@ -277,11 +265,6 @@ function VisaoGeralTab() {
       return (
         <div className="flex flex-col items-end gap-1">
           <Badge tone={statusMeta[st].tone} dot>{statusMeta[st].label}</Badge>
-          {(e.status === 'pendente' || e.status === 'atrasado') && aguardandoAprovacao(e) && (
-            <span title="Esta despesa precisa de um de acordo antes de poder ser paga — use o polegar para cima na coluna de ações. Para dispensar essa etapa, desligue a aprovação de despesas em Configurações.">
-              <Badge tone="warning" className="text-[10px]">aguarda aprovação</Badge>
-            </span>
-          )}
           {e.status === 'pago' && e.paidAt && <span className="text-[10px] text-muted-foreground">pago em {fmtDate(e.paidAt)}</span>}
           {e.paymentMethod && <span className="text-[10px] text-muted-foreground">{PAYMENT_METHOD_LABEL[e.paymentMethod]}</span>}
         </div>
@@ -290,14 +273,6 @@ function VisaoGeralTab() {
     { key: 'acoes', header: 'Ações', align: 'right', render: (e) => {
       if (e.status === 'pago' || e.status === 'cancelado') {
         return e.fiscalDocumentUrl ? <a href={e.fiscalDocumentUrl} target="_blank" rel="noreferrer" onClick={(ev) => ev.stopPropagation()} className="text-xs text-brand underline">nota fiscal</a> : null;
-      }
-      if (aguardandoAprovacao(e)) {
-        return (
-          <div className="flex justify-end gap-1" onClick={(ev) => ev.stopPropagation()}>
-            <button onClick={() => approve(e, true)} aria-label="Aprovar" className="rounded-md p-1.5 text-success hover:bg-success-soft"><ThumbsUp size={14} /></button>
-            <button onClick={() => approve(e, false)} aria-label="Reprovar" className="rounded-md p-1.5 text-danger hover:bg-danger-soft"><ThumbsDown size={14} /></button>
-          </div>
-        );
       }
       return (
         <div className="flex justify-end gap-1" onClick={(ev) => ev.stopPropagation()}>
@@ -725,7 +700,6 @@ function FinanceForm({ open, defaultType, onClose, onSave }: { open: boolean; de
       discount: discount ? Number(discount) : undefined,
       dueDate: dueDate || undefined,
       paidAt: status === 'pago' ? (dueDate || toDateInputValue(new Date())) : undefined,
-      approvalStatus: type === 'despesa' ? 'pendente' : undefined,
       taxKind: type === 'despesa' && taxKind ? taxKind : undefined,
       createdAt: new Date().toISOString(),
     });

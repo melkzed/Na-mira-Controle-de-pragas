@@ -103,19 +103,14 @@ interface SettingsState {
   emergencyInfo: string;
   fiscal: FiscalConfig;
   documentTexts: DocumentTexts;
-  /** Exige aprovação de alguém antes de a despesa poder ser paga. Nasce
-   *  desligada: em equipe pequena, quem lança e quem paga é a mesma pessoa, e
-   *  a aprovação vira só um clique a mais entre a conta e a baixa. */
-  requireExpenseApproval: boolean;
   setCompanySignature: (dataUrl?: string) => void;
   setUserSignature: (userId: string, dataUrl?: string) => void;
   setEmergency: (phone: string, info: string) => void;
   setFiscal: (patch: Partial<FiscalConfig>) => void;
   setDocumentTexts: (patch: Partial<DocumentTexts>) => void;
-  setRequireExpenseApproval: (value: boolean) => void;
 }
 
-type Persisted = Pick<SettingsState, 'companySignature' | 'signatures' | 'emergencyPhone' | 'emergencyInfo' | 'fiscal' | 'documentTexts' | 'requireExpenseApproval'>;
+type Persisted = Pick<SettingsState, 'companySignature' | 'signatures' | 'emergencyPhone' | 'emergencyInfo' | 'fiscal' | 'documentTexts'>;
 
 interface SettingsRow {
   company_signature: string | null;
@@ -135,14 +130,12 @@ interface SettingsRow {
   inss_retido: boolean | null;
   irrf_rate: number | null;
   document_texts: DocumentTexts | null;
-  require_expense_approval: boolean | null;
 }
 
 function fromRow(row: SettingsRow): Persisted {
   return {
     companySignature: row.company_signature ?? undefined,
     documentTexts: { ...DEFAULT_DOCUMENT_TEXTS, ...(row.document_texts ?? {}) },
-    requireExpenseApproval: row.require_expense_approval ?? false,
     signatures: row.signatures ?? {},
     emergencyPhone: row.emergency_phone ?? orgProfile.emergencyPhone,
     emergencyInfo: row.emergency_info ?? orgProfile.emergencyInfo,
@@ -167,7 +160,6 @@ function toRow(s: Persisted): Partial<SettingsRow> {
   return {
     company_signature: s.companySignature ?? null,
     document_texts: s.documentTexts,
-    require_expense_approval: s.requireExpenseApproval,
     signatures: s.signatures,
     emergency_phone: s.emergencyPhone,
     emergency_info: s.emergencyInfo,
@@ -187,7 +179,7 @@ function toRow(s: Persisted): Partial<SettingsRow> {
 }
 
 function load(): Persisted {
-  const base: Persisted = { companySignature: undefined, signatures: {}, emergencyPhone: orgProfile.emergencyPhone, emergencyInfo: orgProfile.emergencyInfo, fiscal: DEFAULT_FISCAL, documentTexts: DEFAULT_DOCUMENT_TEXTS, requireExpenseApproval: false };
+  const base: Persisted = { companySignature: undefined, signatures: {}, emergencyPhone: orgProfile.emergencyPhone, emergencyInfo: orgProfile.emergencyInfo, fiscal: DEFAULT_FISCAL, documentTexts: DEFAULT_DOCUMENT_TEXTS };
   if (supabaseEnabled) return base;
   try {
     const raw = localStorage.getItem(KEY);
@@ -200,7 +192,7 @@ function load(): Persisted {
 const persist = (s: SettingsState) => {
   if (supabaseEnabled) return;
   try {
-    localStorage.setItem(KEY, JSON.stringify({ companySignature: s.companySignature, signatures: s.signatures, emergencyPhone: s.emergencyPhone, emergencyInfo: s.emergencyInfo, fiscal: s.fiscal, documentTexts: s.documentTexts, requireExpenseApproval: s.requireExpenseApproval }));
+    localStorage.setItem(KEY, JSON.stringify({ companySignature: s.companySignature, signatures: s.signatures, emergencyPhone: s.emergencyPhone, emergencyInfo: s.emergencyInfo, fiscal: s.fiscal, documentTexts: s.documentTexts }));
   } catch {
     /* cota — ignora */
   }
@@ -249,11 +241,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setDocumentTexts: (patch) => {
     const prev = get();
     set({ documentTexts: { ...prev.documentTexts, ...patch } });
-    if (supabaseEnabled) syncRemote(prev); else persist(get());
-  },
-  setRequireExpenseApproval: (value) => {
-    const prev = get();
-    set({ requireExpenseApproval: value });
     if (supabaseEnabled) syncRemote(prev); else persist(get());
   },
 }));

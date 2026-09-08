@@ -738,7 +738,6 @@ function OperacionalTab() {
       <p className="text-sm text-muted-foreground">Configurações usadas na Agenda e na Ordem de Serviço.</p>
       <TechnicianSignaturesPanel />
       <EmergencyPanel />
-      <AprovacaoDespesasPanel />
       <DocumentTextsPanel />
     </div>
   );
@@ -876,43 +875,6 @@ function EmergencyPanel() {
         <div className="sm:col-span-3 flex justify-end">
           <Button size="sm" disabled={!dirty} onClick={() => { setEmergency(phone.trim(), info.trim()); toast('Dados de emergência atualizados.', { tone: 'success' }); }}>Salvar</Button>
         </div>
-      </CardBody>
-    </Card>
-  );
-}
-
-/**
- * Aprovação de despesas.
- *
- * Com a aprovação ligada, toda despesa entra "aguardando aprovação" e só pode
- * ser paga depois que alguém dá o de acordo — controle útil quando quem lança
- * a conta não é quem autoriza o gasto. Em equipe pequena, onde é a mesma
- * pessoa, o passo só atrasa a baixa; por isso nasce desligada.
- */
-function AprovacaoDespesasPanel() {
-  const exigir = useSettingsStore((s) => s.requireExpenseApproval);
-  const setExigir = useSettingsStore((s) => s.setRequireExpenseApproval);
-
-  return (
-    <Card>
-      <CardHeader title="Aprovação de despesas" subtitle="Controle de quem autoriza um gasto antes do pagamento" />
-      <CardBody>
-        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-muted/30 p-3">
-          <input
-            type="checkbox"
-            checked={exigir}
-            onChange={(e) => { setExigir(e.target.checked); toast(e.target.checked ? 'Despesas passam a exigir aprovação antes do pagamento.' : 'Aprovação desligada — as despesas já entram liberadas para pagamento.', { tone: 'success' }); }}
-            className="mt-0.5 h-4 w-4 rounded border-border"
-          />
-          <span className="text-sm text-foreground">
-            Exigir aprovação antes de pagar uma despesa
-            <span className="mt-1 block text-xs text-muted-foreground">
-              Ligado, cada conta a pagar entra marcada como <b>aguarda aprovação</b> e o botão de pagar
-              só aparece depois que alguém aprova (polegar para cima) em Financeiro → Contas a pagar.
-              Desligado, a despesa já nasce liberada e você paga direto.
-            </span>
-          </span>
-        </label>
       </CardBody>
     </Card>
   );

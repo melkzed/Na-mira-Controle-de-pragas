@@ -752,8 +752,6 @@ export interface RecurrencePhase {
 
 /** Forma de emissão do pagamento. */
 export type PaymentMethodKind = 'cheque' | 'debito_conta' | 'eletronico' | 'dinheiro';
-/** Aprovação eletrônica do pagamento antes da emissão. */
-export type ApprovalStatus = 'pendente' | 'aprovado' | 'reprovado';
 /** Tributo estadual/municipal vinculado ao lançamento. */
 /** Tipo de tributo de uma despesa. Texto livre de propósito: a lista de
  *  tipos é cadastrada pela empresa em Fiscal (settingsStore.fiscal.taxKinds),
@@ -775,8 +773,6 @@ export interface FinanceEntry {
   dueDate?: string;
   paidAt?: string;
   createdAt: string;
-  /** Aprovação eletrônica — despesas só são emitidas depois de aprovadas. */
-  approvalStatus?: ApprovalStatus;
   /** Desconto vinculado ao lançamento (abatido do valor na emissão). */
   discount?: number;
   /** Forma de emissão do pagamento. */
