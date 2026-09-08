@@ -10,7 +10,7 @@
  */
 import { parseISO } from 'date-fns';
 import type { License, Pest, Product, ServiceOrder } from '@/domain/types';
-import { getCustomer, getPest, getProduct, getServiceType, getUser } from '@/application/repository';
+import { getCustomer, getPest, getProduct, getServiceOrder, getServiceType, getUser } from '@/application/repository';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useLicensesStore } from '@/store/entityStores';
 import { getOrgProfile } from '@/store/orgProfileStore';
@@ -20,6 +20,20 @@ import { signerDocumentLabel } from './signer';
 import { formatAddress } from './geo';
 import { logoSvgMarkup } from './logoSvg';
 import { toast } from '@/store/toastStore';
+import { savePdf } from './pdfFile';
+
+/**
+ * Versão mais recente da OS antes de imprimir.
+ *
+ * As telas guardam a OS selecionada em estado local (lista de clientes,
+ * portal, histórico). Se ela foi editada depois que a tela carregou, imprimir
+ * o objeto em memória geraria um documento com dados velhos. Buscar pela id
+ * garante que o PDF sempre reflita o que está gravado; se a OS não estiver
+ * mais na store (portal com dados parciais), seguimos com o que veio.
+ */
+export function currentOrder(so: ServiceOrder): ServiceOrder {
+  return getServiceOrder(so.id) ?? so;
+}
 
 export function esc(s: unknown): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -60,9 +74,9 @@ export const SHELL_CSS = `
   body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1a1a1a; margin: 0; padding: 14px; font-size: 10.5px; line-height: 1.35; }
   .doc { width: 100%; min-height: 100%; border: 2px solid #D32F2F; padding: 16px 22px; position: relative; }
   .doc::before { content: ''; position: absolute; inset: 5px; border: 1px solid #D32F2F; opacity: .3; pointer-events: none; }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #D32F2F; padding-bottom: 8px; }
+  .head { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #D32F2F; padding-bottom: 8px; }
   .brand { display: flex; gap: 8px; align-items: center; }
-  .logo { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .logo { width: 60px; height: 60px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .brand h1 { font-size: 13px; margin: 0; } .brand p { margin: 1px 0 0; font-size: 9.5px; color: #64748b; }
   .title { text-align: right; } .title .t { font-size: 14px; font-weight: 800; color: #D32F2F; } .title .s { font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
   .doctitle { text-align: center; font-size: 13px; font-weight: 800; letter-spacing: .01em; margin: 10px 0 3px; color: #1a1a1a; }
@@ -88,6 +102,12 @@ export const SHELL_CSS = `
   .sign .line, .sign2 .line { text-align: center; font-size: 9px; color: #64748b; }
   .sign .line .signlabel, .sign2 .line .signlabel { display: block; border-top: 1px solid #94a3b8; padding-top: 3px; margin-top: 2px; }
   .execline { margin-top: 8px; font-size: 10.5px; }
+  /* Valor do serviço em destaque na OS — é o que o cliente procura primeiro. */
+  .valorbox { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; background: #fafafa; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 10px; font-size: 10px; margin: 8px 0; }
+  .valorbox .vb-left { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .valorbox .vb-right { text-align: right; border-left: 1px solid #e2e8f0; padding-left: 12px; }
+  .valorbox .vb-l { display: block; font-size: 8.5px; text-transform: uppercase; letter-spacing: .05em; color: #64748b; }
+  .valorbox .vb-v { display: block; font-size: 15px; font-weight: 800; color: #D32F2F; line-height: 1.15; }
   .page2 { page-break-before: always; padding-top: 20px; }
   @media print { body { padding: 0; margin: 0; } @page { margin: 6mm; } }
 `;
@@ -95,10 +115,12 @@ export const SHELL_CSS = `
 export function header(subtitle: string): string {
   const org = getOrgProfile();
   const logo = org.logoDataUrl
-    ? `<img src="${org.logoDataUrl}" alt="Logo" style="width:34px;height:34px;object-fit:contain" />`
-    : logoSvgMarkup(34);
+    ? `<img src="${org.logoDataUrl}" alt="Logo" style="width:58px;height:58px;object-fit:contain" />`
+    : logoSvgMarkup(58);
+  // Só a logo à esquerda: CNPJ e endereço da empresa já aparecem no bloco do
+  // emitente, logo abaixo — repeti-los no cabeçalho polui o topo do documento.
   return `<div class="head">
-    <div class="brand"><div class="logo">${logo}</div><div><h1>${esc(org.name)}</h1><p>${esc(org.legalName)} · CNPJ ${esc(org.cnpj)}</p><p>${esc(org.street)}, ${esc(org.district)} · ${esc(org.city)}/${esc(org.state)} · CEP ${esc(org.cep)}</p></div></div>
+    <div class="brand"><div class="logo">${logo}</div></div>
     <div class="title"><div class="s">${esc(subtitle)}</div><div class="t">${esc(org.name)}</div><div class="s">${new Date().toLocaleDateString('pt-BR')}</div></div>
   </div>`;
 }
@@ -177,7 +199,7 @@ export function clientTechSignatures(so: ServiceOrder): string {
     ? `Recebido por${c?.name ? ` — ${esc(c.name)}` : ''}`
     : 'Assinatura Cliente';
   return `<div class="sign2">
-    <div class="line">${img(so.customerSignature)}<span class="signlabel">${esc(assinante)}${idAssinante ? `<br/>${esc(idAssinante)}` : ''}<br/>${papel}</span></div>
+    <div class="line">${img(so.customerSignature)}<span class="signlabel"><strong>${esc(assinante)}</strong>${idAssinante ? `<br/>${esc(idAssinante)}` : ''}<br/>${papel}</span></div>
     <div class="line">${img(techSig)}<span class="signlabel">${esc(techNames)}<br/>Técnico de Execução</span></div>
   </div>`;
 }
@@ -187,8 +209,22 @@ export function emergencyBlock(): string {
   return `<div class="emg"><strong>Informações toxicológicas:</strong> Suspeita de intoxicação ligar para o CEATOX ${esc(s.emergencyPhone)}${s.emergencyInfo ? ` — ${esc(s.emergencyInfo)}` : ''}</div>`;
 }
 
+/** Como o documento é entregue: janela de impressão ou arquivo baixado. */
+export type DocumentOutput = 'imprimir' | 'baixar';
+
+/** HTML completo do documento — compartilhado pela impressão e pelo download. */
+export function documentHtml(title: string, body: string): string {
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/><title>${esc(title)}</title><style>${SHELL_CSS}</style></head><body><div class="doc">${body}</div><script>window.onload=function(){setTimeout(function(){window.print();},150);};</script></body></html>`;
+}
+
+/** Entrega o documento no formato pedido pelo botão que foi clicado. */
+export function deliver(title: string, body: string, output: DocumentOutput = 'imprimir'): void {
+  if (output === 'baixar') void savePdf(title, documentHtml(title, body));
+  else openPrint(title, body);
+}
+
 export function openPrint(title: string, body: string): void {
-  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/><title>${esc(title)}</title><style>${SHELL_CSS}</style></head><body><div class="doc">${body}</div><script>window.onload=function(){setTimeout(function(){window.print();},150);};</script></body></html>`;
+  const html = documentHtml(title, body);
   // Centraliza a janela na tela do usuário (em vez de nascer num canto), com
   // tamanho generoso para exibir melhor o documento antes da impressão.
   const width = Math.min(1000, Math.round(window.screen.width * 0.85));
@@ -232,15 +268,19 @@ export function address(c: ReturnType<typeof getCustomer>): string {
 }
 
 /** Certificado Sanitário de Combate a Vetores e Pragas Urbanas (CES). */
-export function printCertificate(so: ServiceOrder): void {
+export function printCertificate(input: ServiceOrder, output: DocumentOutput = 'imprimir'): void {
+  const so = currentOrder(input);
   const c = getCustomer(so.customerId);
   const org = getOrgProfile();
+  // Os valores já entram escapados porque a declaração é inserida como HTML
+  // (o nome do cliente sai em negrito) — sem isso, `esc` no texto inteiro
+  // transformaria o <strong> em texto literal.
   const declaracao = applyTemplate(useSettingsStore.getState().documentTexts.certificateDeclaration, {
-    empresa: org.legalName ?? org.name ?? '',
-    cnpj: org.cnpj ?? '',
-    cliente: c?.name ?? '',
-    documento: formatDocument(c?.document),
-    endereco: address(c),
+    empresa: esc(org.legalName ?? org.name ?? ''),
+    cnpj: esc(org.cnpj ?? ''),
+    cliente: `<strong>${esc(c?.name ?? '')}</strong>`,
+    documento: esc(formatDocument(c?.document)),
+    endereco: esc(address(c)),
   });
   const dataExec = fmtDate(so.executionDate ?? so.finishedAt ?? so.startedAt ?? so.createdAt);
   const validade = certificateValidityText(so);
@@ -253,7 +293,7 @@ export function printCertificate(so: ServiceOrder): void {
 
   const body = `${header('Certificado Sanitário')}
     <p class="doctitle">CERTIFICADO SANITÁRIO DE COMBATE A VETORES E PRAGAS URBANAS</p>
-    <p class="lead">${esc(declaracao)}</p>
+    <p class="lead">${declaracao}</p>
 
     <div class="cesrow">
       <span><strong>CES — Comprovante de Execução de Serviço:</strong> ${esc(so.number)}</span>
@@ -275,16 +315,19 @@ export function printCertificate(so: ServiceOrder): void {
     ${responsibleSignatureLine()}
     ${emergencyBlock()}
     ${licensesBlock()}`;
-  openPrint(`Certificado · ${c?.name ?? ''}`, body);
+  deliver(`Certificado ${so.number} ${c?.name ?? ''}`, body, output);
 }
 
-/** Substitui os marcadores {{campo}} do texto configurado pelos valores reais. */
+/** Substitui os marcadores {{campo}} do texto configurado pelos valores reais.
+ *  O molde é escapado aqui (ele vem de um campo livre de configuração); os
+ *  valores chegam prontos de quem chama, que pode formatá-los em HTML. */
 function applyTemplate(tpl: string, vars: Record<string, string>): string {
-  return tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) => vars[k] ?? '');
+  return esc(tpl).replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) => vars[k] ?? '');
 }
 
 /** Laudo técnico detalhado do atendimento (CES completo). */
-export function printLaudo(so: ServiceOrder): void {
+export function printLaudo(input: ServiceOrder, output: DocumentOutput = 'imprimir'): void {
+  const so = currentOrder(input);
   const { safetyMeasures, laudoNotes } = useSettingsStore.getState().documentTexts;
   const c = getCustomer(so.customerId);
   const org = getOrgProfile();
@@ -373,5 +416,5 @@ export function printLaudo(so: ServiceOrder): void {
     </div>
     ${licensesBlock()}
     ${clientTechSignatures(so)}`;
-  openPrint(`Laudo · ${c?.name ?? ''}`, body);
+  deliver(`Laudo ${so.number} ${c?.name ?? ''}`, body, output);
 }

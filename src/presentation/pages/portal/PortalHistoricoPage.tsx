@@ -3,10 +3,10 @@ import { FileText, History } from 'lucide-react';
 import { PageHeader } from '../../components/ui/misc';
 import { Card, CardBody } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
-import { Button } from '../../components/ui/Button';
 import { ServiceOrderStatusBadge } from '../../components/StatusBadge';
 import { getServiceType, getUser } from '@/application/repository';
 import { printServiceOrder } from '@/lib/printOrder';
+import { DocumentActions } from '@/presentation/components/DocumentActions';
 import { printCertificate, printLaudo } from '@/lib/printDocuments';
 import { fmtDate, fmtTime } from '@/lib/date';
 import { usePortalData } from './portalData';
@@ -45,9 +45,9 @@ export function PortalHistoricoPage() {
 
                 {concluida ? (
                   <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" leftIcon={<FileText size={14} />} onClick={() => printServiceOrder(so)}>Ordem de Serviço</Button>
-                    <Button size="sm" variant="outline" leftIcon={<FileText size={14} />} onClick={() => printCertificate(so)}>Certificado</Button>
-                    <Button size="sm" variant="outline" leftIcon={<FileText size={14} />} onClick={() => printLaudo(so)}>Laudo</Button>
+                    <DocumentActions label="Ordem de Serviço" icon={<FileText size={14} />} onGenerate={(o) => printServiceOrder(so, o)} />
+                    <DocumentActions label="Certificado" icon={<FileText size={14} />} onGenerate={(o) => printCertificate(so, o)} />
+                    <DocumentActions label="Laudo" icon={<FileText size={14} />} onGenerate={(o) => printLaudo(so, o)} />
                   </div>
                 ) : (
                   <Badge tone="neutral">Documentos disponíveis quando o atendimento for concluído</Badge>

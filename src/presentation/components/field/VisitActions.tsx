@@ -23,7 +23,7 @@ import { signerMissing } from '@/lib/signer';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import { useTrapsStore } from '@/store/trapsStore';
-import { useNonConformitiesStore, useTrapTypesStore } from '@/store/entityStores';
+import { useNonConformitiesStore, useTrapTypesStore, useUsersStore } from '@/store/entityStores';
 import { useSettingsStore } from '@/store/settingsStore';
 import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
@@ -279,6 +279,11 @@ function ArmadilhasDrawer({ open, onClose, appt, techId }: {
   const lastOf = (trapId: string) =>
     inspections.filter((i) => i.trapId === trapId).sort((a, b) => b.date.localeCompare(a.date))[0];
 
+  // Data e responsável da instalação ficam à vista na lista: o técnico precisa
+  // saber se aquela armadilha é dele e desde quando está no ponto.
+  const staff = useUsersStore((s) => s.items);
+  const nomeDoResponsavel = (t: TrapDevice) => staff.find((u) => u.id === t.responsibleId)?.name?.split(' ')[0];
+
   // Só as armadilhas deste cliente entram no mapa, e só as que têm posição
   // registrada — sem coordenadas, a lista por ponto de instalação é o que o
   // técnico tem para se localizar.
@@ -354,6 +359,11 @@ function ArmadilhasDrawer({ open, onClose, appt, techId }: {
                   <span className="block truncate text-xs text-muted-foreground">
                     {t.type}{t.location ? ` · ${t.location}` : ''}
                   </span>
+                  {(t.installedAt || t.responsibleId) && (
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      Instalada{t.installedAt ? ` em ${fmtDate(t.installedAt)}` : ''}{nomeDoResponsavel(t) ? ` por ${nomeDoResponsavel(t)}` : ''}
+                    </span>
+                  )}
                   <span className="block text-[11px] text-muted-foreground">
                     {last ? `Última inspeção ${fmtDate(last.date)}${last.consumed ? ' · houve consumo' : ''}` : 'Nunca inspecionada'}
                   </span>

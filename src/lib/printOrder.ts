@@ -14,10 +14,11 @@ import { formatCurrency } from './utils';
 import { currentBatch } from './batches';
 import { recurrenceSummaryLabel } from './recurrence';
 import {
-  esc, fmtDate, fmtDateTime, header, licensesBlock, warrantyText, pestWarrantyText,
+  currentOrder, deliver, esc, fmtDate, fmtDateTime, header, licensesBlock, warrantyText, pestWarrantyText,
   pestValidityDate, responsibleSignatureLine, clientTechSignatures,
-  openPrint, serviceNames, osPests, appliedProducts, productReportLabel,
+  serviceNames, osPests, appliedProducts, productReportLabel,
 } from './printDocuments';
+import type { DocumentOutput } from './printDocuments';
 import { fmtTime } from './date';
 
 /** Valor do serviço — usa o valor explicitamente informado na OS; só recorre
@@ -30,7 +31,10 @@ function serviceValue(so: ServiceOrder): number {
     .reduce((s, v) => s + v, 0);
 }
 
-export function printServiceOrder(so: ServiceOrder): void {
+export function printServiceOrder(input: ServiceOrder, output: DocumentOutput = 'imprimir'): void {
+  // Sempre a versão gravada: gerar o PDF de novo depois de editar a OS tem de
+  // sair com os dados novos, não com o objeto que a tela tinha em memória.
+  const so = currentOrder(input);
   const c = getCustomer(so.customerId);
   const org = getOrgProfile();
   const techIds = so.technicianIds?.length ? so.technicianIds : [so.technicianId];
@@ -100,12 +104,14 @@ export function printServiceOrder(so: ServiceOrder): void {
     <table><thead><tr><th>Serviço</th><th>Validade</th></tr></thead>
     <tbody><tr><td>${esc(serviceNames(so))}</td><td>${esc(warrantyText(so))}</td></tr></tbody></table>
 
-    <div class="cesrow">
-      <span><strong>Valor do Serviço:</strong> ${esc(formatCurrency(valor))}</span>
-      <span><strong>Forma de pagamento:</strong> ${esc(so.paymentMethod || '—')}</span>
-      <span><strong>Pagamento:</strong> ${esc(so.paymentStatus === 'pago' ? `Pago${so.paymentDate ? ` em ${fmtDate(so.paymentDate)}` : ''}` : 'Pendente')}</span>
-      <span><strong>Recorrência:</strong> ${esc(recorrencia)}</span>
-      ${proximaVisita ? `<span><strong>Próxima visita:</strong> ${esc(proximaVisita)}</span>` : ''}
+    <div class="valorbox">
+      <div class="vb-left">
+        <span><strong>Forma de pagamento:</strong> ${esc(so.paymentMethod || '—')}</span>
+        <span><strong>Pagamento:</strong> ${esc(so.paymentStatus === 'pago' ? `Pago${so.paymentDate ? ` em ${fmtDate(so.paymentDate)}` : ''}` : 'Pendente')}</span>
+        <span><strong>Recorrência:</strong> ${esc(recorrencia)}</span>
+        ${proximaVisita ? `<span><strong>Próxima visita:</strong> ${esc(proximaVisita)}</span>` : ''}
+      </div>
+      <div class="vb-right"><span class="vb-l">Valor do serviço</span><span class="vb-v">${esc(formatCurrency(valor))}</span></div>
     </div>
 
     <h2>Produtos químicos e métodos empregados</h2>
@@ -134,5 +140,5 @@ export function printServiceOrder(so: ServiceOrder): void {
     ${licensesBlock()}
     ${clientTechSignatures(so)}`;
 
-  openPrint(`OS #${so.number} · ${c?.name ?? ''}`, body);
+  deliver(`OS ${so.number} ${c?.name ?? ''}`, body, output);
 }

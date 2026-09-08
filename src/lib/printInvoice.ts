@@ -44,7 +44,7 @@ export function printNfse(invoice: Invoice, customer?: Customer): void {
       <div><span>Emissão:</span> ${esc(fmt(invoice.issuedAt))}</div>
     </div></div>
     <div class="sec"><h2>Tomador</h2><div class="grid">
-      <div><span>Nome:</span> ${esc(customer?.name ?? '—')}</div>
+      <div><span>Nome:</span> <strong>${esc(customer?.name ?? '—')}</strong></div>
       <div><span>Documento:</span> ${esc(formatDocument(customer?.document))}</div>
       <div><span>Endereço:</span> ${esc([customer?.street, customer?.district, customer?.city].filter(Boolean).join(', ') || '—')}</div>
       <div><span>Telefone:</span> ${esc(customer?.phone ?? '—')}</div>

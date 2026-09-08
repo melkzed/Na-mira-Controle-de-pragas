@@ -24,6 +24,7 @@ import { combineDateTimeInputToIso, dateInputToIso, fmtDate, fmtTime, parseDateI
 import { osStatusToAppointmentStatus } from '@/lib/misc';
 import { downloadCsv } from '@/lib/export';
 import { printServiceOrder } from '@/lib/printOrder';
+import { DocumentActions } from '@/presentation/components/DocumentActions';
 import { printCertificate, printLaudo, certificateValidityText, address } from '@/lib/printDocuments';
 import { currentBatch } from '@/lib/batches';
 import { useInvoicesStore } from '@/store/invoicesStore';
@@ -157,8 +158,8 @@ export function OrdensPage() {
   const columns: Column<ServiceOrder>[] = [
     { key: 'num', header: 'OS', render: (so) => <span className="font-semibold">#{so.number}</span> },
     { key: 'cust', header: 'Cliente', render: (so) => getCustomer(so.customerId)?.name },
-    { key: 'svc', header: 'Serviço', render: (so) => <Badge tone="neutral">{getServiceType(so.serviceTypeId)?.name}</Badge> },
-    { key: 'tech', header: 'Técnico', render: (so) => {
+    { key: 'svc', header: 'Serviço', hideBelow: 'lg', render: (so) => <Badge tone="neutral">{getServiceType(so.serviceTypeId)?.name}</Badge> },
+    { key: 'tech', header: 'Técnico', hideBelow: 'xl', render: (so) => {
       const t = getUser(so.technicianId);
       return t ? <div className="flex items-center gap-2"><Avatar name={t.name} size="xs" /><span className="text-muted-foreground">{t.name.split(' ')[0]}</span></div> : '—';
     } },
@@ -177,7 +178,7 @@ export function OrdensPage() {
         </div>
       );
     } },
-    { key: 'time', header: 'Duração', align: 'right', render: (so) => so.totalMinutes ? `${so.totalMinutes} min` : '—' },
+    { key: 'time', header: 'Duração', align: 'right', hideBelow: 'xl', render: (so) => so.totalMinutes ? `${so.totalMinutes} min` : '—' },
     { key: 'status', header: 'Status', align: 'right', render: (so) => <ServiceOrderStatusBadge status={so.status} cancelledBy={so.cancelledBy} /> },
   ];
 
@@ -261,9 +262,9 @@ export function OrdensPage() {
               )}
             </div>
             <div className="flex flex-wrap justify-end gap-2">
-              <Button variant="outline" size="sm" leftIcon={<Download size={14} />} onClick={() => selected && printServiceOrder(selected)}>OS (PDF)</Button>
-              <Button variant="outline" size="sm" leftIcon={<Award size={14} />} onClick={() => selected && printCertificate(selected)}>Certificado</Button>
-              <Button variant="outline" size="sm" leftIcon={<FileText size={14} />} onClick={() => selected && printLaudo(selected)}>Laudo</Button>
+              <DocumentActions label="OS (PDF)" icon={<Download size={14} />} onGenerate={(o) => selected && printServiceOrder(selected, o)} />
+              <DocumentActions label="Certificado" icon={<Award size={14} />} onGenerate={(o) => selected && printCertificate(selected, o)} />
+              <DocumentActions label="Laudo" icon={<FileText size={14} />} onGenerate={(o) => selected && printLaudo(selected, o)} />
             </div>
           </div>
         )}

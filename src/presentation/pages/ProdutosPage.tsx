@@ -36,9 +36,9 @@ export function ProdutosPage() {
 
   const columns: Column<Product>[] = [
     { key: 'name', header: 'Produto', render: (p) => (<div><p className="font-medium">{p.name}</p><p className="text-xs text-muted-foreground">{p.manufacturer}</p></div>) },
-    { key: 'cat', header: 'Categoria', render: (p) => <Badge tone="neutral">{catName(p.categoryId)}</Badge> },
-    { key: 'ai', header: 'Princípio ativo', render: (p) => <span className="text-muted-foreground">{p.activeIngredient ?? '—'}</span> },
-    { key: 'batch', header: 'Lote atual', render: (p) => {
+    { key: 'cat', header: 'Categoria', hideBelow: 'lg', render: (p) => <Badge tone="neutral">{catName(p.categoryId)}</Badge> },
+    { key: 'ai', header: 'Princípio ativo', hideBelow: 'xl', render: (p) => <span className="text-muted-foreground">{p.activeIngredient ?? '—'}</span> },
+    { key: 'batch', header: 'Lote atual', hideBelow: 'lg', render: (p) => {
       const b = currentBatch(p);
       if (!b) return <span className="text-muted-foreground">—</span>;
       const lvl = expiryLevel(b.expiresAt);

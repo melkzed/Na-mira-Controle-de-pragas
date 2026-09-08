@@ -65,9 +65,9 @@ export function EquipamentosPage() {
 
   const columns: Column<Equipment>[] = [
     { key: 'name', header: 'Equipamento', render: (e) => (<div><p className="font-medium">{e.name}</p><p className="text-xs text-muted-foreground">{e.code} · Patrimônio {e.assetNumber}</p></div>) },
-    { key: 'kind', header: 'Tipo', render: (e) => <Badge tone="neutral">{e.kind}</Badge> },
+    { key: 'kind', header: 'Tipo', hideBelow: 'lg', render: (e) => <Badge tone="neutral">{e.kind}</Badge> },
     { key: 'resp', header: 'Responsável', render: (e) => getUser(e.checkedOutTo ?? e.assignedTo)?.name ?? '—' },
-    { key: 'ret', header: 'Devolução prevista', render: (e) => e.status === 'em_uso'
+    { key: 'ret', header: 'Devolução prevista', hideBelow: 'xl', render: (e) => e.status === 'em_uso'
       ? <span className={isEquipmentOverdue(e) ? 'font-semibold text-danger' : 'text-foreground'}>{fmtDateTime(e.expectedReturnAt)}{isEquipmentOverdue(e) ? ' · atrasado' : ''}</span>
       : <span className="text-muted-foreground">—</span> },
     { key: 'status', header: 'Status', align: 'right', render: (e) => isEquipmentOverdue(e)

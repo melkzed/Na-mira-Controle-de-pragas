@@ -8,10 +8,10 @@
 import { PageHeader } from '../../components/ui/misc';
 import { Card, CardBody } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
-import { Button } from '../../components/ui/Button';
 import { Table, type Column } from '../../components/ui/Table';
 import { FileText, Wallet } from 'lucide-react';
 import { printServiceOrder } from '@/lib/printOrder';
+import { DocumentActions } from '@/presentation/components/DocumentActions';
 import { formatCurrency } from '@/lib/utils';
 import { fmtDate } from '@/lib/date';
 import type { FinanceEntry } from '@/domain/types';
@@ -40,7 +40,7 @@ export function PortalFinanceiroPage() {
     { key: 'doc', header: '', align: 'right', render: (e) => {
       const so = e.serviceOrderId ? orders.find((o) => o.id === e.serviceOrderId) : undefined;
       if (!so) return null;
-      return <Button size="sm" variant="outline" leftIcon={<FileText size={13} />} onClick={() => printServiceOrder(so)}>Documento</Button>;
+      return <DocumentActions label="Documento" icon={<FileText size={13} />} onGenerate={(o) => printServiceOrder(so, o)} />;
     } },
   ];
 

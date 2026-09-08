@@ -10,6 +10,9 @@ import { getUser } from '@/application/repository';
 import { getOrgProfile } from '@/store/orgProfileStore';
 import { formatDocument } from './utils';
 import { toast } from '@/store/toastStore';
+import { logoSvgMarkup } from './logoSvg';
+import { savePdf } from './pdfFile';
+import type { DocumentOutput } from './printDocuments';
 
 export const NC_CATEGORY_LABEL: Record<NonConformity['category'], string> = {
   fresta: 'Fresta',
@@ -35,9 +38,9 @@ const SHELL_CSS = `
   * { box-sizing: border-box; }
   body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #0f172a; margin: 0; padding: 32px; }
   .doc { max-width: 820px; margin: 0 auto; }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #D32F2F; padding-bottom: 16px; }
+  .head { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #D32F2F; padding-bottom: 16px; }
   .brand { display: flex; gap: 12px; align-items: center; }
-  .logo { width: 44px; height: 44px; border-radius: 10px; background: #D32F2F; color: #fff; display: grid; place-items: center; font-weight: 700; }
+  .logo { width: 60px; height: 60px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .brand h1 { font-size: 16px; margin: 0; } .brand p { margin: 2px 0 0; font-size: 12px; color: #64748b; }
   .title { text-align: right; } .title .t { font-size: 18px; font-weight: 800; color: #D32F2F; } .title .s { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
   h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #D32F2F; margin: 22px 0 8px; }
@@ -57,14 +60,20 @@ const SHELL_CSS = `
 
 function header(subtitle: string): string {
   const org = getOrgProfile();
+  // Mesmo cabeçalho dos demais documentos: só a logo à esquerda.
+  const logo = org.logoDataUrl
+    ? `<img src="${org.logoDataUrl}" alt="Logo" style="width:58px;height:58px;object-fit:contain" />`
+    : logoSvgMarkup(58);
   return `<div class="head">
-    <div class="brand"><div class="logo">NM</div><div><h1>${esc(org.name)}</h1><p>${esc(org.legalName)} · CNPJ ${esc(org.cnpj)}</p></div></div>
+    <div class="brand"><div class="logo">${logo}</div></div>
     <div class="title"><div class="s">${esc(subtitle)}</div><div class="t">${esc(org.name)}</div><div class="s">${new Date().toLocaleDateString('pt-BR')}</div></div>
   </div>`;
 }
 
-function openPrint(title: string, body: string): void {
+function openPrint(title: string, body: string, output: DocumentOutput = 'imprimir'): void {
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/><title>${esc(title)}</title><style>${SHELL_CSS}</style></head><body><div class="doc">${body}<div class="foot">Documento gerado por Gestão Dedetizadora</div></div><script>window.onload=function(){setTimeout(function(){window.print();},150);};</script></body></html>`;
+  // Baixar entrega o arquivo direto; imprimir abre a pré-visualização.
+  if (output === 'baixar') { void savePdf(title, html); return; }
   const w = window.open('', '_blank', 'width=900,height=1000');
   if (!w) { toast('Permita pop-ups para gerar o PDF.', { tone: 'warning' }); return; }
   w.document.open(); w.document.write(html); w.document.close();
@@ -72,7 +81,7 @@ function openPrint(title: string, body: string): void {
 
 function customerBlock(c?: Customer): string {
   return `<h2>Cliente</h2><div class="grid">
-    <div><span>Nome:</span> ${esc(c?.name)}</div>
+    <div><span>Nome:</span> <strong>${esc(c?.name)}</strong></div>
     <div><span>Documento:</span> ${esc(formatDocument(c?.document))}</div>
     <div><span>Endereço:</span> ${esc([c?.street, c?.district, c?.city].filter(Boolean).join(', '))}</div>
     <div><span>Telefone:</span> ${esc(c?.phone ?? '—')}</div>
@@ -91,6 +100,7 @@ export function printDataReport<T>(
   columns: ReportColumn<T>[],
   rows: T[],
   summary?: { label: string; value: string | number }[],
+  output: DocumentOutput = 'imprimir',
 ): void {
   const cards = summary && summary.length
     ? `<h2>Resumo</h2><div class="cards">${summary.map((s) => `<div class="card"><div class="n">${esc(s.value)}</div><div class="l">${esc(s.label)}</div></div>`).join('')}</div>`
@@ -104,10 +114,10 @@ export function printDataReport<T>(
     ${cards}
     <h2>Detalhamento (${rows.length})</h2>
     <table><thead>${head}</thead><tbody>${body}</tbody></table>`;
-  openPrint(`${title} · Gestão Dedetizadora`, html);
+  openPrint(title, html, output);
 }
 
-export function printTrapReport(customer: Customer, traps: TrapDevice[], inspections: TrapInspection[]): void {
+export function printTrapReport(customer: Customer, traps: TrapDevice[], inspections: TrapInspection[], output: DocumentOutput = 'imprimir'): void {
   const lastInsp = (trapId: string) => inspections.filter((i) => i.trapId === trapId).sort((a, b) => (a.date > b.date ? -1 : 1))[0];
   const withConsumption = traps.filter((t) => lastInsp(t.id)?.consumed).length;
   const occurrences = inspections.filter((i) => i.consumed).length;
@@ -117,6 +127,8 @@ export function printTrapReport(customer: Customer, traps: TrapDevice[], inspect
     const li = lastInsp(t.id);
     return `<tr>
       <td>${esc(t.code)}</td><td>${esc(t.type)}</td><td>${esc(t.location ?? '—')}</td>
+      <td>${esc(fmt(t.installedAt))}</td>
+      <td>${esc(getUser(t.responsibleId)?.name ?? '—')}</td>
       <td>${esc(STATUS_LABEL[t.status] ?? t.status)}</td>
       <td>${esc(fmt(li?.date))}</td>
       <td>${li ? (li.consumed ? '<span class="tag tag-yes">Sim</span>' : '<span class="tag tag-no">Não</span>') : '—'}</td>
@@ -132,13 +144,13 @@ export function printTrapReport(customer: Customer, traps: TrapDevice[], inspect
       <div class="card"><div class="n">${occurrences}</div><div class="l">Ocorrências (hist.)</div></div>
     </div>
     <h2>Armadilhas monitoradas</h2>
-    <table><thead><tr><th>Identificação</th><th>Tipo</th><th>Local</th><th>Situação</th><th>Última inspeção</th><th>Consumo</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="6" style="color:#94a3b8">Nenhuma armadilha.</td></tr>'}</tbody></table>
+    <table><thead><tr><th>Identificação</th><th>Tipo</th><th>Local</th><th>Instalada em</th><th>Instalada por</th><th>Situação</th><th>Última inspeção</th><th>Consumo</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="8" style="color:#94a3b8">Nenhuma armadilha.</td></tr>'}</tbody></table>
     <div class="sign"><div class="line">Responsável Técnico</div><div class="line">Cliente</div></div>`;
-  openPrint(`Armadilhas · ${customer.name}`, body);
+  openPrint(`Armadilhas ${customer.name}`, body, output);
 }
 
-export function printMipReport(customer: Customer, traps: TrapDevice[], inspections: TrapInspection[]): void {
+export function printMipReport(customer: Customer, traps: TrapDevice[], inspections: TrapInspection[], output: DocumentOutput = 'imprimir'): void {
   const custInsp = inspections
     .filter((i) => traps.some((t) => t.id === i.trapId))
     .sort((a, b) => (a.date > b.date ? -1 : 1));
@@ -167,10 +179,10 @@ export function printMipReport(customer: Customer, traps: TrapDevice[], inspecti
     <table><thead><tr><th>Data</th><th>Dispositivo</th><th>Técnico</th><th>Consumo</th><th>Ocorrências / observações</th></tr></thead>
     <tbody>${inspRows || '<tr><td colspan="5" style="color:#94a3b8">Sem inspeções.</td></tr>'}</tbody></table>
     <div class="sign"><div class="line">Responsável Técnico</div><div class="line">Cliente</div></div>`;
-  openPrint(`MIP · ${customer.name}`, body);
+  openPrint(`MIP ${customer.name}`, body, output);
 }
 
-export function printNonConformityReport(customer: Customer, items: NonConformity[]): void {
+export function printNonConformityReport(customer: Customer, items: NonConformity[], output: DocumentOutput = 'imprimir'): void {
   const blocks = items.map((nc, i) => {
     const photos = (nc.photos ?? [])
       .map((ph) => `<img src="${ph.dataUrl}" alt="${esc(ph.name)}" style="width:160px;height:120px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0" />`)
@@ -191,5 +203,5 @@ export function printNonConformityReport(customer: Customer, items: NonConformit
     <h2>Não conformidades registradas (${items.length})</h2>
     ${blocks || '<p style="color:#94a3b8">Nenhuma não conformidade registrada.</p>'}
     <div class="sign"><div class="line">Responsável Técnico</div><div class="line">Cliente</div></div>`;
-  openPrint(`Não Conformidade · ${customer.name}`, body);
+  openPrint(`Nao Conformidade ${customer.name}`, body, output);
 }

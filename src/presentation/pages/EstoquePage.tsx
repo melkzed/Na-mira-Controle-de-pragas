@@ -227,7 +227,7 @@ function CentralStock() {
         </div>
       );
     } },
-    { key: 'loc', header: 'Local', render: (p) => <span className="text-muted-foreground">{p.storageLocation ?? '—'}</span> },
+    { key: 'loc', header: 'Local', hideBelow: 'lg', render: (p) => <span className="text-muted-foreground">{p.storageLocation ?? '—'}</span> },
     { key: 'status', header: 'Status', align: 'right', render: (p) => {
       const qty = centralBalance(p.id);
       return qty <= p.minQuantity ? <Badge tone="danger" dot>Repor</Badge> : qty <= p.minQuantity * 1.5 ? <Badge tone="warning" dot>Baixo</Badge> : <Badge tone="success" dot>OK</Badge>;
@@ -273,9 +273,9 @@ function BatchStock() {
     .sort((a, b) => (a.batch.expiresAt ?? '') < (b.batch.expiresAt ?? '') ? -1 : 1);
   const columns: Column<(typeof rows)[number]>[] = [
     { key: 'product', header: 'Produto', render: (r) => <span className="font-medium">{r.product.name}</span> },
-    { key: 'batch', header: 'Lote', render: (r) => <span className="text-muted-foreground">{r.batch.code}</span> },
+    { key: 'batch', header: 'Lote', hideBelow: 'lg', render: (r) => <span className="text-muted-foreground">{r.batch.code}</span> },
     { key: 'qty', header: 'Qtd.', render: (r) => `${r.batch.quantity} ${r.product.unit}` },
-    { key: 'exp', header: 'Validade', render: (r) => r.batch.expiresAt ? fmtDate(r.batch.expiresAt) : '—' },
+    { key: 'exp', header: 'Validade', hideBelow: 'lg', render: (r) => r.batch.expiresAt ? fmtDate(r.batch.expiresAt) : '—' },
     { key: 'status', header: 'Situação', align: 'right', render: (r) => {
       const d = daysUntil(r.batch.expiresAt) ?? 999;
       if (d < 0) return <Badge tone="danger" dot><TriangleAlert size={11} className="mr-1" />Vencido</Badge>;

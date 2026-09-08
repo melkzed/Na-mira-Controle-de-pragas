@@ -391,12 +391,12 @@ export const crmLeads: CrmLead[] = [
 
 // ── Monitoramento de armadilhas (clientes com monitoramento contratado) ──────
 export const trapDevices: TrapDevice[] = [
-  { id: 'trap-1', orgId: ORG, customerId: 'c-4', code: 'Porta Isca 001', type: 'Porta-isca', location: 'Garagem G1', status: 'ativa', createdAt: daysFromNow(-180) },
-  { id: 'trap-2', orgId: ORG, customerId: 'c-4', code: 'Porta Isca 002', type: 'Porta-isca', location: 'Depósito', status: 'ativa', createdAt: daysFromNow(-180) },
-  { id: 'trap-3', orgId: ORG, customerId: 'c-4', code: 'Luminosa 001', type: 'Luminosa', location: 'Salão de festas', status: 'ativa', createdAt: daysFromNow(-120) },
-  { id: 'trap-4', orgId: ORG, customerId: 'c-4', code: 'Porta Isca 005', type: 'Porta-isca', location: 'Lixeira externa', status: 'ativa', createdAt: daysFromNow(-90) },
-  { id: 'trap-5', orgId: ORG, customerId: 'c-6', code: 'Porta Isca 001', type: 'Porta-isca', location: 'Estoque seco', status: 'ativa', createdAt: daysFromNow(-200) },
-  { id: 'trap-6', orgId: ORG, customerId: 'c-6', code: 'Placa Cola 001', type: 'Placa de cola', location: 'Câmara fria', status: 'substituida', createdAt: daysFromNow(-200) },
+  { id: 'trap-1', orgId: ORG, customerId: 'c-4', code: 'Porta Isca 001', type: 'Porta-isca', location: 'Garagem G1', status: 'ativa', installedAt: daysFromNow(-180), responsibleId: 'u-t1', createdAt: daysFromNow(-180) },
+  { id: 'trap-2', orgId: ORG, customerId: 'c-4', code: 'Porta Isca 002', type: 'Porta-isca', location: 'Depósito', status: 'ativa', installedAt: daysFromNow(-180), responsibleId: 'u-t1', createdAt: daysFromNow(-180) },
+  { id: 'trap-3', orgId: ORG, customerId: 'c-4', code: 'Luminosa 001', type: 'Luminosa', location: 'Salão de festas', status: 'ativa', installedAt: daysFromNow(-120), responsibleId: 'u-t3', createdAt: daysFromNow(-120) },
+  { id: 'trap-4', orgId: ORG, customerId: 'c-4', code: 'Porta Isca 005', type: 'Porta-isca', location: 'Lixeira externa', status: 'ativa', installedAt: daysFromNow(-90), responsibleId: 'u-t3', createdAt: daysFromNow(-90) },
+  { id: 'trap-5', orgId: ORG, customerId: 'c-6', code: 'Porta Isca 001', type: 'Porta-isca', location: 'Estoque seco', status: 'ativa', installedAt: daysFromNow(-200), responsibleId: 'u-t2', createdAt: daysFromNow(-200) },
+  { id: 'trap-6', orgId: ORG, customerId: 'c-6', code: 'Placa Cola 001', type: 'Placa de cola', location: 'Câmara fria', status: 'substituida', installedAt: daysFromNow(-200), responsibleId: 'u-t2', createdAt: daysFromNow(-200) },
 ];
 
 export const nonConformities: NonConformity[] = [

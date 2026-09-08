@@ -33,8 +33,8 @@ export function FiscalPage() {
     { key: 'name', header: 'Documento', render: (l) => (
       <div><p className="font-medium">{l.name}</p><p className="text-xs text-muted-foreground">{l.issuer} · nº {l.number}</p></div>
     ) },
-    { key: 'resp', header: 'Responsável', render: (l) => getUser(l.responsibleId)?.name ?? '—' },
-    { key: 'issued', header: 'Emissão', render: (l) => l.issuedAt ? fmtDate(l.issuedAt) : '—' },
+    { key: 'resp', header: 'Responsável', hideBelow: 'xl', render: (l) => getUser(l.responsibleId)?.name ?? '—' },
+    { key: 'issued', header: 'Emissão', hideBelow: 'lg', render: (l) => l.issuedAt ? fmtDate(l.issuedAt) : '—' },
     { key: 'exp', header: 'Vencimento', render: (l) => l.expiresAt ? fmtDate(l.expiresAt) : '—' },
     { key: 'status', header: 'Situação', render: (l) => {
       const d = daysUntil(l.expiresAt) ?? 999;
@@ -311,8 +311,8 @@ function NotasFiscais() {
   const columns: Column<Invoice>[] = [
     { key: 'num', header: 'Nota', render: (i) => <span className="font-semibold">#{i.number} <span className="text-xs text-muted-foreground">{i.series}</span></span> },
     { key: 'cust', header: 'Tomador', render: (i) => getCustomer(i.customerId ?? '')?.name ?? i.description },
-    { key: 'date', header: 'Emissão', render: (i) => fmtDate(i.issuedAt) },
-    { key: 'iss', header: 'ISS', align: 'right', render: (i) => formatCurrency(i.taxAmount) },
+    { key: 'date', header: 'Emissão', hideBelow: 'lg', render: (i) => fmtDate(i.issuedAt) },
+    { key: 'iss', header: 'ISS', align: 'right', hideBelow: 'xl', render: (i) => formatCurrency(i.taxAmount) },
     { key: 'amount', header: 'Valor', align: 'right', render: (i) => <span className="font-semibold">{formatCurrency(i.amount)}</span> },
     { key: 'status', header: 'Status', align: 'right', render: (i) => {
       const map = {

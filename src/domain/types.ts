@@ -62,6 +62,9 @@ export interface User {
   /** Cliente vinculado, quando `role === 'cliente'` — é por ele que o Portal
    *  do Cliente filtra tudo que a pessoa pode ver. Usuário interno não tem. */
   customerId?: string;
+  /** Cor do técnico na agenda (hex, ex.: `#2563eb`). Sem valor, a agenda
+   *  deriva uma cor da paleta pela id — ver `lib/agendaColor.ts`. */
+  color?: string;
 }
 
 export interface Team {
