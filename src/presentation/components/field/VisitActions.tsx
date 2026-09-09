@@ -24,6 +24,7 @@ import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import { useTrapsStore } from '@/store/trapsStore';
 import { useNonConformitiesStore, useTrapTypesStore, useUsersStore } from '@/store/entityStores';
+import { TRAP_ACTIONS_TAKEN, TRAP_OCCURRENCES } from '@/domain/types';
 import { useSettingsStore } from '@/store/settingsStore';
 import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
@@ -439,12 +440,14 @@ function TrapsMap({ traps, onSelect, lastOf }: {
   );
 }
 
-type InspecaoDraft = { consumed: boolean; action?: 'nenhuma' | 'substituida' | 'retirada' | 'reinstalada' | 'extraviada'; notes?: string };
+type InspecaoDraft = { consumed: boolean; action?: 'nenhuma' | 'substituida' | 'retirada' | 'reinstalada' | 'extraviada'; notes?: string; occurrence?: string; actionTaken?: string };
 
 function InspecaoForm({ trap, onCancel, onSave }: {
   trap: TrapDevice; onCancel: () => void; onSave: (d: InspecaoDraft) => void;
 }) {
   const [consumed, setConsumed] = useState(false);
+  const [occurrence, setOccurrence] = useState('');
+  const [actionTaken, setActionTaken] = useState('');
   const [action, setAction] = useState<NonNullable<InspecaoDraft['action']>>('nenhuma');
   const [notes, setNotes] = useState('');
 
@@ -463,9 +466,44 @@ function InspecaoForm({ trap, onCancel, onSave }: {
         />
       </Field>
 
-      <Field label="Ação tomada">
+      {/* Ocorrência e ação saem tal e qual no relatório do cliente. Em campo
+          são botões, não campo de texto: digitar de pé, com luva, é o pior
+          caminho — e texto livre em cada técnico quebra o relatório. */}
+      <Field label="Ocorrência" hint="O que você encontrou neste ponto">
+        <div className="flex flex-wrap gap-1.5">
+          {TRAP_OCCURRENCES.map((o) => (
+            <button
+              key={o}
+              type="button"
+              onClick={() => setOccurrence(occurrence === o ? '' : o)}
+              aria-pressed={occurrence === o}
+              className={`rounded-full border px-3 py-1.5 text-xs transition ${occurrence === o ? 'border-brand bg-brand-soft font-semibold text-brand' : 'border-border text-muted-foreground'}`}
+            >
+              {o}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Ação tomada" hint="O que você fez no ponto">
+        <div className="flex flex-wrap gap-1.5">
+          {TRAP_ACTIONS_TAKEN.map((o) => (
+            <button
+              key={o}
+              type="button"
+              onClick={() => setActionTaken(actionTaken === o ? '' : o)}
+              aria-pressed={actionTaken === o}
+              className={`rounded-full border px-3 py-1.5 text-xs transition ${actionTaken === o ? 'border-brand bg-brand-soft font-semibold text-brand' : 'border-border text-muted-foreground'}`}
+            >
+              {o}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Situação da armadilha" hint="Só mude se o dispositivo saiu do lugar ou foi trocado">
         <Select value={action} onChange={(e) => setAction(e.target.value as NonNullable<InspecaoDraft['action']>)}>
-          <option value="nenhuma">Nenhuma</option>
+          <option value="nenhuma">Continua no ponto</option>
           <option value="substituida">Substituída</option>
           <option value="retirada">Retirada</option>
           <option value="reinstalada">Reinstalada</option>
@@ -479,7 +517,7 @@ function InspecaoForm({ trap, onCancel, onSave }: {
 
       <div className="grid grid-cols-2 gap-2">
         <Button variant="outline" onClick={onCancel}>Voltar</Button>
-        <Button leftIcon={<CheckCircle2 size={15} />} onClick={() => onSave({ consumed, action, notes: notes.trim() || undefined })}>
+        <Button leftIcon={<CheckCircle2 size={15} />} onClick={() => onSave({ consumed, action, notes: notes.trim() || undefined, occurrence: occurrence || undefined, actionTaken: actionTaken || undefined })}>
           Registrar inspeção
         </Button>
       </div>

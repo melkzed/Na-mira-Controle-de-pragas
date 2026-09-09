@@ -58,7 +58,10 @@ with esperado(migration, tabela, coluna) as (values
   ('4 campo/portal',  'service_orders',     'signer_doc_type'),
   ('4 campo/portal',  'service_orders',     'signer_document'),
   -- 12 · migrate_cor_tecnico.sql
-  ('12 cor técnico',  'users',              'color')
+  ('12 cor técnico',  'users',              'color'),
+  -- 13 · migrate_monitoramento_mip.sql
+  ('13 monitoramento','trap_inspections',   'occurrence'),
+  ('13 monitoramento','trap_inspections',   'action_taken')
 ),
 colunas as (
   select

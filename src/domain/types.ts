@@ -234,7 +234,39 @@ export interface TrapInspection {
   action?: 'nenhuma' | 'substituida' | 'retirada' | 'reinstalada' | 'extraviada';
   technicianId?: string;
   notes?: string;
+  /** O que foi encontrado no dispositivo, no vocabulário do relatório de
+   *  monitoramento — "Isca Totalmente Consumida", "Sem Consumo", "Com Captura".
+   *  Mais expressivo que `consumed`, que só diz sim ou não; `consumed` continua
+   *  alimentando os indicadores de taxa de consumo. */
+  occurrence?: string;
+  /** O que o técnico fez diante da ocorrência — "Reposição Isca", "Isca
+   *  Atrativa", "Substituição". Distinto de `action`, que muda a SITUAÇÃO da
+   *  armadilha (retirada, extraviada) e não descreve o serviço prestado. */
+  actionTaken?: string;
 }
+
+/** Vocabulário do relatório de monitoramento. São sugestões, não uma lista
+ *  fechada: o campo aceita texto livre, porque cada contrato tem seus termos. */
+export const TRAP_OCCURRENCES = [
+  'Isca Totalmente Consumida',
+  'Isca Parcialmente Consumida',
+  'Sem Consumo',
+  'Com Captura',
+  'Sem Captura',
+  'Armadilha Danificada',
+  'Armadilha Extraviada',
+  'Sem Acesso ao Ponto',
+] as const;
+
+export const TRAP_ACTIONS_TAKEN = [
+  'Reposição Isca',
+  'Isca Atrativa',
+  'Substituição',
+  'Limpeza',
+  'Reinstalação',
+  'Retirada',
+  'Nenhuma',
+] as const;
 
 /** Um ponto conferido pelo técnico na verificação do local (MIP) — o que foi
  *  olhado no imóvel e como estava. Fica na visita, junto com fotos e

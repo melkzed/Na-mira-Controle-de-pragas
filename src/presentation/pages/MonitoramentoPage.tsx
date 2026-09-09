@@ -48,7 +48,7 @@ export function MonitoramentoPage() {
         description="Controle de dispositivos, inspeções e MIP dos clientes com monitoramento"
         actions={
           <>
-            <DocumentActions label="Relatório MIP" icon={<FileText size={16} />} size="md" onGenerate={(o) => customer && printMipReport(customer, custTraps, inspections, o)} />
+            <DocumentActions label="Relatório MIP" icon={<FileText size={16} />} size="md" onGenerate={(o) => customer && printMipReport(customer, inspections, o)} />
             <DocumentActions label="Rel. Armadilhas" icon={<FileText size={16} />} size="md" onGenerate={(o) => customer && printTrapReport(customer, custTraps, inspections, o)} />
           </>
         }

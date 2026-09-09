@@ -20,6 +20,7 @@ precisa reiniciar nada.
 | 10 | `db/migrate_portal_rls_2.sql` | Correções do passo 9: o cliente lê a própria linha em `users` (sem isso o login falha), e as configurações fiscais e licenças que os documentos dele precisam |
 | ~~11~~ | ~~`db/migrate_recurrence_id_text.sql`~~ | **Dispensável.** O app passou a gerar o id da recorrência com `crypto.randomUUID()`, então a coluna `uuid` do schema original serve. Rodar não faz mal; não rodar também não. |
 | 12 | `db/migrate_cor_tecnico.sql` | `users.color` — grava a cor que cada técnico escolhe no cadastro e que a agenda usa |
+| 13 | `db/migrate_monitoramento_mip.sql` | `trap_inspections.occurrence` e `.action_taken` — as duas colunas que os relatórios de Monitoramento e MIP exigem |
 
 Depois do passo 9, implante a função de login do Portal:
 

@@ -76,6 +76,11 @@ export interface DocumentTexts {
   certificateDeclaration: string;
   /** Observação livre no fim do laudo (garantias, condições). Vazio = não sai. */
   laudoNotes: string;
+  /** Seção 1 do Relatório MIP. Uma definição por linha, no formato
+   *  "Termo - explicação"; o gerador destaca o termo antes do travessão. */
+  mipDefinitions: string[];
+  /** Seção 2 do Relatório MIP — normas e resoluções citadas, uma por linha. */
+  mipReferences: string[];
 }
 
 export const DEFAULT_DOCUMENT_TEXTS: DocumentTexts = {
@@ -94,6 +99,23 @@ export const DEFAULT_DOCUMENT_TEXTS: DocumentTexts = {
     + '{{cliente}}, CPF/CNPJ {{documento}}, situado à {{endereco}}, conforme área tratada, '
     + 'pragas-alvo, produtos químicos e garantia abaixo descritos.',
   laudoNotes: '',
+  mipDefinitions: [
+    'Controle Integrado de Pragas - sistema que incorpora ações preventivas e corretivas destinadas a '
+    + 'impedir a atração, o abrigo, o acesso e/ou a proliferação de vetores e pragas urbanas que '
+    + 'comprometam a segurança do alimento.',
+    'Pragas - os animais capazes de contaminar direta ou indiretamente os alimentos.',
+    'Vetores - tipos de animais tais como insetos, roedores, gatos e cães que, doentes ou não, podem '
+    + 'contaminar o homem e/ou os alimentos.',
+  ],
+  mipReferences: [
+    'Portaria 321/MS/SNVS de 8 de agosto de 1997 - normas gerais para produtos desinfetantes domissanitários.',
+    'Resolução RDC nº 18, de 29 de fevereiro de 2000 - MS/ANVISA.',
+    'BRASIL, RDC nº 216, de 15 de setembro de 2004 - regulamento técnico de estabelecimentos '
+    + 'produtores/industrializadores de alimentos.',
+    'BRASIL, Ministério da Saúde/ANVISA, Resolução RDC nº 275, de 21 de outubro de 2002 - regulamento '
+    + 'técnico de procedimentos operacionais padronizados e lista de verificação das boas práticas de '
+    + 'fabricação em estabelecimentos produtores e industrializadores de alimentos.',
+  ],
 };
 
 interface SettingsState {
