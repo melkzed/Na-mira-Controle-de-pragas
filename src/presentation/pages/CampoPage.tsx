@@ -676,7 +676,10 @@ function AppliedProducts({ value, onChange, disabled, technicianIds }: {
   const toggle = (id: string) => onChange(value.map((x) => (x.productId === id ? { ...x, used: !x.used } : x)));
   const setQty = (id: string, qty: number) => onChange(value.map((x) => (x.productId === id ? { ...x, qty } : x)));
   const removeRow = (id: string) => onChange(value.filter((x) => x.productId !== id));
-  const addRow = (id: string) => { if (id && !value.some((x) => x.productId === id)) onChange([...value, { productId: id, qty: 1, used: true }]); setBusca(''); };
+  /** Produto que não estava no padrão do serviço entra zerado — quem sabe
+   *  quanto usou é quem aplicou. O Laudo só imprime quantidade > 0, então a
+   *  linha não vira dose fantasma se ficar em branco. */
+  const addRow = (id: string) => { if (id && !value.some((x) => x.productId === id)) onChange([...value, { productId: id, qty: 0, used: true }]); setBusca(''); };
 
   // A busca serve às duas coisas ao mesmo tempo: filtra o que já está na lista
   // e oferece o que ainda não está. Com o padrão do serviço passando de dez

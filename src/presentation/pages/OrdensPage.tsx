@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Check, Download, MapPin, Pencil, Plus, Trash2, TriangleAlert, X, Zap } from 'lucide-react';
+import { Check, Download, Eraser, MapPin, Pencil, Plus, Trash2, TriangleAlert, X, Zap } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -59,7 +59,12 @@ const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
 
 /** Handle imperativo do formulário de OS — permite que um footer externo
  *  (fora do componente do formulário) dispare o envio. */
-interface OsFormHandle { submit: () => void }
+interface OsFormHandle {
+  submit: () => void;
+  /** Esvazia o formulário e descarta o rascunho — o mesmo "Começar em branco"
+   *  dos avisos, exposto no rodapé do modal de criação. */
+  clear: () => void;
+}
 
 /** Chip de seleção rápida (toggle) — otimizado para OS rápida em campo. */
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -93,8 +98,19 @@ function AreaChip({ name, qty, onToggle, onQty, title }: {
   );
 }
 
-/** Rascunho da OS em criação — some assim que a OS é confirmada. */
+/** Rascunho da OS em criação.
+ *
+ *  Regra: o rascunho é uma única chance de retomar o que ficou pela metade num
+ *  fechamento abrupto. Ele é CONSUMIDO na hora em que volta ao formulário
+ *  (apagado do `localStorage` ao ser reposto), e a sessão que o consumiu não
+ *  grava outro ao fechar. Da segunda abertura em diante a OS nasce vazia.
+ *
+ *  Um rascunho novo só nasce de uma sessão que abriu em branco E teve
+ *  interação real de quem está usando — ver `interagiuRef`. */
 const OS_DRAFT_KEY = 'namira-os-draft';
+/** Chave de uma tentativa anterior de limitar reposições por contagem. Não é
+ *  mais escrita; `clearOsDraft` ainda a remove para não deixar resíduo. */
+const OS_DRAFT_USES_KEY = 'namira-os-draft-uses';
 
 type OsDraft = Record<string, unknown>;
 
@@ -107,8 +123,15 @@ function loadOsDraft(): OsDraft | null {
   }
 }
 
+function saveOsDraft(json: string) {
+  try { localStorage.setItem(OS_DRAFT_KEY, json); } catch { /* cota — ignora */ }
+}
+
 function clearOsDraft() {
-  try { localStorage.removeItem(OS_DRAFT_KEY); } catch { /* ignora */ }
+  try {
+    localStorage.removeItem(OS_DRAFT_KEY);
+    localStorage.removeItem(OS_DRAFT_USES_KEY);
+  } catch { /* ignora */ }
 }
 
 export function OrdensPage() {
@@ -257,7 +280,18 @@ export function OrdensPage() {
         title="Nova Ordem de Serviço"
         subtitle="Preenchimento rápido — serviços, pragas e áreas em toques"
         wide
-        footer={<div className="flex justify-end gap-2"><Button variant="outline" disabled={saving} onClick={() => { setFormOpen(false); setPresetCustomerId(''); }}>Cancelar</Button><Button disabled={saving} onClick={() => createFormRef.current?.submit()} leftIcon={<Check size={15} />}>{saving ? 'Criando…' : 'Criar OS'}</Button></div>}
+        footer={(
+          <div className="flex items-center justify-between gap-2">
+            {/* Limpar fica separado das ações de conclusão, à esquerda: é o
+             *  oposto delas e não deve ser clicado por engano ao mirar em
+             *  "Criar OS". */}
+            <Button variant="ghost" disabled={saving} leftIcon={<Eraser size={15} />} onClick={() => { createFormRef.current?.clear(); toast('Formulário limpo — o cliente selecionado foi mantido.', { tone: 'info' }); }}>Limpar formulário</Button>
+            <div className="flex gap-2">
+              <Button variant="outline" disabled={saving} onClick={() => { setFormOpen(false); setPresetCustomerId(''); }}>Cancelar</Button>
+              <Button disabled={saving} onClick={() => createFormRef.current?.submit()} leftIcon={<Check size={15} />}>{saving ? 'Criando…' : 'Criar OS'}</Button>
+            </div>
+          </div>
+        )}
       >
         {formOpen && (
           <div className="mx-auto max-w-4xl">
@@ -624,7 +658,15 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
   // Roda uma vez ao montar — o componente é criado do zero sempre que passa
   // a ser exibido (formulário de criação recém-aberto, ou o painel de
   // detalhe recém-transformado em edição), então não depende de um "open".
+  //
+  // O guard de `hydratedRef` é o que faz isto valer sob `React.StrictMode`
+  // (ligado em `main.tsx`): em dev o React monta os efeitos, desmonta e monta
+  // de novo com o mesmo estado e os mesmos refs. Sem ele, a segunda execução
+  // relia o armazenamento, não achava mais o rascunho (já consumido na
+  // primeira) e zerava por cima o que tinha acabado de repor — o rascunho
+  // simplesmente não aparecia em dev, ao contrário da produção.
   useEffect(() => {
+    if (hydratedRef.current) return;
     if (initial) {
       // Modo edição: repopula todos os campos a partir da OS selecionada.
       setCustomerId(initial.customerId);
@@ -686,6 +728,11 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
     const rascunho = loadOsDraft();
     if (rascunho) {
       aplicarRascunho(rascunho);
+      // Consumido: some do armazenamento agora, não na próxima abertura. Se o
+      // navegador for fechado antes de qualquer outra coisa, a OS seguinte
+      // abre vazia — que é o comportamento pedido.
+      clearOsDraft();
+      restoredRef.current = true;
       // Aberto pela ficha de um cliente, o cliente pedido vence o do rascunho —
       // senão o botão de lá pareceria não fazer nada. Só o cliente muda; o
       // resto do rascunho volta inteiro, e a troca de cliente já dispara o
@@ -695,12 +742,19 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
       hydratedRef.current = true;
       return;
     }
-    // Sem cliente pedido, a OS nova nasce no primeiro da lista, como sempre.
-    const c0 = presetCustomerId || customers[0]?.id || '';
-    setCustomerId(c0);
+    // OS nova abre realmente vazia: nem cliente, nem serviço, nem técnico.
+    //
+    // Antes ela nascia com o primeiro item de cada lista marcado, e isso lia
+    // como "voltou um rascunho": o formulário aparecia preenchido com um
+    // cliente que ninguém escolheu, o serviço dele repunha produtos padrão,
+    // valor e validade pelos efeitos de sugestão, e "Limpar formulário" não
+    // resolvia porque a próxima abertura repetia a marcação. Os campos são
+    // obrigatórios na validação do `submit`, então nada se perde ao começar
+    // vazio — só deixa de haver escolha feita por conta própria.
+    setCustomerId(presetCustomerId || '');
     setAppointmentId('');
-    setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
-    setTechnicianIds(technicianUsers[0] ? [technicianUsers[0].id] : []);
+    setServiceTypeIds([]);
+    setTechnicianIds([]);
     setSellerId(''); setStatus('em_andamento'); setAreaQty({}); setLegacyAreaText(''); setPestIds([]); setPestValidity({}); setDuration(''); setProcedures(''); setTechnicianMessage('');
     setPaymentMethod(''); setServiceValue(''); setServiceValueTouched(false); setValueConfirmed(false); setAssociatedOrderId(''); setPaymentStatus('pendente'); setPaymentDate('');
     setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
@@ -796,6 +850,21 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
   const baselineRef = useRef<string | null>(null);
   /** A OS foi confirmada nesta sessão do formulário: não há rascunho a guardar. */
   const savedRef = useRef(false);
+  /** Houve toque de verdade no formulário (ponteiro ou teclado) desde a
+   *  abertura — ou desde a última limpeza.
+   *
+   *  É a condição central para gravar rascunho, e existe porque comparar o
+   *  conteúdo com uma linha de base não bastava: os efeitos de sugestão
+   *  (validade, valor, produtos padrão) ainda ajustam campos DEPOIS que a
+   *  linha de base foi capturada. Toda abertura automática terminava
+   *  diferente da base, gravava um "rascunho" que ninguém digitou e o
+   *  formulário seguinte abria com ele — o rascunho nunca parava de voltar. */
+  const interagiuRef = useRef(false);
+  /** Este formulário abriu com o rascunho reposto. Sessão que consumiu o
+   *  rascunho não grava outro ao fechar: é isso que garante que ele volte uma
+   *  única vez. Fica em ref (e não no state `fromDraft`) porque quem lê é a
+   *  gravação da desmontagem. */
+  const restoredRef = useRef(false);
 
   // Toda vez que o preenchimento pelo histórico roda (montagem, troca de
   // cliente), o estado que ele produziu vira a nova linha de base. Sem isto,
@@ -812,17 +881,23 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
    *  "rascunho" sozinho e a OS seguinte abria anunciando um rascunho que
    *  ninguém digitou, com os dados da OS recém-criada.
    *
-   *  Duas condições para guardar: a OS não foi confirmada (aí não há o que
-   *  recuperar) e o conteúdo se afastou do que o sistema preencheu sozinho. */
+   *  Quatro condições para guardar, todas necessárias:
+   *  1. a OS não foi confirmada (`savedRef`) — aí não há o que recuperar;
+   *  2. alguém tocou no formulário (`interagiuRef`) — sem isso o que existe na
+   *     tela é obra dos efeitos de sugestão, não trabalho de ninguém;
+   *  3. esta sessão não é a que consumiu um rascunho (`restoredRef`) — é o que
+   *     faz o rascunho voltar uma única vez e não se auto-renovar;
+   *  4. o conteúdo se afastou do que o sistema preencheu sozinho (`baseline`). */
   useEffect(() => {
     if (initial) return;
     return () => {
+      // Sem toque de verdade não há trabalho a preservar, e a sessão que já
+      // consumiu um rascunho não gera outro.
       if (savedRef.current || !hydratedRef.current) return;
-      try {
-        const atual = JSON.stringify(draftRef.current);
-        if (atual === baselineRef.current) return;
-        localStorage.setItem(OS_DRAFT_KEY, atual);
-      } catch { /* cota — ignora */ }
+      if (!interagiuRef.current || restoredRef.current) return;
+      const atual = JSON.stringify(draftRef.current);
+      if (atual === baselineRef.current) return;
+      saveOsDraft(atual);
     };
   }, [initial]);
 
@@ -884,28 +959,23 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
 
   const customerAppointments = customerId ? appointmentsForCustomer(customerId) : [];
 
-  /** "Começar em branco": descarta o preenchimento automático e volta aos
-   *  MESMOS padrões de uma O.S. nova.
-   *
-   *  Antes deixava a equipe vazia, enquanto abrir uma "Nova O.S." já vinha com
-   *  o primeiro técnico marcado — duas telas de aparência idêntica começando
-   *  diferente, e a segunda recusando o salvamento por um campo que a primeira
-   *  preenchia sozinha.
-   *
-   *  O cliente NÃO é tocado, e isso é essencial: trocar `customerId` dispara o
-   *  preenchimento pelo histórico daquele cliente, que repopularia serviços,
-   *  pragas e áreas — exatamente o que este botão acabou de limpar. */
+  /** "Começar em branco" / "Limpar formulário": zera tudo e deixa o formulário
+   *  no MESMO estado de uma O.S. recém-aberta — que agora também é vazio,
+   *  cliente incluído. As duas telas precisam começar iguais: quando "Nova
+   *  O.S." vinha com o primeiro cliente, serviço e técnico marcados e o botão
+   *  limpava só parte disso, a limpeza parecia não pegar e a abertura seguinte
+   *  repunha a marcação. */
   const clearFill = () => {
-    // Em branco é em branco: nem serviço, nem técnico. Antes estes dois voltavam
-    // marcados no primeiro item do catálogo ("padrão de OS nova"), e isso deixava
-    // a tela cheia logo depois de pedir para esvaziá-la — o serviço marcado
-    // repunha os produtos padrão dele, o valor e a validade pelos efeitos de
-    // sugestão, e a OS podia acabar criada com um serviço que ninguém escolheu.
+    // Sem serviço a cascata de sugestão se desarma sozinha, sem mexer em
+    // nenhum `touched`: `suggestedProducts` fica vazio, `suggestedServiceValue`
+    // é 0 e `suggestedValidityDays` é undefined, então os três efeitos saem
+    // pelo return. A sugestão volta inteira ao escolher um serviço.
     //
-    // Limpar os dois desarma a cascata sem precisar mexer em nenhum `touched`:
-    // sem serviço, `suggestedProducts` fica vazio, `suggestedServiceValue` é 0 e
-    // `suggestedValidityDays` é undefined, então os três efeitos saem pelo
-    // return. A sugestão volta inteira assim que a pessoa escolher um serviço.
+    // O cliente também sai: "limpar" que deixa cliente escolhido não limpou
+    // nada aos olhos de quem clicou. Trocar `customerId` não repõe dado
+    // nenhum — o preenchimento pelo histórico só roda no botão "Repetir"
+    // (ver `repetirUltimo`), nunca sozinho na troca de cliente.
+    setCustomerId(''); setAppointmentId('');
     setServiceTypeIds([]); setTechnicianIds([]); setSellerId('');
     setPestIds([]); setPestValidity({}); setAreaQty({}); setCustomAreas([]); setLegacyAreaText(''); setPaymentMethod(''); setRecEnabled(false); setRecPhases([]); setRecDates([]); setRecPrimeira(''); setFilledFrom(null);
     setValidityDate(''); setValidityTouched(false);
@@ -917,6 +987,11 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
     // "Começar em branco" também descarta o rascunho — senão ele voltaria na
     // próxima abertura e pareceria que a limpeza não funcionou.
     clearOsDraft();
+    // Formulário zerado é ponto de partida limpo: nada a gravar até que
+    // alguém digite de novo, e o que vier depois é rascunho novo (a sessão
+    // deixa de ser "a que consumiu o rascunho").
+    interagiuRef.current = false;
+    restoredRef.current = false;
     setFromDraft(false);
     setResetSeq((n) => n + 1);
   };
@@ -1385,10 +1460,19 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
     }
   };
 
-  useImperativeHandle(ref, () => ({ submit }));
+  useImperativeHandle(ref, () => ({ submit, clear: clearFill }));
 
   return (
-      <div className="space-y-5">
+      /* Toque de verdade no formulário — é o que autoriza gravar rascunho ao
+       * fechar (ver `interagiuRef`). Em captura, para pegar também o que
+       * acontece dentro de campos e listas. O botão "Começar em branco" fica
+       * aqui dentro, mas o `pointerdown` dispara ANTES do clique dele, que
+       * zera o sinalizador em seguida — limpar continua limpando. */
+      <div
+        className="space-y-5"
+        onPointerDownCapture={() => { interagiuRef.current = true; }}
+        onKeyDownCapture={() => { interagiuRef.current = true; }}
+      >
         <Field label="Cliente" required>
           <Combobox
             value={customerId}
@@ -1439,7 +1523,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
         {fromDraft && !viaCliente && (
           <div className="flex items-center gap-2 rounded-xl border border-warning/40 bg-warning-soft/50 p-2.5 text-xs text-foreground">
             <Zap size={14} className="shrink-0 text-warning" />
-            <span className="flex-1">Rascunho recuperado — você tinha começado esta OS e não finalizou. Ao confirmar a criação, ela some daqui.</span>
+            <span className="flex-1">Rascunho recuperado — você tinha começado esta OS e não finalizou. Esta é a única vez que ele volta: se fechar sem confirmar, a próxima OS abre em branco.</span>
             <button onClick={clearFill} className="shrink-0 font-medium underline">Começar em branco</button>
           </div>
         )}
@@ -1553,13 +1637,18 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
           </p>
         </Field>
 
-        <Field label="Produtos previstos" hint="Sugeridos automaticamente pelos serviços selecionados — ajuste a quantidade, remova ou adicione outro">
+        <Field label="Produtos previstos" hint="Sugeridos automaticamente pelos serviços selecionados — o adicionado na mão entra zerado, informe a quantidade aplicada">
           <MultiCombobox
             values={products.map((p) => p.productId)}
             onChange={(ids) => { productsTouched.current = true; setProducts((prev) => {
               const kept = prev.filter((p) => ids.includes(p.productId));
               const addedIds = ids.filter((id) => !prev.some((p) => p.productId === id));
-              return [...kept, ...addedIds.map((id) => ({ productId: id, qty: 1 }))];
+              // Produto escolhido na mão entra zerado: quem sabe a dose é quem
+              // aplica. Sugerir 1 fazia essa quantidade virar "aplicada" no
+              // Laudo sem ninguém ter medido nada. O documento só imprime
+              // produto com quantidade > 0 (`printDocuments.ts`), então nada
+              // entra por engano enquanto o campo estiver em branco.
+              return [...kept, ...addedIds.map((id) => ({ productId: id, qty: 0 }))];
             }); }}
             placeholder="Buscar produto…"
             options={allProducts.map((p) => ({ value: p.id, label: p.name, sub: p.unit }))}
