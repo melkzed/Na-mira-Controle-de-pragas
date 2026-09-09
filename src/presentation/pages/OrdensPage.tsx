@@ -122,6 +122,10 @@ export function OrdensPage() {
   // abrir outro Drawer por cima) — "editMode" só alterna o conteúdo exibido.
   const [editMode, setEditMode] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  /** Cliente com que a OS nova deve nascer, quando a criação foi aberta a
+   *  partir da ficha de um cliente. Vazio = criação normal, pelo botão da
+   *  própria tela de Ordens. */
+  const [presetCustomerId, setPresetCustomerId] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const removeOs = useServiceOrdersStore((s) => s.remove);
@@ -146,6 +150,18 @@ export function OrdensPage() {
     const so = orders.find((o) => o.id === id);
     if (so) { setSelected(so); setEditMode(false); }
     setParams((p) => { p.delete('id'); return p; }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
+
+  // "Novo agendamento" na ficha do cliente (?novoPara=<clienteId>): abre a
+  // criação de OS já naquele cliente. O parâmetro sai da URL depois de lido —
+  // senão recarregar a página reabriria o formulário sozinho.
+  useEffect(() => {
+    const cid = params.get('novoPara');
+    if (!cid) return;
+    setPresetCustomerId(cid);
+    setFormOpen(true);
+    setParams((p) => { p.delete('novoPara'); return p; }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
@@ -215,7 +231,7 @@ export function OrdensPage() {
         actions={
           <>
             <Button variant="outline" leftIcon={<Download size={16} />} onClick={exportCsv}>Exportar CSV</Button>
-            <Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Nova OS</Button>
+            <Button leftIcon={<Plus size={16} />} onClick={() => { setPresetCustomerId(''); setFormOpen(true); }}>Nova OS</Button>
           </>
         }
       />
@@ -237,15 +253,15 @@ export function OrdensPage() {
        *  detalhe da OS, para manter a exibição consistente entre criar e ver/editar. */}
       <Drawer
         open={formOpen}
-        onClose={() => setFormOpen(false)}
+        onClose={() => { setFormOpen(false); setPresetCustomerId(''); }}
         title="Nova Ordem de Serviço"
         subtitle="Preenchimento rápido — serviços, pragas e áreas em toques"
         wide
-        footer={<div className="flex justify-end gap-2"><Button variant="outline" disabled={saving} onClick={() => setFormOpen(false)}>Cancelar</Button><Button disabled={saving} onClick={() => createFormRef.current?.submit()} leftIcon={<Check size={15} />}>{saving ? 'Criando…' : 'Criar OS'}</Button></div>}
+        footer={<div className="flex justify-end gap-2"><Button variant="outline" disabled={saving} onClick={() => { setFormOpen(false); setPresetCustomerId(''); }}>Cancelar</Button><Button disabled={saving} onClick={() => createFormRef.current?.submit()} leftIcon={<Check size={15} />}>{saving ? 'Criando…' : 'Criar OS'}</Button></div>}
       >
         {formOpen && (
           <div className="mx-auto max-w-4xl">
-            <OsFormBody ref={createFormRef} initial={null} onSaved={(so) => { setFormOpen(false); setSelected(so); setEditMode(false); }} onSavingChange={setSaving} />
+            <OsFormBody ref={createFormRef} initial={null} presetCustomerId={presetCustomerId} onSaved={(so) => { setFormOpen(false); setPresetCustomerId(''); setSelected(so); setEditMode(false); }} onSavingChange={setSaving} />
           </div>
         )}
       </Drawer>
@@ -433,8 +449,8 @@ export function OrdensPage() {
  *  automática de produtos. Sem Drawer/rodapé próprios: quem o usa decide
  *  onde exibi-lo (painel novo ao criar, ou o próprio painel de detalhe já
  *  aberto, transformado in-place, ao editar) e aciona o envio via `ref`. */
-const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSaved: (so: ServiceOrder) => void; onSavingChange?: (saving: boolean) => void }>(
-  function OsFormBody({ initial, onSaved, onSavingChange }, ref) {
+const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; presetCustomerId?: string; onSaved: (so: ServiceOrder) => void; onSavingChange?: (saving: boolean) => void }>(
+  function OsFormBody({ initial, presetCustomerId, onSaved, onSavingChange }, ref) {
   const add = useServiceOrdersStore((s) => s.add);
   const updateOs = useServiceOrdersStore((s) => s.update);
   const allOrders = useServiceOrdersStore((s) => s.orders);
@@ -522,6 +538,10 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   /** true quando o formulário abriu com um rascunho recuperado — vale avisar,
    *  senão a pessoa não entende por que os campos vieram preenchidos. */
   const [fromDraft, setFromDraft] = useState(false);
+  /** Este formulário foi aberto pelo botão "Novo agendamento" da ficha do
+   *  cliente, e não pelo "Nova OS" da própria tela de Ordens. Muda só o aviso
+   *  de preenchimento automático — ver o bloco `viaCliente` no formulário. */
+  const viaCliente = !!presetCustomerId;
   const [validityTouched, setValidityTouched] = useState(false);
   /** Texto livre de "áreas tratadas" de OS antigas (anteriores ao seletor por
    *  chips) — preservado ao editar quando nenhuma área com id correspondente
@@ -662,11 +682,17 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     const rascunho = loadOsDraft();
     if (rascunho) {
       aplicarRascunho(rascunho);
+      // Aberto pela ficha de um cliente, o cliente pedido vence o do rascunho —
+      // senão o botão de lá pareceria não fazer nada. Só o cliente muda; o
+      // resto do rascunho volta inteiro, e a troca de cliente já dispara o
+      // preenchimento pelo último atendimento de quem foi escolhido agora.
+      if (presetCustomerId) setCustomerId(presetCustomerId);
       setFromDraft(true);
       hydratedRef.current = true;
       return;
     }
-    const c0 = customers[0]?.id ?? '';
+    // Sem cliente pedido, a OS nova nasce no primeiro da lista, como sempre.
+    const c0 = presetCustomerId || customers[0]?.id || '';
     setCustomerId(c0);
     setAppointmentId('');
     setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
@@ -807,12 +833,23 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
    *  preenchimento pelo histórico daquele cliente, que repopularia serviços,
    *  pragas e áreas — exatamente o que este botão acabou de limpar. */
   const clearFill = () => {
-    setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
-    setTechnicianIds(technicianUsers[0] ? [technicianUsers[0].id] : []);
+    // Em branco é em branco: nem serviço, nem técnico. Antes estes dois voltavam
+    // marcados no primeiro item do catálogo ("padrão de OS nova"), e isso deixava
+    // a tela cheia logo depois de pedir para esvaziá-la — o serviço marcado
+    // repunha os produtos padrão dele, o valor e a validade pelos efeitos de
+    // sugestão, e a OS podia acabar criada com um serviço que ninguém escolheu.
+    //
+    // Limpar os dois desarma a cascata sem precisar mexer em nenhum `touched`:
+    // sem serviço, `suggestedProducts` fica vazio, `suggestedServiceValue` é 0 e
+    // `suggestedValidityDays` é undefined, então os três efeitos saem pelo
+    // return. A sugestão volta inteira assim que a pessoa escolher um serviço.
+    setServiceTypeIds([]); setTechnicianIds([]); setSellerId('');
     setPestIds([]); setPestValidity({}); setAreaQty({}); setCustomAreas([]); setLegacyAreaText(''); setPaymentMethod(''); setRecEnabled(false); setRecPhases([]); setRecDates([]); setRecPrimeira(''); setFilledFrom(null);
     setValidityDate(''); setValidityTouched(false);
+    setCertValidityDate(''); setCertValidityTouched(false);
+    setWarrantyHas(false); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
     setProducts([]); setEquipmentIds([]); setProcedures(''); setTechnicianMessage('');
-    setExecDate(''); setExecTime(''); setDuration('');
+    setExecDate(''); setExecTime(''); setDuration(''); setDueDate('');
     setServiceValue(''); setServiceValueTouched(false); setValueConfirmed(false);
     // "Começar em branco" também descarta o rascunho — senão ele voltaria na
     // próxima abertura e pareceria que a limpeza não funcionou.
@@ -1306,7 +1343,22 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
           </Field>
         )}
 
-        {fromDraft && (
+        {/* Aberto pela ficha do cliente ("Novo agendamento"): quem clicou não
+         *  estava montando uma OS nem pensando em rascunho — pediu uma OS para
+         *  aquele cliente. Falar de "rascunho recuperado" aí explica uma
+         *  mecânica interna que não é a pergunta de quem chegou por esse
+         *  caminho; o que importa é que veio coisa preenchida e como zerar. */}
+        {viaCliente && (fromDraft || filledFrom != null) && (
+          <div className="flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft/40 p-2.5 text-xs text-brand">
+            <Zap size={14} className="shrink-0" />
+            <span className="flex-1">
+              Certos dados foram preenchidos automaticamente com base no cliente escolhido. Para começar em branco,{' '}
+              <button onClick={clearFill} className="font-medium underline">clique aqui</button>.
+            </span>
+          </div>
+        )}
+
+        {fromDraft && !viaCliente && (
           <div className="flex items-center gap-2 rounded-xl border border-warning/40 bg-warning-soft/50 p-2.5 text-xs text-foreground">
             <Zap size={14} className="shrink-0 text-warning" />
             <span className="flex-1">Rascunho recuperado — você tinha começado esta OS e não finalizou. Ao confirmar a criação, ela some daqui.</span>
@@ -1314,7 +1366,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
           </div>
         )}
 
-        {filledFrom != null && !fromDraft && (
+        {filledFrom != null && !fromDraft && !viaCliente && (
           <div className="flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft/40 p-2.5 text-xs text-brand">
             <Zap size={14} className="shrink-0" />
             <span className="flex-1">Preenchido automaticamente pelo último atendimento (OS #{filledFrom}). Revise e ajuste o que mudou.</span>

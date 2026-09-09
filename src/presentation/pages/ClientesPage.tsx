@@ -160,6 +160,11 @@ function ClienteDetail({
   const history = serviceOrdersForCustomer(customer.id);
   const isBasico = customer.registrationTier === 'basico';
   const openOs = (osId: string) => navigate(`/ordens?id=${osId}`);
+  /** O agendamento sai da Ordem de Serviço, não de uma tela própria: é a OS que
+   *  gera a visita na Agenda. Agendar sem OS deixaria o técnico sem serviço,
+   *  produtos nem pragas para executar — por isso o botão abre a criação da OS
+   *  já com este cliente escolhido (ver `novoPara` em OrdensPage). */
+  const novaOs = () => { onClose(); navigate(`/ordens?novoPara=${customer.id}`); };
 
   return (
     <Drawer
@@ -183,7 +188,7 @@ function ClienteDetail({
               <Button variant="ghost" leftIcon={<Trash2 size={15} />} className="text-danger" onClick={() => setConfirmDel(true)}>Excluir</Button>
               <div className="flex gap-2">
                 <Button variant="outline" leftIcon={<Pencil size={15} />} onClick={() => onEdit(customer)}>Editar</Button>
-                <Button>Novo agendamento</Button>
+                <Button onClick={novaOs}>Novo agendamento</Button>
               </div>
             </>
           )}
