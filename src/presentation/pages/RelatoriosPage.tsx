@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Download, FileSpreadsheet, FileText, Search, X } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
@@ -312,6 +313,10 @@ function quickRangeDates(days: number): { startDate: string; endDate: string } {
 }
 
 export function RelatoriosPage() {
+  const [params, setParams] = useSearchParams();
+  /** Relatório apontado por um alerta do painel (`?relatorio=`) — a página
+   *  rola até o card e o destaca. */
+  const [highlight, setHighlight] = useState<string | null>(null);
   const customers = useCustomersStore((s) => s.customers);
   const technicians = useUsersStore((s) => sortByName(s.items.filter((u) => u.role === 'tecnico')));
   useServiceOrdersStore((s) => s.orders); // reatividade das contagens
@@ -319,6 +324,23 @@ export function RelatoriosPage() {
 
   const [f, setF] = useState<Filters>(defaultFilters);
   const set = (patch: Partial<Filters>) => setF((prev) => ({ ...prev, ...patch }));
+
+  // Chegando de um alerta: o período padrão termina hoje e esconderia o que
+  // vence nos próximos dias — justamente o que o alerta contou. Estende o fim
+  // para +30 dias para o card mostrar o mesmo número do painel.
+  const alvo = params.get('relatorio');
+  useEffect(() => {
+    if (!alvo) return;
+    setF((prev) => ({ ...prev, endDate: toDateInputValue(new Date(Date.now() + 30 * 864e5)) }));
+    setHighlight(alvo);
+    // O card só existe depois da renderização com o novo filtro.
+    const t = window.setTimeout(() => {
+      document.getElementById(`relatorio-${fileName(alvo)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 60);
+    // O parâmetro cumpriu o papel; mantê-lo reaplicaria o filtro a cada volta.
+    setParams({}, { replace: true });
+    return () => window.clearTimeout(t);
+  }, [alvo, setParams]);
   const def = useMemo(defaultFilters, []);
   const hasFilter = !!(f.search || f.customerId || f.technicianId || f.serviceTypeId || f.status) || f.startDate !== def.startDate || f.endDate !== def.endDate;
 
@@ -442,8 +464,8 @@ export function RelatoriosPage() {
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {section.items.map((r, i) => (
-                <motion.div key={r.name} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
-                  <Card hover className="p-4">
+                <motion.div key={r.name} id={`relatorio-${fileName(r.name)}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
+                  <Card hover className={`p-4 ${highlight === r.name ? 'ring-2 ring-brand' : ''}`}>
                     <div className="flex items-start gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                         <Icon name={r.icon} size={19} />

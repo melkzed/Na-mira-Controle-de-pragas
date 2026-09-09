@@ -29,12 +29,17 @@ import { formatCompactCurrency, formatNumber } from '@/lib/utils';
 import { fmtTime } from '@/lib/date';
 import { useAppStore } from '@/store/appStore';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
-import { useEquipmentStore } from '@/store/entityStores';
+import { useEquipmentStore, useLicensesStore } from '@/store/entityStores';
+import { useCustomersStore } from '@/store/customersStore';
 import { isEquipmentOverdue } from './EquipamentosPage';
 import { Link } from 'react-router-dom';
 
 export function DashboardPage() {
-  const m = useMemo(() => computeDashboard(), []);
+  // Contratos e licenças entram nos alertas: recalcula quando essas stores
+  // mudam, senão cadastrar um contrato não mexe na contagem do painel.
+  const customers = useCustomersStore((s) => s.customers);
+  const licenses = useLicensesStore((s) => s.items);
+  const m = useMemo(() => computeDashboard(), [customers, licenses]); // eslint-disable-line react-hooks/exhaustive-deps
   const consumption = useMemo(() => productConsumption().slice(0, 5), []);
   const notifications = useAppStore((s) => s.notifications);
   const todayIso = new Date().toISOString();
@@ -191,9 +196,10 @@ export function DashboardPage() {
             <CardHeader title="Alertas" subtitle="Requer atenção" />
             <CardBody className="space-y-2.5">
               <AlertRow icon="PackageX" tone="warning" label="Estoque baixo" value={`${m.lowStockCount} produtos`} />
-              <AlertRow icon="CalendarX" tone="warning" label="Produtos vencendo" value={`${m.expiringCount} lotes`} />
-              <AlertRow icon="TriangleAlert" tone="danger" label="Produtos vencidos" value={`${m.expiredCount} lotes`} />
-              <AlertRow icon="FileWarning" tone="danger" label="Licenças a vencer" value={`${m.licensesExpiringSoon} docs`} />
+              <AlertRow icon="CalendarX" tone="warning" label="Produtos vencendo" value={`${m.expiringCount} lotes`} to={reportLink('Lotes de produto vencendo')} />
+              <AlertRow icon="TriangleAlert" tone="danger" label="Produtos vencidos" value={`${m.expiredCount} lotes`} to={reportLink('Lotes de produto vencendo')} />
+              <AlertRow icon="FileClock" tone="warning" label="Contratos a vencer" value={`${m.contractsExpiringSoon} contratos`} to={reportLink('Contratos a vencer')} />
+              <AlertRow icon="FileWarning" tone="danger" label="Licenças a vencer" value={`${m.licensesExpiringSoon} docs`} to={reportLink('Licenças e certificados a vencer')} />
               <AlertRow icon="Timer" tone="info" label="Tempo médio de atend." value={`${m.avgServiceMinutes} min`} />
             </CardBody>
           </Card>
@@ -253,20 +259,34 @@ function MiniStat({ label, value, icon, tone }: { label: string; value: number; 
   );
 }
 
-function AlertRow({ icon, tone, label, value }: { icon: string; tone: any; label: string; value: string }) {
+/** Link para o card correspondente em Relatórios — a página destaca e rola
+ *  até ele, então o alerta leva direto à lista, não só à tela. */
+const reportLink = (name: string) => `/relatorios?relatorio=${encodeURIComponent(name)}`;
+
+function AlertRow({ icon, tone, label, value, to }: { icon: string; tone: any; label: string; value: string; to?: string }) {
   const toneClass: Record<string, string> = {
     success: 'bg-success-soft text-success', warning: 'bg-warning-soft text-warning',
     danger: 'bg-danger-soft text-danger', brand: 'bg-brand-soft text-brand',
     info: 'bg-info-soft text-info', neutral: 'bg-muted text-muted-foreground',
   };
-  return (
-    <div className="flex items-center gap-3">
+  const conteudo = (
+    <>
       <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${toneClass[tone]}`}>
         <Icon name={icon} size={15} />
       </span>
       <span className="flex-1 text-sm text-foreground">{label}</span>
       <span className="text-sm font-semibold text-muted-foreground">{value}</span>
-    </div>
+    </>
+  );
+  if (!to) return <div className="flex items-center gap-3">{conteudo}</div>;
+  return (
+    <Link
+      to={to}
+      aria-label={`${label}: ${value} — ver relatório`}
+      className="-mx-1.5 flex items-center gap-3 rounded-lg px-1.5 py-0.5 transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+    >
+      {conteudo}
+    </Link>
   );
 }
 
