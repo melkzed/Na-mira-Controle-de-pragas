@@ -234,7 +234,39 @@ export interface TrapInspection {
   action?: 'nenhuma' | 'substituida' | 'retirada' | 'reinstalada' | 'extraviada';
   technicianId?: string;
   notes?: string;
+  /** O que foi encontrado no dispositivo, no vocabulário do relatório de
+   *  monitoramento — "Isca Totalmente Consumida", "Sem Consumo", "Com Captura".
+   *  Mais expressivo que `consumed`, que só diz sim ou não; `consumed` continua
+   *  alimentando os indicadores de taxa de consumo. */
+  occurrence?: string;
+  /** O que o técnico fez diante da ocorrência — "Reposição Isca", "Isca
+   *  Atrativa", "Substituição". Distinto de `action`, que muda a SITUAÇÃO da
+   *  armadilha (retirada, extraviada) e não descreve o serviço prestado. */
+  actionTaken?: string;
 }
+
+/** Vocabulário do relatório de monitoramento. São sugestões, não uma lista
+ *  fechada: o campo aceita texto livre, porque cada contrato tem seus termos. */
+export const TRAP_OCCURRENCES = [
+  'Isca Totalmente Consumida',
+  'Isca Parcialmente Consumida',
+  'Sem Consumo',
+  'Com Captura',
+  'Sem Captura',
+  'Armadilha Danificada',
+  'Armadilha Extraviada',
+  'Sem Acesso ao Ponto',
+] as const;
+
+export const TRAP_ACTIONS_TAKEN = [
+  'Reposição Isca',
+  'Isca Atrativa',
+  'Substituição',
+  'Limpeza',
+  'Reinstalação',
+  'Retirada',
+  'Nenhuma',
+] as const;
 
 /** Um ponto conferido pelo técnico na verificação do local (MIP) — o que foi
  *  olhado no imóvel e como estava. Fica na visita, junto com fotos e
@@ -266,7 +298,9 @@ export interface NonConformity {
   priority: AppointmentPriority;
   correctiveAction?: string;
   status: NonConformityStatus;
-  photos?: { name: string; dataUrl: string }[];
+  /** Fotos do achado. É a coluna "Imagem" da seção 5 do Relatório MIP — uma
+   *  fresta descrita em texto não convence ninguém a vedá-la. */
+  photos?: StoredImage[];
   createdBy?: string;
   createdAt: string;
 }
@@ -687,11 +721,23 @@ export interface TreatedArea {
  *  linha — gravar base64 dentro do registro inchava o banco rápido, já que
  *  são várias fotos por visita. Fotos antigas só têm `dataUrl`, então
  *  sempre leia pelas duas (ver `photoSrc` em `src/lib/photoStorage.ts`). */
-export interface ServiceOrderPhoto {
+/**
+ * Imagem gravada pelo sistema.
+ *
+ * Em modo Supabase o arquivo vai para o Storage e fica só a `url`. No modo
+ * standalone, e como plano B quando o envio falha em campo, a imagem fica
+ * embutida em `dataUrl` — pesada, mas melhor do que perder o registro.
+ * Sempre resolva o endereço com `photoSrc` (lib/photoStorage), nunca lendo
+ * um dos dois campos direto.
+ */
+export interface StoredImage {
   url?: string;
   dataUrl?: string;
-  phase: 'antes' | 'durante' | 'apos';
   name?: string;
+}
+
+export interface ServiceOrderPhoto extends StoredImage {
+  phase: 'antes' | 'durante' | 'apos';
 }
 
 export interface WarrantyInfo {

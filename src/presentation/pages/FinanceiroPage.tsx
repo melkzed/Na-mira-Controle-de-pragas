@@ -150,9 +150,10 @@ export function FinanceiroPage() {
 
 /** Visão geral: KPIs, DRE, contas a pagar/receber (desconto, agrupamento, prorrogação e emissão de pagamento). */
 function VisaoGeralTab() {
-  const { items: entries, add, update } = useFinanceStore();
+  const { items: entries, add, update, remove } = useFinanceStore();
   const [subTab, setSubTab] = useState<'receber' | 'pagar'>('receber');
   const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<FinanceEntry | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [payDialogEntries, setPayDialogEntries] = useState<FinanceEntry[] | null>(null);
@@ -187,6 +188,15 @@ function VisaoGeralTab() {
     base.setDate(base.getDate() + 30);
     update(e.id, { dueDate: toDateStr(base), status: 'pendente', postponedFrom: e.postponedFrom ?? e.dueDate });
     toast(`Vencimento prorrogado para ${fmtDate(toDateStr(base))}.`, { tone: 'success' });
+  };
+
+  /** Excluir oferece Desfazer, como no resto do sistema — lançamento apagado
+   *  por engano é conciliação bancária quebrada. */
+  const excluir = (e: FinanceEntry) => {
+    remove(e.id);
+    // Desfazer re-insere o mesmo registro: a id é preservada, então a
+    // conciliação e os vínculos com a OS continuam apontando para ele.
+    toast(`Lançamento "${e.description}" excluído.`, { tone: 'danger', action: { label: 'Desfazer', onClick: () => add(e) } });
   };
 
   const toggleSelect = (id: string) => setSelectedIds((arr) => (arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]));
@@ -246,11 +256,34 @@ function VisaoGeralTab() {
         </div>
       ) } as Column<FinanceEntry>,
     ]),
+    // Vencimento e baixa na mesma pílula, como no modelo: a data só interessa
+    // junto da pergunta "já entrou?", e é ali que a pessoa clica para resolver.
     { key: 'due', header: subTab === 'receber' ? 'Dt. Vencimento' : 'Vencimento', render: (e) => {
-      if (!e.dueDate) return '—';
+      if (!e.dueDate) return <span className="text-muted-foreground">—</span>;
       const d = daysUntil(e.dueDate) ?? 99;
-      const warn = (e.status === 'pendente' || e.status === 'atrasado') && d <= 7;
-      return <span className={warn ? (d < 0 ? 'font-semibold text-danger' : 'font-semibold text-warning') : 'text-foreground'}>{fmtDate(e.dueDate)}{warn ? (d < 0 ? ` · venceu` : d === 0 ? ' · hoje' : ` · em ${d}d`) : ''}</span>;
+      const aberta = e.status !== 'pago' && e.status !== 'cancelado';
+      const vencida = aberta && d < 0;
+      if (!aberta) {
+        return (
+          <div className="flex flex-col gap-0.5">
+            <span className="tabular-nums text-foreground">{fmtDate(e.dueDate)}</span>
+            {e.status === 'pago' && e.paidAt && <span className="text-[10px] text-success">baixado em {fmtDate(e.paidAt)}</span>}
+          </div>
+        );
+      }
+      return (
+        <div className="inline-flex items-stretch overflow-hidden rounded-md" onClick={(ev) => ev.stopPropagation()}>
+          <span className={`px-2 py-1 text-xs font-semibold tabular-nums text-white ${vencida ? 'bg-danger' : 'bg-info'}`}>
+            {fmtDate(e.dueDate)}
+          </span>
+          <button
+            onClick={() => setPayDialogEntries([e])}
+            className={`px-2 py-1 text-xs font-medium text-white transition hover:brightness-110 ${vencida ? 'bg-danger/80' : 'bg-info/80'}`}
+          >
+            {e.type === 'receita' ? 'Baixar recebimento' : 'Baixar pagamento'}
+          </button>
+        </div>
+      );
     } },
     ...(subTab === 'receber' ? [
       { key: 'nf', header: 'Nº NF', hideBelow: 'lg', render: (e: FinanceEntry) => {
@@ -259,23 +292,20 @@ function VisaoGeralTab() {
       } } as Column<FinanceEntry>,
     ] : []),
     { key: 'amount', header: subTab === 'receber' ? 'Total' : 'Valor', align: 'right', render: (e) => <span className={subTab === 'receber' ? 'font-semibold text-success' : 'font-semibold text-foreground'}>{formatCurrency(netAmount(e))}</span> },
-    { key: 'status', header: 'Status', align: 'right', render: (e) => {
+    { key: 'status', header: 'Status', align: 'right', hideBelow: 'lg', render: (e) => {
       const overdue = e.status === 'pendente' && e.dueDate && (daysUntil(e.dueDate) ?? 1) < 0;
       const st = overdue ? 'atrasado' : e.status;
-      return (
-        <div className="flex flex-col items-end gap-1">
-          <Badge tone={statusMeta[st].tone} dot>{statusMeta[st].label}</Badge>
-          {e.status === 'pago' && e.paidAt && <span className="text-[10px] text-muted-foreground">pago em {fmtDate(e.paidAt)}</span>}
-          {e.paymentMethod && <span className="text-[10px] text-muted-foreground">{PAYMENT_METHOD_LABEL[e.paymentMethod]}</span>}
-        </div>
-      );
+      return <Badge tone={statusMeta[st].tone} dot>{statusMeta[st].label}</Badge>;
     } },
     { key: 'acoes', header: 'Ações', align: 'right', render: (e) => {
       if (e.status === 'pago' || e.status === 'cancelado') {
         return e.fiscalDocumentUrl ? <a href={e.fiscalDocumentUrl} target="_blank" rel="noreferrer" onClick={(ev) => ev.stopPropagation()} className="text-xs text-brand underline">nota fiscal</a> : null;
       }
+      // Ícones, não botões de texto: são três ações por linha e a tabela já
+      // carrega sete colunas. A baixa mora na pílula de vencimento.
       return (
         <div className="flex justify-end gap-1" onClick={(ev) => ev.stopPropagation()}>
+          <button onClick={() => { setEditing(e); setFormOpen(true); }} aria-label={`Editar ${e.description}`} title="Editar lançamento" className="rounded-md p-1.5 text-brand hover:bg-brand-soft"><Pencil size={14} /></button>
           {e.type === 'despesa' && (
             <button onClick={() => postpone(e)} aria-label="Prorrogar vencimento" title="Prorrogar 30 dias" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-warning"><Clock size={14} /></button>
           )}
@@ -283,7 +313,7 @@ function VisaoGeralTab() {
             <Paperclip size={14} />
             <input type="file" className="hidden" onChange={(ev) => { const f = ev.target.files?.[0]; if (f) attachFiscalDoc(e.id, f); ev.target.value = ''; }} />
           </label>
-          <Button size="sm" onClick={() => setPayDialogEntries([e])}>{e.type === 'receita' ? 'Baixar recebimento' : 'Pagar'}</Button>
+          <button onClick={() => excluir(e)} aria-label={`Excluir ${e.description}`} title="Excluir lançamento" className="rounded-md p-1.5 text-danger hover:bg-danger-soft"><Trash2 size={14} /></button>
         </div>
       );
     } },
@@ -364,7 +394,17 @@ function VisaoGeralTab() {
 
       <RecurringPayablesPanel />
 
-      <FinanceForm open={formOpen} defaultType={subTab === 'receber' ? 'receita' : 'despesa'} onClose={() => setFormOpen(false)} onSave={(e) => { add(e); setFormOpen(false); }} />
+      <FinanceForm
+        open={formOpen}
+        defaultType={subTab === 'receber' ? 'receita' : 'despesa'}
+        initial={editing}
+        onClose={() => { setFormOpen(false); setEditing(null); }}
+        onSave={(e) => {
+          if (editing) { update(editing.id, e); toast('Lançamento atualizado.', { tone: 'success' }); }
+          else add(e);
+          setFormOpen(false); setEditing(null);
+        }}
+      />
       {/* Lançamento não tem chave natural (a mesma despesa se repete todo mês),
           então a importação sempre cria — nunca sobrescreve o que já existe. */}
       <ImportDrawer open={importOpen} onClose={() => setImportOpen(false)} spec={financeImport} items={entries} add={add} update={update} createOnly />
@@ -675,7 +715,7 @@ function RecurringForm({ open, onClose, onSave, initial }: {
   );
 }
 
-function FinanceForm({ open, defaultType, onClose, onSave }: { open: boolean; defaultType: FinanceEntryType; onClose: () => void; onSave: (e: FinanceEntry) => void }) {
+function FinanceForm({ open, defaultType, initial, onClose, onSave }: { open: boolean; defaultType: FinanceEntryType; initial?: FinanceEntry | null; onClose: () => void; onSave: (e: FinanceEntry) => void }) {
   const [type, setType] = useState<FinanceEntryType>(defaultType);
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -687,27 +727,39 @@ function FinanceForm({ open, defaultType, onClose, onSave }: { open: boolean; de
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
-    if (open) { setType(defaultType); setDescription(''); setAmount(''); setDiscount(''); setStatus('pendente'); setDueDate(''); setTaxKind(''); setTouched(false); }
-  }, [open, defaultType]);
+    if (!open) return;
+    setTouched(false);
+    if (initial) {
+      setType(initial.type); setDescription(initial.description); setAmount(String(initial.amount));
+      setDiscount(initial.discount != null ? String(initial.discount) : '');
+      setStatus(initial.status); setDueDate(initial.dueDate ?? ''); setTaxKind(initial.taxKind ?? '');
+      return;
+    }
+    setType(defaultType); setDescription(''); setAmount(''); setDiscount(''); setStatus('pendente'); setDueDate(''); setTaxKind('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, defaultType, initial?.id]);
 
   const valid = description.trim() && Number(amount) > 0;
   const submit = () => {
     setTouched(true);
     if (!valid) return;
     onSave({
-      id: uid('fe'), orgId: currentOrgId(), type, status,
+      ...(initial ?? {}),
+      id: initial?.id ?? uid('fe'),
+      orgId: initial?.orgId ?? currentOrgId(),
+      type, status,
       description: description.trim(), amount: Number(amount),
       discount: discount ? Number(discount) : undefined,
       dueDate: dueDate || undefined,
-      paidAt: status === 'pago' ? (dueDate || toDateInputValue(new Date())) : undefined,
+      paidAt: status === 'pago' ? (initial?.paidAt ?? dueDate ?? toDateInputValue(new Date())) : undefined,
       taxKind: type === 'despesa' && taxKind ? taxKind : undefined,
-      createdAt: new Date().toISOString(),
+      createdAt: initial?.createdAt ?? new Date().toISOString(),
     });
   };
 
   return (
-    <Drawer open={open} onClose={onClose} title="Novo lançamento" subtitle="Receita ou despesa"
-      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha descrição e valor.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>Lançar</Button></div></div>}>
+    <Drawer open={open} onClose={onClose} title={initial ? 'Editar lançamento' : 'Novo lançamento'} subtitle="Receita ou despesa"
+      footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-danger">{touched && !valid ? 'Preencha descrição e valor.' : ''}</span><div className="flex gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button onClick={submit} leftIcon={<Check size={15} />}>{initial ? 'Salvar' : 'Lançar'}</Button></div></div>}>
       <div className="space-y-4">
         <Segmented value={type} onChange={setType} options={[{ value: 'receita', label: 'Receita' }, { value: 'despesa', label: 'Despesa' }]} />
         <Field label="Descrição" required><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Contrato mensal · Cliente X" /></Field>

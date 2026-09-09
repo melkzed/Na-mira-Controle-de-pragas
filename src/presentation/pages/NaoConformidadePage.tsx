@@ -16,7 +16,8 @@ import { useAppStore, currentOrgId } from '@/store/appStore';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
 import type { AppointmentPriority } from '@/domain/enums';
-import type { NonConformity, NonConformityCategory, NonConformityStatus } from '@/domain/types';
+import type { NonConformity, NonConformityCategory, NonConformityStatus, StoredImage } from '@/domain/types';
+import { photoSrc, resizeImage, uploadImage } from '@/lib/photoStorage';
 import { fmtDate } from '@/lib/date';
 import { NC_CATEGORY_LABEL, printNonConformityReport } from '@/lib/printReports';
 import { DocumentActions } from '@/presentation/components/DocumentActions';
@@ -91,7 +92,7 @@ export function NaoConformidadePage() {
               {nc.correctiveAction && <p className="mt-2 text-xs text-muted-foreground"><span className="font-semibold text-foreground">Ação corretiva:</span> {nc.correctiveAction}</p>}
               {nc.photos && nc.photos.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {nc.photos.map((ph, i) => <img key={i} src={ph.dataUrl} alt={ph.name} className="h-16 w-20 rounded-lg border border-border object-cover" />)}
+                  {nc.photos.map((ph, i) => <img key={i} src={photoSrc(ph)} alt={ph.name ?? `Foto ${i + 1}`} className="h-16 w-20 rounded-lg border border-border object-cover" />)}
                 </div>
               )}
               <div className="mt-3 flex items-center gap-2">
@@ -121,21 +122,32 @@ function NcForm({ open, onClose, onSave }: { open: boolean; onClose: () => void;
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<AppointmentPriority>('normal');
   const [correctiveAction, setCorrectiveAction] = useState('');
-  const [photos, setPhotos] = useState<{ name: string; dataUrl: string }[]>([]);
+  const [photos, setPhotos] = useState<StoredImage[]>([]);
+  const [enviando, setEnviando] = useState(false);
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
-    if (open) { setCategory('fresta'); setDescription(''); setPriority('normal'); setCorrectiveAction(''); setPhotos([]); setTouched(false); }
+    if (open) { setCategory('fresta'); setDescription(''); setPriority('normal'); setCorrectiveAction(''); setPhotos([]); setEnviando(false); setTouched(false); }
   }, [open]);
 
-  const onPhotos = (e: ChangeEvent<HTMLInputElement>) => {
+  // Mesmo caminho do app do técnico: reduz e sobe para o Storage. Guardar a
+  // imagem inteira dentro da linha inchava o registro em centenas de KB.
+  const onPhotos = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []).slice(0, 4);
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = () => setPhotos((p) => [...p, { name: file.name, dataUrl: String(reader.result) }]);
-      reader.readAsDataURL(file);
-    });
     e.target.value = '';
+    if (!files.length) return;
+    setEnviando(true);
+    try {
+      for (const file of files) {
+        const reduzida = await resizeImage(file);
+        const img = await uploadImage(reduzida, 'nao-conformidade', file.name);
+        setPhotos((p) => [...p, img]);
+      }
+    } catch {
+      toast('Não foi possível anexar a foto. Tente novamente.', { tone: 'danger' });
+    } finally {
+      setEnviando(false);
+    }
   };
 
   const submit = () => {
@@ -165,14 +177,14 @@ function NcForm({ open, onClose, onSave }: { open: boolean; onClose: () => void;
         </Field>
         <Field label="Fotos">
           <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-sm text-muted-foreground transition hover:bg-muted">
-            <ImagePlus size={16} /> Anexar fotos
+            <ImagePlus size={16} /> {enviando ? 'Enviando…' : 'Anexar fotos'}
             <input type="file" accept="image/*" multiple onChange={onPhotos} className="hidden" />
           </label>
           {photos.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
               {photos.map((ph, i) => (
                 <div key={i} className="relative">
-                  <img src={ph.dataUrl} alt={ph.name} className="h-16 w-20 rounded-lg border border-border object-cover" />
+                  <img src={photoSrc(ph)} alt={ph.name ?? `Foto ${i + 1}`} className="h-16 w-20 rounded-lg border border-border object-cover" />
                   <button onClick={() => setPhotos((p) => p.filter((_, j) => j !== i))} className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-danger text-white"><X size={11} /></button>
                 </div>
               ))}

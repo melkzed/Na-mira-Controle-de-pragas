@@ -11,7 +11,7 @@ import { useTrapsStore, type TrapInput } from '@/store/trapsStore';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
 import { useTrapTypesStore, useUsersStore } from '@/store/entityStores';
-import type { TrapDevice } from '@/domain/types';
+import { TRAP_ACTIONS_TAKEN, TRAP_OCCURRENCES, type TrapDevice } from '@/domain/types';
 import { TRAP_STATUS_META } from '@/domain/trapMeta';
 import { dateInputToIso, fmtDate, toDateInputValue } from '@/lib/date';
 import { sortByName } from '@/lib/utils';
@@ -136,18 +136,25 @@ function TrapForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
 function InspectionForm({ trap, onClose, onSave }: {
   trap: TrapDevice | null;
   onClose: () => void;
-  onSave: (d: { trapId: string; date: string; consumed: boolean; action?: 'nenhuma' | 'substituida' | 'retirada' | 'reinstalada' | 'extraviada'; technicianId?: string; notes?: string }, nextInspectionAt?: string) => void;
+  onSave: (d: { trapId: string; date: string; consumed: boolean; action?: 'nenhuma' | 'substituida' | 'retirada' | 'reinstalada' | 'extraviada'; technicianId?: string; notes?: string; occurrence?: string; actionTaken?: string }, nextInspectionAt?: string) => void;
 }) {
   const technicians = useUsersStore((s) => sortByName(s.items.filter((u) => u.role === 'tecnico')));
   const [consumed, setConsumed] = useState(false);
+  const [occurrence, setOccurrence] = useState('');
+  const [actionTaken, setActionTaken] = useState('');
   const [action, setAction] = useState<'nenhuma' | 'substituida' | 'retirada' | 'reinstalada' | 'extraviada'>('nenhuma');
   const [technicianId, setTechnicianId] = useState(technicians[0]?.id ?? '');
   const [notes, setNotes] = useState('');
   const [nextInspectionAt, setNextInspectionAt] = useState('');
-  useEffect(() => { if (trap) { setConsumed(false); setAction('nenhuma'); setTechnicianId(technicians[0]?.id ?? ''); setNotes(''); setNextInspectionAt(''); } }, [trap]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (trap) { setConsumed(false); setOccurrence(''); setActionTaken(''); setAction('nenhuma'); setTechnicianId(technicians[0]?.id ?? ''); setNotes(''); setNextInspectionAt(''); } }, [trap]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!trap) return null;
 
-  const submit = () => onSave({ trapId: trap.id, date: new Date().toISOString(), consumed, action, technicianId, notes: notes.trim() || undefined }, nextInspectionAt || undefined);
+  const submit = () => onSave({
+    trapId: trap.id, date: new Date().toISOString(), consumed, action, technicianId,
+    notes: notes.trim() || undefined,
+    occurrence: occurrence.trim() || undefined,
+    actionTaken: actionTaken.trim() || undefined,
+  }, nextInspectionAt || undefined);
 
   return (
     <Drawer open={!!trap} onClose={onClose} title={`Inspeção · ${trap.code}`} subtitle={`${trap.type}${trap.location ? ` · ${trap.location}` : ''}`}
@@ -159,7 +166,15 @@ function InspectionForm({ trap, onClose, onSave }: {
             <Button variant={!consumed ? 'primary' : 'outline'} className="flex-1" onClick={() => setConsumed(false)}>Não</Button>
           </div>
         </Field>
-        <Field label="Ação realizada" hint="Extravio, substituição, retirada ou reinstalação atualizam a situação da armadilha.">
+        <Field label="Ocorrência" hint="Sai assim no relatório de monitoramento do cliente. A lista é sugestão — pode digitar outra.">
+          <Input list="ocorrencias-armadilha" value={occurrence} onChange={(e) => setOccurrence(e.target.value)} placeholder="Ex.: Isca Totalmente Consumida" />
+          <datalist id="ocorrencias-armadilha">{TRAP_OCCURRENCES.map((o) => <option key={o} value={o} />)}</datalist>
+        </Field>
+        <Field label="Ação tomada" hint="O que foi feito no ponto — reposição, isca atrativa, limpeza…">
+          <Input list="acoes-armadilha" value={actionTaken} onChange={(e) => setActionTaken(e.target.value)} placeholder="Ex.: Reposição Isca" />
+          <datalist id="acoes-armadilha">{TRAP_ACTIONS_TAKEN.map((o) => <option key={o} value={o} />)}</datalist>
+        </Field>
+        <Field label="Situação da armadilha" hint="Extravio, substituição, retirada ou reinstalação atualizam a situação da armadilha.">
           <Select value={action} onChange={(e) => setAction(e.target.value as typeof action)}>
             <option value="nenhuma">Nenhuma</option>
             <option value="substituida">Substituída</option>

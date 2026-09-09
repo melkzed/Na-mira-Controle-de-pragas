@@ -25,16 +25,38 @@ import { computeDashboard, productConsumption } from '@/application/metrics';
 import { appointmentsByDay, getCustomer, getServiceType, getUser } from '@/application/repository';
 import * as seed from '@/infrastructure/seed/data';
 import { APPOINTMENT_STATUS_META } from '@/domain/enums';
-import { formatCompactCurrency, formatNumber } from '@/lib/utils';
+import { daysUntil, formatCompactCurrency, formatCurrency, formatNumber } from '@/lib/utils';
 import { fmtTime } from '@/lib/date';
 import { useAppStore } from '@/store/appStore';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
-import { useEquipmentStore } from '@/store/entityStores';
+import { useEquipmentStore, useFinanceStore } from '@/store/entityStores';
 import { isEquipmentOverdue } from './EquipamentosPage';
 import { Link } from 'react-router-dom';
 
 export function DashboardPage() {
   const m = useMemo(() => computeDashboard(), []);
+
+  /**
+   * Contas a pagar vencidas e a vencer.
+   *
+   * O aviso existia só dentro do Financeiro, ou seja, só via quem já tinha
+   * entrado lá. Aqui ele separa o que já venceu do que está para vencer,
+   * porque a ação é diferente: um é atraso a resolver hoje, o outro é
+   * programação da semana.
+   */
+  const entries = useFinanceStore((st) => st.items);
+  const contas = useMemo(() => {
+    const soma = (arr: typeof entries) => ({
+      qtd: arr.length,
+      total: arr.reduce((acc, e) => acc + (e.amount - (e.discount ?? 0)), 0),
+    });
+    const abertas = entries.filter((e) => e.type === 'despesa' && e.status !== 'pago' && e.status !== 'cancelado' && e.dueDate);
+    const dias = (e: (typeof entries)[number]) => daysUntil(e.dueDate!) ?? 99;
+    return {
+      vencidas: soma(abertas.filter((e) => dias(e) < 0)),
+      vencendo: soma(abertas.filter((e) => dias(e) >= 0 && dias(e) <= 7)),
+    };
+  }, [entries]);
   const consumption = useMemo(() => productConsumption().slice(0, 5), []);
   const notifications = useAppStore((s) => s.notifications);
   const todayIso = new Date().toISOString();
@@ -190,6 +212,14 @@ export function DashboardPage() {
           <Card>
             <CardHeader title="Alertas" subtitle="Requer atenção" />
             <CardBody className="space-y-2.5">
+              {contas.vencidas.qtd > 0 && (
+                <AlertRow icon="TriangleAlert" tone="danger" to="/financeiro"
+                  label="Contas a pagar vencidas" value={`${contas.vencidas.qtd} · ${formatCurrency(contas.vencidas.total)}`} />
+              )}
+              {contas.vencendo.qtd > 0 && (
+                <AlertRow icon="CalendarClock" tone="warning" to="/financeiro"
+                  label="A pagar em até 7 dias" value={`${contas.vencendo.qtd} · ${formatCurrency(contas.vencendo.total)}`} />
+              )}
               <AlertRow icon="PackageX" tone="warning" label="Estoque baixo" value={`${m.lowStockCount} produtos`} />
               <AlertRow icon="CalendarX" tone="warning" label="Produtos vencendo" value={`${m.expiringCount} lotes`} />
               <AlertRow icon="TriangleAlert" tone="danger" label="Produtos vencidos" value={`${m.expiredCount} lotes`} />
@@ -253,20 +283,28 @@ function MiniStat({ label, value, icon, tone }: { label: string; value: number; 
   );
 }
 
-function AlertRow({ icon, tone, label, value }: { icon: string; tone: any; label: string; value: string }) {
+/** Linha de alerta. Com `to`, vira link — alerta que não leva a lugar nenhum
+ *  obriga a pessoa a procurar sozinha onde resolver o que ele aponta. */
+function AlertRow({ icon, tone, label, value, to }: { icon: string; tone: any; label: string; value: string; to?: string }) {
   const toneClass: Record<string, string> = {
     success: 'bg-success-soft text-success', warning: 'bg-warning-soft text-warning',
     danger: 'bg-danger-soft text-danger', brand: 'bg-brand-soft text-brand',
     info: 'bg-info-soft text-info', neutral: 'bg-muted text-muted-foreground',
   };
-  return (
-    <div className="flex items-center gap-3">
+  const conteudo = (
+    <>
       <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${toneClass[tone]}`}>
         <Icon name={icon} size={15} />
       </span>
       <span className="flex-1 text-sm text-foreground">{label}</span>
       <span className="text-sm font-semibold text-muted-foreground">{value}</span>
-    </div>
+    </>
+  );
+  if (!to) return <div className="flex items-center gap-3">{conteudo}</div>;
+  return (
+    <Link to={to} className="-mx-1.5 flex items-center gap-3 rounded-lg px-1.5 py-1 transition hover:bg-muted">
+      {conteudo}
+    </Link>
   );
 }
 
