@@ -10,8 +10,8 @@
  * stores compartilhadas (visita, OS, armadilhas, não conformidades), então
  * aparece no sistema da empresa na hora.
  */
-import { useEffect, useMemo, useState } from 'react';
-import { Bug, CheckCircle2, ClipboardCheck, ClipboardList, Eye, PenLine, Plus, Radar, Settings2, TriangleAlert } from 'lucide-react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { Bug, Camera, CheckCircle2, ClipboardCheck, ClipboardList, Eye, PenLine, Plus, Radar, Settings2, TriangleAlert, X } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Drawer } from '../ui/Drawer';
@@ -24,7 +24,8 @@ import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import { useTrapsStore } from '@/store/trapsStore';
 import { useNonConformitiesStore, useTrapTypesStore, useUsersStore } from '@/store/entityStores';
-import { TRAP_ACTIONS_TAKEN, TRAP_OCCURRENCES } from '@/domain/types';
+import { TRAP_ACTIONS_TAKEN, TRAP_OCCURRENCES, type StoredImage } from '@/domain/types';
+import { photoSrc, resizeImage, uploadImage } from '@/lib/photoStorage';
 import { useSettingsStore } from '@/store/settingsStore';
 import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
@@ -582,11 +583,33 @@ function NaoConformidadeDrawer({ open, onClose, appt, techId }: {
   const [priority, setPriority] = useState<AppointmentPriority>('normal');
   const [description, setDescription] = useState('');
   const [correctiveAction, setCorrectiveAction] = useState('');
+  const [photos, setPhotos] = useState<StoredImage[]>([]);
+  const [enviando, setEnviando] = useState(false);
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
-    if (!open) { setCategory('fresta'); setPriority('normal'); setDescription(''); setCorrectiveAction(''); setTouched(false); }
+    if (!open) { setCategory('fresta'); setPriority('normal'); setDescription(''); setCorrectiveAction(''); setPhotos([]); setEnviando(false); setTouched(false); }
   }, [open]);
+
+  /** A foto é reduzida antes de subir e vai direto para o Storage: é o técnico
+   *  em campo, no pacote de dados dele, e o documento mostra a imagem pequena. */
+  const adicionarFotos = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []).slice(0, 4);
+    e.target.value = '';
+    if (!files.length) return;
+    setEnviando(true);
+    try {
+      for (const file of files) {
+        const reduzida = await resizeImage(file);
+        const img = await uploadImage(reduzida, 'nao-conformidade', file.name);
+        setPhotos((p) => [...p, img]);
+      }
+    } catch {
+      toast('Não foi possível anexar a foto. Tente novamente.', { tone: 'danger' });
+    } finally {
+      setEnviando(false);
+    }
+  };
 
   const submit = () => {
     setTouched(true);
@@ -600,6 +623,7 @@ function NaoConformidadeDrawer({ open, onClose, appt, techId }: {
       description: description.trim(),
       priority,
       correctiveAction: correctiveAction.trim() || undefined,
+      photos: photos.length ? photos : undefined,
       status: 'aberta',
       createdBy: techId,
       createdAt: new Date().toISOString(),
@@ -647,6 +671,30 @@ function NaoConformidadeDrawer({ open, onClose, appt, techId }: {
         </Field>
         <Field label="Ação corretiva sugerida">
           <Textarea rows={3} value={correctiveAction} onChange={(e) => setCorrectiveAction(e.target.value)} placeholder="O que o cliente precisa providenciar…" />
+        </Field>
+        <Field label="Fotos" hint="Saem na seção de não conformidades do Relatório MIP do cliente">
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground transition hover:bg-muted">
+            <Camera size={17} />
+            {enviando ? 'Enviando…' : 'Tirar foto'}
+            <input type="file" accept="image/*" capture="environment" multiple onChange={adicionarFotos} className="hidden" disabled={enviando} />
+          </label>
+          {photos.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {photos.map((ph, i) => (
+                <div key={i} className="relative">
+                  <img src={photoSrc(ph)} alt={ph.name ?? `Foto ${i + 1}`} className="h-20 w-24 rounded-lg border border-border object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setPhotos((p) => p.filter((_, j) => j !== i))}
+                    aria-label={`Remover foto ${i + 1}`}
+                    className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-danger text-white"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </Field>
       </div>
     </Drawer>

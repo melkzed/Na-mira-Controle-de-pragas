@@ -15,6 +15,7 @@ import { formatDocument } from './utils';
 import { toast } from '@/store/toastStore';
 import { logoSvgMarkup } from './logoSvg';
 import { savePdf } from './pdfFile';
+import { photoSrc } from './photoStorage';
 import type { DocumentOutput } from './printDocuments';
 
 export const NC_CATEGORY_LABEL: Record<NonConformity['category'], string> = {
@@ -339,7 +340,7 @@ export function printMipReport(customer: Customer, inspections: TrapInspection[]
     .filter((n) => n.customerId === customer.id && n.status !== 'resolvida')
     .sort((a, b) => (a.date > b.date ? -1 : 1));
   const linhasNc = ncs.map((n) => `<tr>
-      <td class="ncimg">${n.photos?.[0] ? `<img src="${n.photos[0].dataUrl}" alt="foto" />` : ''}</td>
+      <td class="ncimg">${n.photos?.[0] ? `<img src="${photoSrc(n.photos[0])}" alt="foto" />` : ''}</td>
       <td>${esc(NC_CATEGORY_LABEL[n.category])}</td>
       <td>${esc(n.description)}</td>
       <td>${esc(n.correctiveAction ?? '')}</td>

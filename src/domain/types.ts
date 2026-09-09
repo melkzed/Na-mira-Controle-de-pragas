@@ -298,7 +298,9 @@ export interface NonConformity {
   priority: AppointmentPriority;
   correctiveAction?: string;
   status: NonConformityStatus;
-  photos?: { name: string; dataUrl: string }[];
+  /** Fotos do achado. É a coluna "Imagem" da seção 5 do Relatório MIP — uma
+   *  fresta descrita em texto não convence ninguém a vedá-la. */
+  photos?: StoredImage[];
   createdBy?: string;
   createdAt: string;
 }
@@ -719,11 +721,23 @@ export interface TreatedArea {
  *  linha — gravar base64 dentro do registro inchava o banco rápido, já que
  *  são várias fotos por visita. Fotos antigas só têm `dataUrl`, então
  *  sempre leia pelas duas (ver `photoSrc` em `src/lib/photoStorage.ts`). */
-export interface ServiceOrderPhoto {
+/**
+ * Imagem gravada pelo sistema.
+ *
+ * Em modo Supabase o arquivo vai para o Storage e fica só a `url`. No modo
+ * standalone, e como plano B quando o envio falha em campo, a imagem fica
+ * embutida em `dataUrl` — pesada, mas melhor do que perder o registro.
+ * Sempre resolva o endereço com `photoSrc` (lib/photoStorage), nunca lendo
+ * um dos dois campos direto.
+ */
+export interface StoredImage {
   url?: string;
   dataUrl?: string;
-  phase: 'antes' | 'durante' | 'apos';
   name?: string;
+}
+
+export interface ServiceOrderPhoto extends StoredImage {
+  phase: 'antes' | 'durante' | 'apos';
 }
 
 export interface WarrantyInfo {
