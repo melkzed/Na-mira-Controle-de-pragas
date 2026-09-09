@@ -538,6 +538,10 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
   /** true quando o formulário abriu com um rascunho recuperado — vale avisar,
    *  senão a pessoa não entende por que os campos vieram preenchidos. */
   const [fromDraft, setFromDraft] = useState(false);
+  /** Contador de "zeradas" do formulário. Serve só para a linha de base do
+   *  rascunho ser recapturada depois de "Começar em branco" — senão o
+   *  formulário esvaziado contaria como preenchimento e seria guardado. */
+  const [resetSeq, setResetSeq] = useState(0);
   /** Este formulário foi aberto pelo botão "Novo agendamento" da ficha do
    *  cliente, e não pelo "Nova OS" da própria tela de Ordens. Muda só o aviso
    *  de preenchimento automático — ver o bloco `viaCliente` no formulário. */
@@ -783,12 +787,44 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
     recEnabled, recMeses, recFreq, recPrimeira, recPhases, recDates, execDate, execTime, dueDate, validityDate, validityTouched,
     certValidityDate, certValidityTouched, equipmentIds, products, returnAt]);
 
-  /** Guarda o rascunho a cada mudança — só na criação, e só depois que a
-   *  pessoa mexeu em alguma coisa (senão o estado inicial vira "rascunho"). */
+  // Estado atual do formulário acessível na limpeza da desmontagem, que roda
+  // fora do ciclo de render e não enxergaria o `draft` daquele momento.
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  /** Como o formulário ficou depois do preenchimento automático — o ponto de
+   *  partida que o sistema montou sozinho, não trabalho de ninguém. */
+  const baselineRef = useRef<string | null>(null);
+  /** A OS foi confirmada nesta sessão do formulário: não há rascunho a guardar. */
+  const savedRef = useRef(false);
+
+  // Toda vez que o preenchimento pelo histórico roda (montagem, troca de
+  // cliente), o estado que ele produziu vira a nova linha de base. Sem isto,
+  // o que o `applyHistory` copiou da última OS do cliente contaria como
+  // preenchimento do usuário e seria guardado como rascunho dele.
   useEffect(() => {
-    if (initial || !hydratedRef.current) return;
-    try { localStorage.setItem(OS_DRAFT_KEY, JSON.stringify(draft)); } catch { /* cota — ignora */ }
-  }, [draft, initial]);
+    if (initial) return;
+    baselineRef.current = JSON.stringify(draftRef.current);
+  }, [filledFrom, customerId, resetSeq, initial]);
+
+  /** O rascunho existe para um caso só: você fechou a tela no meio do
+   *  preenchimento. Por isso ele é gravado ao sair do formulário, e não a cada
+   *  mudança — gravando a cada mudança, o preenchimento automático virava
+   *  "rascunho" sozinho e a OS seguinte abria anunciando um rascunho que
+   *  ninguém digitou, com os dados da OS recém-criada.
+   *
+   *  Duas condições para guardar: a OS não foi confirmada (aí não há o que
+   *  recuperar) e o conteúdo se afastou do que o sistema preencheu sozinho. */
+  useEffect(() => {
+    if (initial) return;
+    return () => {
+      if (savedRef.current || !hydratedRef.current) return;
+      try {
+        const atual = JSON.stringify(draftRef.current);
+        if (atual === baselineRef.current) return;
+        localStorage.setItem(OS_DRAFT_KEY, atual);
+      } catch { /* cota — ignora */ }
+    };
+  }, [initial]);
 
   /** Preenchimento inteligente: repete o último atendimento do cliente. */
   const applyHistory = (cid: string) => {
@@ -816,9 +852,36 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
     setFilledFrom(last.number);
   };
 
-  // Ao selecionar o cliente, tenta preencher a partir do histórico — mas não
-  // em modo edição, para não sobrescrever os dados já preenchidos da OS.
-  useEffect(() => { if (customerId && !initial) { applyHistory(customerId); setAppointmentId(''); } }, [customerId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Trocar de cliente limpa o agendamento vinculado (era do cliente anterior)
+  // e o aviso de repetição, que apontava para a OS de outra pessoa.
+  //
+  // O preenchimento pelo histórico NÃO acontece aqui. Ele já foi automático:
+  // escolher o cliente marcava sozinho serviços, pragas, áreas, equipe,
+  // pagamento, garantia e recorrência copiados da última OS dele. Numa OS que
+  // vira documento e cobrança, dado que ninguém escolheu não pode entrar
+  // marcado — e, depois de salvar, a OS recém-criada virava a fonte da
+  // próxima, dando a impressão de que o formulário nunca zerava. Agora é o
+  // botão "Repetir" (ver `repetirUltimo`) que aplica, quando alguém pede.
+  useEffect(() => { if (customerId && !initial) { setAppointmentId(''); setFilledFrom(null); } }, [customerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Última OS deste cliente, se houver — origem do botão "Repetir". */
+  const lastOrder = useMemo(
+    () => (!initial && customerId ? lastOrderForCustomer(customerId) : undefined),
+    // `allOrders` entra de propósito, embora não apareça no corpo:
+    // `lastOrderForCustomer` lê a store por `getState()`, então sem esta
+    // dependência a oferta não acompanharia uma OS criada agora mesmo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [initial, customerId, allOrders],
+  );
+
+  /** Repetir o último atendimento, a pedido. Deixa de ser rascunho: o conteúdo
+   *  agora é uma cópia assumida da OS anterior, não o que ficou pela metade. */
+  const repetirUltimo = () => {
+    if (!customerId) return;
+    applyHistory(customerId);
+    setFromDraft(false);
+  };
+
   const customerAppointments = customerId ? appointmentsForCustomer(customerId) : [];
 
   /** "Começar em branco": descarta o preenchimento automático e volta aos
@@ -855,6 +918,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
     // próxima abertura e pareceria que a limpeza não funcionou.
     clearOsDraft();
     setFromDraft(false);
+    setResetSeq((n) => n + 1);
   };
 
   const toggle = (setter: React.Dispatch<React.SetStateAction<string[]>>, id: string) =>
@@ -1303,7 +1367,10 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
 
     logChange('criação', 'ordem de serviço', `OS #${so.number} · ${custName}`, so.id);
     // A OS foi confirmada: o rascunho deixou de existir. É isto que faz o
-    // próximo "Nova O.S." abrir em branco em vez de repetir esta.
+    // próximo "Nova O.S." abrir em branco em vez de repetir esta. O `savedRef`
+    // impede que a gravação da desmontagem, logo a seguir, escreva de volta o
+    // que acabou de ser apagado.
+    savedRef.current = true;
     clearOsDraft();
     hydratedRef.current = false;
     toast(`OS #${so.number} criada e adicionada à Agenda.`, { tone: 'success' });
@@ -1348,7 +1415,18 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
          *  aquele cliente. Falar de "rascunho recuperado" aí explica uma
          *  mecânica interna que não é a pergunta de quem chegou por esse
          *  caminho; o que importa é que veio coisa preenchida e como zerar. */}
-        {viaCliente && (fromDraft || filledFrom != null) && (
+        {/* Oferta, não ação: o atendimento anterior só entra no formulário se
+         *  alguém pedir. Some depois de aplicado — aí quem manda é o aviso de
+         *  "preenchido pelo último atendimento", que traz o desfazer. */}
+        {lastOrder && filledFrom == null && (
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 p-2.5 text-xs text-muted-foreground">
+            <Zap size={14} className="shrink-0" />
+            <span className="flex-1">Este cliente tem um atendimento anterior (OS #{lastOrder.number}) — serviços, pragas, áreas e equipe podem ser repetidos.</span>
+            <button onClick={repetirUltimo} className="shrink-0 font-medium text-brand underline">Repetir</button>
+          </div>
+        )}
+
+        {viaCliente && fromDraft && (
           <div className="flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft/40 p-2.5 text-xs text-brand">
             <Zap size={14} className="shrink-0" />
             <span className="flex-1">
@@ -1366,10 +1444,10 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
           </div>
         )}
 
-        {filledFrom != null && !fromDraft && !viaCliente && (
+        {filledFrom != null && (
           <div className="flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft/40 p-2.5 text-xs text-brand">
             <Zap size={14} className="shrink-0" />
-            <span className="flex-1">Preenchido automaticamente pelo último atendimento (OS #{filledFrom}). Revise e ajuste o que mudou.</span>
+            <span className="flex-1">Repetido do último atendimento (OS #{filledFrom}). Revise e ajuste o que mudou.</span>
             <button onClick={clearFill} className="shrink-0 font-medium underline">Começar em branco</button>
           </div>
         )}
