@@ -175,6 +175,9 @@ export function CampoPage() {
   const setStatus = useAppointmentsStore((s) => s.setStatus);
   const updateAppt = useAppointmentsStore((s) => s.update);
   const storeAppts = useAppointmentsStore((s) => s.appointments); // reatividade
+  // A equipe da visita sai da OS vinculada, então mudar a equipe lá muda a
+  // lista do dia aqui — sem isto, incluir um ajudante só aparecia após recarregar.
+  const storeOrders = useServiceOrdersStore((s) => s.orders);
   const updateOs = useServiceOrdersStore((s) => s.update);
 
   // Técnicos cadastrados antes de os locais de estoque virarem cadastro real
@@ -184,7 +187,7 @@ export function CampoPage() {
   useEffect(() => { if (techId) ensureTechnicianStockLocation(techId, techName); }, [techId, techName]);
 
   const todayIso = new Date().toISOString();
-  const appts = useMemo(() => releasedAppointmentsForTechnician(techId, todayIso), [techId, todayIso, storeAppts]);
+  const appts = useMemo(() => releasedAppointmentsForTechnician(techId, todayIso), [techId, todayIso, storeAppts, storeOrders]); // eslint-disable-line react-hooks/exhaustive-deps
   const [activeId, setActiveId] = useState<string | null>(null);
   const active = appts.find((a) => a.id === activeId) ?? appts[0];
 

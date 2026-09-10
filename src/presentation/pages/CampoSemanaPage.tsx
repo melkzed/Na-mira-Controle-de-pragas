@@ -10,6 +10,8 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { releasedAppointmentsForTechnicianRange, getCustomer, getServiceType, serviceOrderForAppointment } from '@/application/repository';
 import type { Appointment } from '@/domain/types';
+import { useAppointmentsStore } from '@/store/appointmentsStore';
+import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import {
   addMonths, addWeeks, fmtDateLong, fmtTime, monthDays, monthRangeLabel,
   weekDays, weekRangeLabel, isSameDay, isToday, parseISO,
@@ -30,6 +32,10 @@ export function CampoSemanaPage() {
   /** Âncora do período exibido — muda ao navegar para trás/frente. */
   const [ref, setRef] = useState(new Date());
 
+  // A equipe da visita vem da OS vinculada: relista quando visitas ou OS mudam.
+  const storeAppts = useAppointmentsStore((s) => s.appointments);
+  const storeOrders = useServiceOrdersStore((s) => s.orders);
+
   const days = useMemo(() => (periodo === 'semana' ? weekDays(ref) : monthDays(ref)), [periodo, ref]);
   const appts = useMemo(() => {
     if (days.length === 0) return [];
@@ -38,7 +44,8 @@ export function CampoSemanaPage() {
     const fim = new Date(days[days.length - 1]);
     fim.setHours(23, 59, 59, 999);
     return releasedAppointmentsForTechnicianRange(techId, inicio.toISOString(), fim.toISOString());
-  }, [techId, days]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [techId, days, storeAppts, storeOrders]);
   const [detail, setDetail] = useState<Appointment | null>(null);
 
   const navegar = (n: number) => setRef((d) => (periodo === 'semana' ? addWeeks(d, n) : addMonths(d, n)));

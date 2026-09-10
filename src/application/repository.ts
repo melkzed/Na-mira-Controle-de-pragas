@@ -139,19 +139,46 @@ export function serviceOrderForAppointment(appointmentId: string): ServiceOrder 
 }
 
 /**
+ * Ids da equipe de uma visita: o técnico do agendamento mais todos os da OS
+ * vinculada.
+ *
+ * O agendamento guarda um técnico só (`technicianId`), mas a OS aceita vários
+ * (`technicianIds`) — é lá que fica a equipe de verdade. Toda pergunta do tipo
+ * "quem atende esta visita?" passa por aqui, para a Agenda, o app de campo e
+ * os relatórios responderem a mesma coisa.
+ *
+ * `orders` pode vir pronto de quem já leu a lista (um filtro que roda por
+ * visita não deve varrer as OS de novo a cada iteração).
+ */
+export function technicianIdsForAppointment(appt: Appointment, orders?: ServiceOrder[]): string[] {
+  const lista = orders ?? useServiceOrdersStore.getState().orders;
+  const os = lista.find((so) => so.appointmentId === appt.id);
+  const ids = [appt.technicianId, os?.technicianId, ...(os?.technicianIds ?? [])];
+  return [...new Set(ids.filter(Boolean) as string[])];
+}
+
+/**
  * Equipe responsável por uma visita.
  *
- * O agendamento guarda um técnico só (`technicianId`), mas a OS vinculada
- * pode ter vários (`technicianIds`) — é lá que fica a equipe de verdade.
- * Sem isso a Agenda mostrava apenas o primeiro e escondia os demais.
+ * Sem isso a Agenda mostrava apenas o primeiro técnico e escondia os demais.
  */
 export function techniciansForAppointment(appt: Appointment): User[] {
-  const os = serviceOrderForAppointment(appt.id);
-  const ids = os?.technicianIds?.length
-    ? os.technicianIds
-    : [os?.technicianId, appt.technicianId].filter(Boolean) as string[];
-  const unicos = [...new Set(ids)];
-  return unicos.map((id) => getUser(id)).filter(Boolean) as User[];
+  return technicianIdsForAppointment(appt)
+    .map((id) => getUser(id))
+    .filter(Boolean) as User[];
+}
+
+/**
+ * Este técnico atende esta visita? Vale para o responsável do agendamento e
+ * para qualquer ajudante da equipe da OS.
+ *
+ * É o predicado que faz a visita (e com ela a mensagem para o técnico, o ponto
+ * e o estoque da visita) aparecer para a equipe inteira no app de campo, e não
+ * só para quem ficou gravado em `appointment.technician_id`.
+ */
+export function isTechnicianOnAppointment(appt: Appointment, technicianId: string, orders?: ServiceOrder[]): boolean {
+  if (appt.technicianId === technicianId) return true;
+  return technicianIdsForAppointment(appt, orders).includes(technicianId);
 }
 
 /** Agendamentos em aberto do cliente — usados para vincular a OS a uma visita. */
@@ -195,11 +222,14 @@ export function appointmentsForTechnician(
   dayIso: string,
 ): Appointment[] {
   const day = dayIso.slice(0, 10);
+  // Lê as OS uma vez só: o predicado precisa delas para achar a equipe, e
+  // buscá-las por visita varreria a lista inteira a cada item.
+  const orders = useServiceOrdersStore.getState().orders;
   return useAppointmentsStore.getState().appointments
     .filter(
       (a) =>
-        a.technicianId === technicianId &&
-        a.scheduledStart.slice(0, 10) === day,
+        a.scheduledStart.slice(0, 10) === day &&
+        isTechnicianOnAppointment(a, technicianId, orders),
     )
     .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
 }
@@ -212,10 +242,11 @@ export function appointmentsForTechnicianRange(
 ): Appointment[] {
   const start = startIso.slice(0, 10);
   const end = endIso.slice(0, 10);
+  const orders = useServiceOrdersStore.getState().orders;
   return useAppointmentsStore.getState().appointments
     .filter((a) => {
       const day = a.scheduledStart.slice(0, 10);
-      return a.technicianId === technicianId && day >= start && day <= end;
+      return day >= start && day <= end && isTechnicianOnAppointment(a, technicianId, orders);
     })
     .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart));
 }
@@ -232,10 +263,12 @@ export function releasedAppointmentsForTechnicianRange(technicianId: string, sta
   return appointmentsForTechnicianRange(technicianId, startIso, endIso).filter((a) => RELEASED_TO_TECH_STATUSES.includes(a.status));
 }
 
-/** Histórico de visitas do técnico (todas as datas) — mais recentes primeiro. */
+/** Histórico de visitas do técnico (todas as datas) — mais recentes primeiro.
+ *  Inclui as visitas em que ele entrou como ajudante da equipe da OS. */
 export function appointmentsHistoryForTechnician(technicianId: string): Appointment[] {
+  const orders = useServiceOrdersStore.getState().orders;
   return useAppointmentsStore.getState().appointments
-    .filter((a) => a.technicianId === technicianId)
+    .filter((a) => isTechnicianOnAppointment(a, technicianId, orders))
     .sort((a, b) => b.scheduledStart.localeCompare(a.scheduledStart));
 }
 

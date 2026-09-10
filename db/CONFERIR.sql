@@ -58,7 +58,15 @@ with esperado(migration, tabela, coluna) as (values
   ('4 campo/portal',  'service_orders',     'signer_doc_type'),
   ('4 campo/portal',  'service_orders',     'signer_document'),
   -- 12 · migrate_cor_tecnico.sql
-  ('12 cor técnico',  'users',              'color')
+  ('12 cor técnico',  'users',              'color'),
+  -- Estrutura do local por cliente (cômodos): a lista de nomes e a quantidade
+  -- por ambiente. Sem `local_structure` o cadastro do cliente grava vazio e a
+  -- OS não destaca os ambientes dele.
+  ('branch atual',    'customers',          'local_structure'),
+  -- Mensagem para o técnico e equipe da OS — a visita do ajudante depende das
+  -- duas (a mensagem viaja com a OS; a equipe é quem pode vê-la).
+  ('branch atual',    'service_orders',     'technician_message'),
+  ('branch atual',    'service_orders',     'technician_ids')
 ),
 colunas as (
   select
@@ -171,12 +179,38 @@ portal as (
                 where table_schema='public' and table_name='appointments'
                   and column_name='recurrence_id' and data_type in ('uuid', 'text')))
     ) as p(peca, existe)
+),
+-- 13 · migrate_equipe_visita_rls.sql — sem estas duas políticas o técnico que
+-- entra como ajudante (service_orders.technician_ids) não recebe do Postgres
+-- nem a OS nem a visita: o app filtra o que chega, e não chega nada. O sintoma
+-- é a visita e a "Mensagem para o Técnico" invisíveis só para o segundo
+-- técnico da equipe.
+equipe as (
+  select '13 equipe visita' as migration, e.peca,
+         case when e.existe then '✅ OK' else '❌ FALTA' end as situacao
+    from (values
+      ('política tech_own_service_orders enxerga technician_ids',
+       exists (select 1 from pg_policies
+                where schemaname='public' and tablename='service_orders'
+                  and policyname='tech_own_service_orders'
+                  and qual like '%technician_ids%')),
+      ('política tech_own_appointments enxerga a equipe da OS',
+       exists (select 1 from pg_policies
+                where schemaname='public' and tablename='appointments'
+                  and policyname='tech_own_appointments'
+                  and qual like '%technician_ids%')),
+      -- Conteúdo inicial da Estrutura do local (db/seed_local_structures.sql):
+      -- sem ele os ambientes-padrão somem do cadastro do cliente e da OS.
+      ('cadastro de Estrutura do local com ambientes',
+       (select count(*) from public.treated_areas) > 0)
+    ) as e(peca, existe)
 )
 select * from colunas
 union all select * from papeis
 union all select * from papel_antigo
 union all select * from bucket
 union all select * from portal
+union all select * from equipe
 order by situacao desc, migration, peca;
 
 
