@@ -222,6 +222,9 @@ export interface TrapDevice {
   /** Observação da instalação — o que a ficha não cobre: ponto de difícil
    *  acesso, chave com o zelador, dispositivo dividido com outro ambiente. */
   notes?: string;
+  /** Fotos do ponto de instalação. Achar de novo uma armadilha meses depois,
+   *  por descrição escrita, é o que faz o técnico novo perder a visita. */
+  photos?: StoredImage[];
   /** Posição da armadilha no imóvel, quando registrada — habilita o mapa de
    *  armadilhas no app do técnico. Sem coordenadas, vale o `location`. */
   latitude?: number;

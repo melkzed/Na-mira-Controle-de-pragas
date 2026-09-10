@@ -22,7 +22,7 @@ precisa reiniciar nada.
 | 12 | `db/migrate_cor_tecnico.sql` | `users.color` — grava a cor que cada técnico escolhe no cadastro e que a agenda usa |
 | 13 | `db/migrate_monitoramento_mip.sql` | `trap_inspections.occurrence` e `.action_taken` — as duas colunas que os relatórios de Monitoramento e MIP exigem |
 | 14 | `db/migrate_equipe_visita_rls.sql` | **Equipe da visita**: o técnico que entra como ajudante em `service_orders.technician_ids` passa a enxergar o atendimento e a OS (e com eles a mensagem para o técnico, o ponto e o estoque da visita). Sem isto o RLS entrega zero linhas para ele, e nenhuma mudança no app resolve |
-| 15 | `db/migrate_ficha_armadilha.sql` | `trap_devices.notes` — a observação da ficha de instalação, agora igual em campo e no escritório. As demais colunas da ficha (situação, data, responsável, próxima inspeção) já existem desde o passo 4 |
+| 15 | `db/migrate_ficha_armadilha.sql` | `trap_devices.notes` e `.photos` — a observação e as fotos do ponto de instalação, na ficha agora igual em campo e no escritório. As demais colunas da ficha (situação, data, responsável, próxima inspeção) já existem desde o passo 4 |
 
 Depois do passo 9, implante a função de login do Portal:
 

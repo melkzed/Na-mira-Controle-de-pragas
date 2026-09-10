@@ -6,12 +6,14 @@ import { Badge } from '../ui/Badge';
 import { Drawer } from '../ui/Drawer';
 import { DateInput, Field, Input, Select, Textarea } from '../ui/Field';
 import { StatCard } from '../StatCard';
+import { PhotoField } from '../PhotoField';
 import { Stagger } from '../ui/misc';
 import { useTrapsStore, type TrapInput } from '@/store/trapsStore';
 import { logChange } from '@/store/auditStore';
 import { toast } from '@/store/toastStore';
+import { photoSrc } from '@/lib/photoStorage';
 import { useTrapTypesStore, useUsersStore } from '@/store/entityStores';
-import { TRAP_ACTIONS_TAKEN, TRAP_OCCURRENCES, type TrapDevice, type TrapStatus } from '@/domain/types';
+import { TRAP_ACTIONS_TAKEN, TRAP_OCCURRENCES, type StoredImage, type TrapDevice, type TrapStatus } from '@/domain/types';
 import { TRAP_STATUS_META } from '@/domain/trapMeta';
 import { dateInputToIso, fmtDate, toDateInputValue } from '@/lib/date';
 import { sortByName } from '@/lib/utils';
@@ -56,7 +58,13 @@ export function TrapsPanel({ customerId, compact = false }: { customerId: string
             return (
               <div key={t.id} className="rounded-xl border border-border/60 p-3">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand"><Radar size={18} /></div>
+                  {/* A foto do ponto substitui o ícone quando existe: é por ela
+                      que se reconhece a armadilha na volta. */}
+                  {t.photos?.length ? (
+                    <img src={photoSrc(t.photos[0])} alt={`Ponto de instalação da armadilha ${t.code}`} className="h-9 w-9 shrink-0 rounded-lg border border-border object-cover" />
+                  ) : (
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand"><Radar size={18} /></div>
+                  )}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-foreground">{t.code}</p>
                     <p className="truncate text-xs text-muted-foreground"><MapPin size={11} className="mr-1 inline" />{t.type}{t.location ? ` · ${t.location}` : ''}</p>
@@ -112,10 +120,11 @@ function TrapForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
   const [status, setStatus] = useState<TrapStatus>('ativa');
   const [nextInspectionAt, setNextInspectionAt] = useState('');
   const [notes, setNotes] = useState('');
+  const [photos, setPhotos] = useState<StoredImage[]>([]);
   const [touched, setTouched] = useState(false);
   // A data nasce com hoje: quem cadastra no escritório está registrando uma
   // armadilha que acabou de ser instalada, e um campo vazio virava ficha sem data.
-  useEffect(() => { if (open) { setCode(''); setType(trapTypes[0]?.name ?? ''); setLocation(''); setInstalledAt(toDateInputValue(new Date())); setResponsibleId(technicians[0]?.id ?? ''); setStatus('ativa'); setNextInspectionAt(''); setNotes(''); setTouched(false); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (open) { setCode(''); setType(trapTypes[0]?.name ?? ''); setLocation(''); setInstalledAt(toDateInputValue(new Date())); setResponsibleId(technicians[0]?.id ?? ''); setStatus('ativa'); setNextInspectionAt(''); setNotes(''); setPhotos([]); setTouched(false); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = () => {
     setTouched(true);
@@ -127,6 +136,7 @@ function TrapForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
       status,
       nextInspectionAt: nextInspectionAt ? dateInputToIso(nextInspectionAt) : undefined,
       notes: notes.trim() || undefined,
+      photos: photos.length ? photos : undefined,
     });
   };
 
@@ -142,6 +152,14 @@ function TrapForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
         <Field label="Situação"><Select value={status} onChange={(e) => setStatus(e.target.value as TrapStatus)}>{(Object.keys(TRAP_STATUS_META) as TrapStatus[]).map((k) => <option key={k} value={k}>{TRAP_STATUS_META[k].label}</option>)}</Select></Field>
         <Field label="Próxima inspeção prevista" hint="Deixe em branco para definir na primeira inspeção"><DateInput type="date" value={nextInspectionAt} onChange={(e) => setNextInspectionAt(e.target.value)} /></Field>
         <Field label="Observação"><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ex.: acesso pelo corredor de serviço, chave com o zelador" /></Field>
+        <PhotoField
+          label="Foto do ponto"
+          hint="Quem vier na próxima visita acha a armadilha pela foto, não pela descrição"
+          folder="armadilha"
+          value={photos}
+          onChange={setPhotos}
+          max={3}
+        />
       </div>
     </Drawer>
   );
@@ -218,6 +236,13 @@ function HistoryDrawer({ trap, onClose }: { trap: TrapDevice | null; onClose: ()
           <div className="rounded-lg border border-border bg-muted/40 p-2"><p className="text-muted-foreground">Responsável</p><p className="font-semibold text-foreground">{technicians.find((t) => t.id === trap.responsibleId)?.name ?? '—'}</p></div>
         </div>
         {trap.notes && <p className="rounded-lg border border-border bg-muted/40 p-2 text-xs text-foreground">{trap.notes}</p>}
+        {trap.photos?.length ? (
+          <div className="flex flex-wrap gap-2">
+            {trap.photos.map((ph, i) => (
+              <img key={ph.url ?? i} src={photoSrc(ph)} alt={ph.name ?? `Foto ${i + 1} do ponto`} className="h-24 w-28 rounded-lg border border-border object-cover" />
+            ))}
+          </div>
+        ) : null}
         {inspections.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma inspeção registrada ainda.</p>}
         {inspections.map((i) => (
           <div key={i.id} className="rounded-lg border border-border/60 p-3 text-sm">

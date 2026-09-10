@@ -74,7 +74,8 @@ with esperado(migration, tabela, coluna) as (values
   -- 15 · migrate_ficha_armadilha.sql
   -- Observação da ficha de instalação — sem ela a ficha em campo grava o
   -- restante e perde só esse campo.
-  ('15 ficha armad.', 'trap_devices',       'notes')
+  ('15 ficha armad.', 'trap_devices',       'notes'),
+  ('15 ficha armad.', 'trap_devices',       'photos')
 ),
 colunas as (
   select

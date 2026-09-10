@@ -1,14 +1,19 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-/** Ponto de corte a partir do qual a coluna aparece na tabela. */
-type Breakpoint = 'sm' | 'md' | 'lg' | 'xl';
+/** Ponto de corte a partir do qual a coluna aparece na tabela.
+ *
+ *  Vale lembrar que o corte olha a largura da JANELA, não a do espaço que
+ *  sobra para a tabela: o menu lateral do escritório come 256px. Uma tabela
+ *  larga em `xl` (1280) ainda estoura numa tela de 1440 — por isso o `2xl`. */
+type Breakpoint = 'sm' | 'md' | 'lg' | 'xl' | '2xl';
 
 const MOSTRAR_A_PARTIR_DE: Record<Breakpoint, string> = {
   sm: 'hidden sm:table-cell',
   md: 'hidden md:table-cell',
   lg: 'hidden lg:table-cell',
   xl: 'hidden xl:table-cell',
+  '2xl': 'hidden 2xl:table-cell',
 };
 
 export interface Column<T> {

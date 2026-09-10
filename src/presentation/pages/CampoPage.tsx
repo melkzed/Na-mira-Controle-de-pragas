@@ -673,8 +673,11 @@ function AppliedProducts({ value, onChange, disabled, technicianIds }: {
   const allProducts = useProductsStore((s) => s.items);
   useStockStore((s) => s.balances); // re-renderiza quando o estoque muda (pooledBalance lê getState() por baixo)
   const [busca, setBusca] = useState('');
+  /** Produto aberto no card de ajuste — um por vez, como o toque em campo. */
+  const [editando, setEditando] = useState<string | null>(null);
 
   const available = (productId: string) => pooledBalance(technicianIds, productId);
+  const editandoRow = value.find((r) => r.productId === editando) ?? null;
 
   const toggle = (id: string) => onChange(value.map((x) => (x.productId === id ? { ...x, used: !x.used } : x)));
   const setQty = (id: string, qty: number) => onChange(value.map((x) => (x.productId === id ? { ...x, qty } : x)));
@@ -719,37 +722,69 @@ function AppliedProducts({ value, onChange, disabled, technicianIds }: {
         </div>
       )}
 
-      <div className="max-h-72 space-y-1.5 overflow-y-auto pr-0.5">
+      {/* Grade de dois produtos por linha. Antes cada produto ocupava uma
+          faixa inteira (marcador, nome, campo de quantidade, unidade, remover
+          e a linha de estoque embaixo): com o padrão de um serviço passando de
+          dez itens, o técnico rolava a tela várias vezes só para atravessar
+          esta seção. Aqui o cartão mostra o que ele precisa ver de relance —
+          nome e quantidade — e tudo que se edita fica no card que abre ao
+          tocar, um de cada vez. */}
+      <div className="max-h-[19rem] overflow-y-auto pr-0.5">
         {value.length === 0 && <p className="text-sm text-muted-foreground">Nenhum produto padrão para este serviço.</p>}
         {value.length > 0 && visiveis.length === 0 && sugestoes.length === 0 && (
           <p className="text-sm text-muted-foreground">Nenhum produto encontrado para “{busca}”.</p>
         )}
-        {visiveis.map((row) => {
-          const prod = getProduct(row.productId);
-          const avail = available(row.productId);
-          const short = row.used && row.qty > avail;
-          return (
-            <div key={row.productId} className={cn('rounded-lg border p-2', short ? 'border-warning/50 bg-warning-soft/20' : 'border-border/60')}>
-              <div className="flex items-center gap-2">
-                <button disabled={disabled} onClick={() => toggle(row.productId)} className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition', row.used ? 'border-brand bg-brand text-brand-foreground' : 'border-border')}>
-                  {row.used && <CheckCircle2 size={13} />}
-                </button>
-                <span className={cn('flex-1 truncate text-sm', row.used ? 'text-foreground' : 'text-muted-foreground line-through')}>{prod?.name ?? row.productId}</span>
-                <input type="number" min={0} step="0.5" value={row.qty} onChange={(e) => setQty(row.productId, Number(e.target.value) || 0)} disabled={disabled || !row.used} className="h-7 w-14 rounded border border-input bg-surface px-1.5 text-right text-sm disabled:opacity-50" />
-                <span className="w-6 text-xs text-muted-foreground">{prod?.unit}</span>
-                <button disabled={disabled} onClick={() => removeRow(row.productId)} className="text-muted-foreground hover:text-danger disabled:opacity-40" title="Remover"><X size={15} /></button>
-              </div>
-              <p className={cn('mt-1 pl-7 text-xs', short ? 'text-warning' : 'text-muted-foreground')}>
-                {short ? (
-                  <><TriangleAlert size={11} className="mr-1 inline" />Disponível no estoque: {avail} {prod?.unit} — vai ficar sinalizado na OS</>
-                ) : (
-                  <>Disponível no estoque: {avail} {prod?.unit}</>
+        <div className="grid grid-cols-2 gap-1.5">
+          {visiveis.map((row) => {
+            const prod = getProduct(row.productId);
+            const avail = available(row.productId);
+            const short = row.used && row.qty > avail;
+            return (
+              <button
+                key={row.productId}
+                type="button"
+                onClick={() => setEditando(row.productId)}
+                aria-label={`${prod?.name ?? row.productId} — ${row.qty} ${prod?.unit ?? ''}, tocar para ajustar`}
+                className={cn(
+                  'flex min-h-[3.75rem] flex-col justify-between rounded-lg border p-2 text-left transition',
+                  short ? 'border-warning/60 bg-warning-soft/25'
+                    : row.used ? 'border-brand/40 bg-brand-soft/20'
+                    : 'border-border/60 bg-surface',
                 )}
-              </p>
-            </div>
-          );
-        })}
+              >
+                <span className={cn('line-clamp-2 text-xs leading-snug', row.used ? 'text-foreground' : 'text-muted-foreground line-through')}>
+                  {prod?.name ?? row.productId}
+                </span>
+                <span className="mt-1 flex items-center justify-between gap-1">
+                  <span className={cn('text-sm font-semibold tabular-nums', row.used ? 'text-foreground' : 'text-muted-foreground')}>
+                    {row.qty}<span className="ml-0.5 text-[11px] font-normal text-muted-foreground">{prod?.unit}</span>
+                  </span>
+                  {short
+                    ? <TriangleAlert size={13} className="shrink-0 text-warning" />
+                    : row.used && <CheckCircle2 size={13} className="shrink-0 text-brand" />}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Card de ajuste do produto tocado. Reúne o que a linha antiga
+          espalhava: usar ou não, quantidade, saldo do estoque e remover. */}
+      {editandoRow && (
+        <AjusteProduto
+          row={editandoRow}
+          nome={getProduct(editandoRow.productId)?.name ?? editandoRow.productId}
+          unidade={getProduct(editandoRow.productId)?.unit ?? ''}
+          disponivel={available(editandoRow.productId)}
+          disabled={disabled}
+          onClose={() => setEditando(null)}
+          onToggle={() => toggle(editandoRow.productId)}
+          onQty={(q) => setQty(editandoRow.productId, q)}
+          onRemove={() => { removeRow(editandoRow.productId); setEditando(null); }}
+        />
+      )}
+
       {!disabled && sugestoes.length > 0 && (
         <div className="mt-2 rounded-lg border border-dashed border-border p-2">
           <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">Não está na lista — toque para adicionar</p>
@@ -771,8 +806,86 @@ function AppliedProducts({ value, onChange, disabled, technicianIds }: {
 
       {!disabled && !termo && (
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Use a busca acima para achar um produto que não está na lista e adicioná-lo.
+          Toque no produto para ajustar a quantidade. Use a busca acima para achar um que não está na lista.
         </p>
+      )}
+    </div>
+  );
+}
+
+/** Card que abre ao tocar num produto da grade. Em campo o técnico mexe num
+ *  produto de cada vez, e os botões − / + evitam o teclado numérico do celular
+ *  para o ajuste comum (meia dose a mais, meia a menos). */
+function AjusteProduto({ row, nome, unidade, disponivel, disabled, onClose, onToggle, onQty, onRemove }: {
+  row: AppliedProductRow;
+  nome: string;
+  unidade: string;
+  disponivel: number;
+  disabled?: boolean;
+  onClose: () => void;
+  onToggle: () => void;
+  onQty: (qty: number) => void;
+  onRemove: () => void;
+}) {
+  const falta = row.used && row.qty > disponivel;
+  const passo = (delta: number) => onQty(Math.max(0, Math.round((row.qty + delta) * 100) / 100));
+
+  return (
+    <div className="mt-2 rounded-xl border border-brand/40 bg-brand-soft/15 p-3">
+      <div className="mb-2 flex items-start gap-2">
+        <p className="flex-1 text-sm font-semibold text-foreground">{nome}</p>
+        <button onClick={onClose} aria-label="Fechar ajuste" className="text-muted-foreground hover:text-foreground"><X size={16} /></button>
+      </div>
+
+      <button
+        disabled={disabled}
+        onClick={onToggle}
+        aria-pressed={row.used}
+        className="mb-2.5 flex w-full items-center gap-2 rounded-lg border border-border/60 bg-surface px-2.5 py-2 text-left text-sm disabled:opacity-50"
+      >
+        <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition', row.used ? 'border-brand bg-brand text-brand-foreground' : 'border-border')}>
+          {row.used && <CheckCircle2 size={13} />}
+        </span>
+        <span className={row.used ? 'text-foreground' : 'text-muted-foreground'}>
+          {row.used ? 'Apliquei este produto' : 'Não apliquei este produto'}
+        </span>
+      </button>
+
+      <div className="flex items-center gap-2">
+        <button
+          disabled={disabled || !row.used}
+          onClick={() => passo(-0.5)}
+          aria-label={`Diminuir quantidade de ${nome}`}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-input bg-surface text-lg text-foreground disabled:opacity-40"
+        >−</button>
+        <input
+          type="number" min={0} step="0.5" inputMode="decimal"
+          value={row.qty}
+          onChange={(e) => onQty(Math.max(0, Number(e.target.value) || 0))}
+          disabled={disabled || !row.used}
+          aria-label={`Quantidade de ${nome}`}
+          className="h-10 w-full rounded-lg border border-input bg-surface px-2 text-center text-base tabular-nums text-foreground disabled:opacity-50"
+        />
+        <button
+          disabled={disabled || !row.used}
+          onClick={() => passo(0.5)}
+          aria-label={`Aumentar quantidade de ${nome}`}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-input bg-surface text-lg text-foreground disabled:opacity-40"
+        >+</button>
+        <span className="w-8 shrink-0 text-sm text-muted-foreground">{unidade}</span>
+      </div>
+
+      <p className={cn('mt-2 text-xs', falta ? 'text-warning' : 'text-muted-foreground')}>
+        {falta
+          ? <><TriangleAlert size={11} className="mr-1 inline" />Disponível no estoque: {disponivel} {unidade} — vai ficar sinalizado na OS</>
+          : <>Disponível no estoque: {disponivel} {unidade}</>}
+      </p>
+
+      {!disabled && (
+        <div className="mt-2.5 flex justify-end gap-2">
+          <button onClick={onRemove} className="rounded-lg px-2.5 py-1.5 text-xs text-danger hover:bg-danger-soft">Remover da lista</button>
+          <Button size="sm" onClick={onClose}>Pronto</Button>
+        </div>
       )}
     </div>
   );
