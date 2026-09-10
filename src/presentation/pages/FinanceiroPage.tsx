@@ -13,6 +13,7 @@ import { useFinanceStore, useRecurringPayablesStore, useBankAccountsStore, useCh
 import { useBankTransactionsStore, accountBalance, TRANSACTION_SIGN } from '@/store/bankTransactionsStore';
 import { useCashClosingStore } from '@/store/cashClosingStore';
 import { useInvoicesStore } from '@/store/invoicesStore';
+import { valorRecebimento, somaLiquida } from '@/application/fiscal/liquido';
 import { useSettingsStore } from '@/store/settingsStore';
 import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
@@ -165,7 +166,10 @@ function VisaoGeralTab() {
     const pagar = entries.filter((e) => e.type === 'despesa' && e.status !== 'pago' && e.status !== 'cancelado').reduce((s, e) => s + netAmount(e), 0);
     const recebido = entries.filter((e) => e.type === 'receita' && e.status === 'pago').reduce((s, e) => s + netAmount(e), 0);
     const pago = entries.filter((e) => e.type === 'despesa' && e.status === 'pago').reduce((s, e) => s + netAmount(e), 0);
-    return { receber, pagar, saldo: recebido - pago, recebido };
+    // Líquido do que ainda vai entrar: é a diferença entre o que a empresa
+    // fatura e o que cai na conta.
+    const receberLiquido = somaLiquida(entries.filter((e) => e.type === 'receita' && e.status !== 'pago' && e.status !== 'cancelado'));
+    return { receber, pagar, saldo: recebido - pago, recebido, receberLiquido };
   }, [entries]);
 
   /**
@@ -197,7 +201,13 @@ function VisaoGeralTab() {
     return meses;
   }, [entries]);
   const mesAtual = serie[serie.length - 1];
-  const lucroMes = mesAtual.receita - mesAtual.despesa;
+  /** Retenções das notas do mês — saem do bruto antes de o dinheiro entrar,
+   *  então o lucro real do mês precisa considerá-las. */
+  const retencoesMes = useMemo(() => {
+    const doMes = entries.filter((e) => e.type === 'receita' && e.status !== 'cancelado' && (e.dueDate ?? e.createdAt).slice(0, 7) === mesAtual.key);
+    return doMes.reduce((s, e) => s + valorRecebimento(e).retencoes, 0);
+  }, [entries, mesAtual.key]);
+  const lucroMes = mesAtual.receita - retencoesMes - mesAtual.despesa;
 
   const tributos = useMemo(() => {
     const monthKey = toDateInputValue(new Date()).slice(0, 7);
@@ -322,6 +332,21 @@ function VisaoGeralTab() {
       } } as Column<FinanceEntry>,
     ] : []),
     { key: 'amount', header: subTab === 'receber' ? 'Total' : 'Valor', align: 'right', render: (e) => <span className={subTab === 'receber' ? 'font-semibold text-success' : 'font-semibold text-foreground'}>{formatCurrency(netAmount(e))}</span> },
+    // Líquido só nas contas a receber: é o que sobra depois das retenções da
+    // nota. Sem nota emitida, líquido e total são o mesmo número — e aí a
+    // coluna repetiria o anterior, então mostra um traço.
+    ...(subTab === 'receber' ? [
+      { key: 'liq', header: 'Líquido', align: 'right', hideBelow: 'xl', render: (e: FinanceEntry) => {
+        const v = valorRecebimento(e);
+        if (!v.retencoes) return <span className="text-muted-foreground">—</span>;
+        return (
+          <span title={`Bruto ${formatCurrency(v.bruto)} · retenções ${formatCurrency(v.retencoes)} (NF ${v.nota?.number})`}>
+            <span className="block font-semibold text-foreground">{formatCurrency(v.liquido)}</span>
+            <span className="block text-[10px] text-danger">−{formatCurrency(v.retencoes)}</span>
+          </span>
+        );
+      } } as Column<FinanceEntry>,
+    ] : []),
     { key: 'status', header: 'Status', align: 'right', hideBelow: 'lg', render: (e) => {
       const overdue = e.status === 'pendente' && e.dueDate && (daysUntil(e.dueDate) ?? 1) < 0;
       const st = overdue ? 'atrasado' : e.status;
@@ -353,7 +378,13 @@ function VisaoGeralTab() {
     <>
       <Stagger className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Saldo em caixa" value={totals.saldo} icon="Wallet" tone="brand" format={formatCompactCurrency} />
-        <StatCard label="A receber" value={totals.receber} icon="TrendingUp" tone="success" format={formatCompactCurrency} />
+        <StatCard
+          label={totals.receber !== totals.receberLiquido ? 'A receber (líquido)' : 'A receber'}
+          value={totals.receberLiquido}
+          icon="TrendingUp"
+          tone="success"
+          format={formatCompactCurrency}
+        />
         <StatCard label="A pagar" value={totals.pagar} icon="TrendingDown" tone="danger" format={formatCompactCurrency} />
         <StatCard label="Recebido no mês" value={totals.recebido} icon="CircleDollarSign" tone="info" format={formatCompactCurrency} />
       </Stagger>
@@ -384,6 +415,7 @@ function VisaoGeralTab() {
           <CardHeader title="Resumo do mês" />
           <CardBody className="space-y-3">
             <SummaryRow label="Receita bruta" value={mesAtual.receita} tone="success" />
+            {retencoesMes > 0 && <SummaryRow label="Retenções na nota" value={-retencoesMes} tone="danger" />}
             <SummaryRow label="Despesas" value={-mesAtual.despesa} tone="danger" />
             <div className="border-t border-border pt-3">
               <SummaryRow label="Lucro líquido" value={lucroMes} tone="brand" bold />

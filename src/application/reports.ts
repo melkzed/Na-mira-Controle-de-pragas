@@ -24,6 +24,7 @@ import {
 import type { ReportColumn } from '@/lib/printReports';
 import { fmtDate } from '@/lib/date';
 import { formatCurrency, compareText } from '@/lib/utils';
+import { valorRecebimento } from '@/application/fiscal/liquido';
 import { APPOINTMENT_STATUS_META, SERVICE_ORDER_STATUS_META, type AppointmentStatus, type ServiceOrderStatus } from '@/domain/enums';
 import { haversineKm } from '@/lib/geo';
 
@@ -681,14 +682,17 @@ const FINANCEIRO: ReportDef[] = [
           { header: 'Descrição', value: (e) => e.description },
           { header: 'Status', value: (e) => e.status },
           { header: 'Recebido em', value: (e) => (e.paidAt ? fmtDate(e.paidAt) : '') },
-          { header: 'Valor (R$)', value: (e) => formatCurrency(liquido(e)), align: 'right' },
+          { header: 'Bruto (R$)', value: (e) => formatCurrency(liquido(e)), align: 'right' },
+          { header: 'Retenções (R$)', value: (e) => formatCurrency(valorRecebimento(e).retencoes), align: 'right' },
+          { header: 'Líquido (R$)', value: (e) => formatCurrency(valorRecebimento(e).liquido), align: 'right' },
         ],
         rows,
         summary: [
           { label: 'Lançamentos', value: rows.length },
-          { label: 'Faturado', value: formatCurrency(rows.reduce((s, e) => s + liquido(e), 0)) },
-          { label: 'Recebido', value: formatCurrency(recebido.reduce((s, e) => s + liquido(e), 0)) },
-          { label: 'A receber', value: formatCurrency(aberto.reduce((s, e) => s + liquido(e), 0)) },
+          { label: 'Faturado (bruto)', value: formatCurrency(rows.reduce((s, e) => s + liquido(e), 0)) },
+          { label: 'Retenções', value: formatCurrency(rows.reduce((s, e) => s + valorRecebimento(e).retencoes, 0)) },
+          { label: 'Recebido (líquido)', value: formatCurrency(recebido.reduce((s, e) => s + valorRecebimento(e).liquido, 0)) },
+          { label: 'A receber (líquido)', value: formatCurrency(aberto.reduce((s, e) => s + valorRecebimento(e).liquido, 0)) },
         ],
       };
     },
@@ -742,7 +746,9 @@ const FINANCEIRO: ReportDef[] = [
       todos.forEach((e) => {
         const mes = (e.dueDate ?? e.createdAt).slice(0, 7);
         const a = mapa.get(mes) ?? { mes, receita: 0, despesa: 0 };
-        if (e.type === 'receita') a.receita += liquido(e); else a.despesa += liquido(e);
+        // A receita entra LÍQUIDA: o que foi retido na nota nunca chegou à
+        // empresa, e somá-lo ao resultado inflaria o lucro do mês.
+        if (e.type === 'receita') a.receita += valorRecebimento(e).liquido; else a.despesa += liquido(e);
         mapa.set(mes, a);
       });
       const rows = [...mapa.values()]
@@ -757,7 +763,7 @@ const FINANCEIRO: ReportDef[] = [
       return {
         columns: [
           { header: 'Mês', value: (r) => mesRef(r.mes) },
-          { header: 'Receita (R$)', value: (r) => formatCurrency(r.receita), align: 'right' },
+          { header: 'Receita líquida (R$)', value: (r) => formatCurrency(r.receita), align: 'right' },
           { header: 'Despesa (R$)', value: (r) => formatCurrency(r.despesa), align: 'right' },
           { header: 'Resultado (R$)', value: (r) => formatCurrency(r.resultado), align: 'right' },
           { header: 'Margem', value: (r) => `${r.margem.toFixed(0)}%`, align: 'right' },
