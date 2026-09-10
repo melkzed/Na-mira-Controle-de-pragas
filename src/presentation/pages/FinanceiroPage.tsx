@@ -8,7 +8,6 @@ import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
-import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getServiceOrder } from '@/application/repository';
 import { useFinanceStore, useRecurringPayablesStore, useBankAccountsStore, useChecksStore, useLoansStore } from '@/store/entityStores';
 import { useBankTransactionsStore, accountBalance, TRANSACTION_SIGN } from '@/store/bankTransactionsStore';
@@ -168,6 +167,37 @@ function VisaoGeralTab() {
     const pago = entries.filter((e) => e.type === 'despesa' && e.status === 'pago').reduce((s, e) => s + netAmount(e), 0);
     return { receber, pagar, saldo: recebido - pago, recebido };
   }, [entries]);
+
+  /**
+   * DRE dos últimos 12 meses, a partir dos lançamentos reais.
+   *
+   * Antes o gráfico e o resumo liam `seed.revenueSeries` — os dados de exemplo
+   * que vêm com o sistema. Quem conferia o faturamento por aqui estava olhando
+   * números que não eram da empresa.
+   */
+  const serie = useMemo(() => {
+    const meses: { key: string; month: string; receita: number; despesa: number }[] = [];
+    const base = new Date();
+    for (let i = 11; i >= 0; i -= 1) {
+      const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
+      meses.push({
+        key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+        month: d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''),
+        receita: 0,
+        despesa: 0,
+      });
+    }
+    const porMes = new Map(meses.map((m) => [m.key, m]));
+    entries.filter((e) => e.status !== 'cancelado').forEach((e) => {
+      const alvo = porMes.get((e.dueDate ?? e.createdAt).slice(0, 7));
+      if (!alvo) return;
+      if (e.type === 'receita') alvo.receita += netAmount(e);
+      else alvo.despesa += netAmount(e);
+    });
+    return meses;
+  }, [entries]);
+  const mesAtual = serie[serie.length - 1];
+  const lucroMes = mesAtual.receita - mesAtual.despesa;
 
   const tributos = useMemo(() => {
     const monthKey = toDateInputValue(new Date()).slice(0, 7);
@@ -333,7 +363,7 @@ function VisaoGeralTab() {
           <CardHeader title="DRE simplificado" subtitle="Receita x Despesa mensal" />
           <CardBody>
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={seed.revenueSeries} margin={{ left: -18, top: 8 }}>
+              <BarChart data={serie} margin={{ left: -18, top: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--color-border))" vertical={false} />
                 <XAxis dataKey="month" tick={{ fontSize: 12, fill: 'rgb(var(--color-muted-foreground))' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: 'rgb(var(--color-muted-foreground))' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v / 1000}k`} />
@@ -353,13 +383,13 @@ function VisaoGeralTab() {
         <Card>
           <CardHeader title="Resumo do mês" />
           <CardBody className="space-y-3">
-            <SummaryRow label="Receita bruta" value={seed.revenueSeries.at(-1)!.receita} tone="success" />
-            <SummaryRow label="Despesas" value={-seed.revenueSeries.at(-1)!.despesa} tone="danger" />
+            <SummaryRow label="Receita bruta" value={mesAtual.receita} tone="success" />
+            <SummaryRow label="Despesas" value={-mesAtual.despesa} tone="danger" />
             <div className="border-t border-border pt-3">
-              <SummaryRow label="Lucro líquido" value={seed.revenueSeries.at(-1)!.receita - seed.revenueSeries.at(-1)!.despesa} tone="brand" bold />
+              <SummaryRow label="Lucro líquido" value={lucroMes} tone="brand" bold />
             </div>
             <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-              Margem de lucro: <span className="font-semibold text-foreground">{Math.round(((seed.revenueSeries.at(-1)!.receita - seed.revenueSeries.at(-1)!.despesa) / seed.revenueSeries.at(-1)!.receita) * 100)}%</span>
+              Margem de lucro: <span className="font-semibold text-foreground">{mesAtual.receita ? `${Math.round((lucroMes / mesAtual.receita) * 100)}%` : '—'}</span>
             </div>
             {tributos.count > 0 && (
               <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs">
