@@ -806,8 +806,6 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
   const linkedOs = serviceOrderForAppointment(appt.id);
   const started = appt.status === 'em_atendimento';
   const finished = appt.status === 'finalizado';
-  const checklist = ['Equipamentos', 'EPIs', 'Produtos', 'Veículo', 'Documentação'];
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [confirming, setConfirming] = useState(false);
   const [editingAfterFinish, setEditingAfterFinish] = useState(false);
   // A assinatura do técnico não é mais colhida no atendimento: vem do cadastro
@@ -924,21 +922,6 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
             onClick={() => cust?.phone && window.open(`tel:${cust.phone.replace(/[^\d+]/g, '')}`)}
           >Ligar</Button>
           <Button variant="outline" size="sm" leftIcon={<Info size={15} />} onClick={onDetail}>Cliente</Button>
-        </div>
-
-        {/* Checklist pré-atendimento */}
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Checklist pré-atendimento</p>
-          <div className="space-y-1.5">
-            {checklist.map((item) => (
-              <button key={item} onClick={() => setChecked((c) => ({ ...c, [item]: !c[item] }))} className="flex w-full items-center gap-2.5 rounded-lg px-1 py-1 text-left text-sm">
-                <span className={cn('flex h-5 w-5 items-center justify-center rounded-md border transition', checked[item] ? 'border-brand bg-brand text-brand-foreground' : 'border-border')}>
-                  {checked[item] && <CheckCircle2 size={13} />}
-                </span>
-                <span className={cn(checked[item] ? 'text-muted-foreground line-through' : 'text-foreground')}>{item}</span>
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Produtos aplicados (padrão do serviço; técnico confirma o que usou) */}
