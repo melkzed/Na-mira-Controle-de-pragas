@@ -12,7 +12,7 @@ import { AppointmentStatusBadge, PriorityBadge } from '../components/StatusBadge
 import { Badge } from '../components/ui/Badge';
 import { DateInput, Select } from '../components/ui/Field';
 import { AppointmentForm } from '../components/AppointmentForm';
-import { getCustomer, getServiceType, getUser, primaryContactPhone, techniciansForAppointment } from '@/application/repository';
+import { getCustomer, getServiceType, getUser, isTechnicianOnAppointment, primaryContactPhone, techniciansForAppointment } from '@/application/repository';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import { toast } from '@/store/toastStore';
@@ -135,12 +135,16 @@ export function AgendaPage() {
   }, []);
 
   const allAppointments = useAppointmentsStore((s) => s.appointments);
+  // Filtrar por técnico devolve tudo que ele atende, inclusive as visitas em
+  // que ele entra como ajudante da equipe da OS — o agendamento guarda só o
+  // responsável, então filtrar por `technicianId` cru escondia essas.
+  const allOrders = useServiceOrdersStore((s) => s.orders);
   const appts = useMemo(
     () => allAppointments.filter(
-      (a) => (techFilter === 'todos' || a.technicianId === techFilter) &&
+      (a) => (techFilter === 'todos' || isTechnicianOnAppointment(a, techFilter, allOrders)) &&
              (statusFilter === 'todos' || a.status === statusFilter),
     ),
-    [allAppointments, techFilter, statusFilter],
+    [allAppointments, allOrders, techFilter, statusFilter],
   );
   const awaitingCount = allAppointments.filter((a) => a.status === 'agendado').length;
   const selected = allAppointments.find((a) => a.id === selectedId) ?? null;

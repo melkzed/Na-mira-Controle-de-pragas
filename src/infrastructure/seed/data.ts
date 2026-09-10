@@ -129,6 +129,9 @@ export const treatedAreas: TreatedArea[] = [
   { id: 'ar-dep', orgId: ORG, name: 'Depósito' },
   { id: 'ar-ext', orgId: ORG, name: 'Área externa' },
   { id: 'ar-gar', orgId: ORG, name: 'Garagem' },
+  { id: 'ar-pro', orgId: ORG, name: 'Produção' },
+  { id: 'ar-cfr', orgId: ORG, name: 'Câmara Fria' },
+  { id: 'ar-ref', orgId: ORG, name: 'Refeitório' },
 ];
 
 export const trapTypes: TrapType[] = [
@@ -415,7 +418,10 @@ export const trapInspections: TrapInspection[] = [
 // ── Notas Fiscais de Serviço (exemplos) ─────────────────────────────────────
 export const invoicesSeed: Invoice[] = [
   { id: 'inv-1', orgId: ORG, number: 1042, series: 'RPS-1', serviceOrderId: 'so-1', customerId: 'c-1', description: 'Dedetização · Padaria Pão Quente', amount: 320, taxAmount: 9.6, status: 'emitida', issuedAt: daysFromNow(-1) },
-  { id: 'inv-2', orgId: ORG, number: 1043, series: 'RPS-1', serviceOrderId: 'so-2', customerId: 'c-3', description: 'Sanitização · Restaurante Sabor & Cia', amount: 240, taxAmount: 7.2, status: 'emitida', issuedAt: daysFromNow(-1) },
+  { id: 'inv-2', orgId: ORG, number: 1043, series: 'RPS-1', serviceOrderId: 'so-2', customerId: 'c-3', description: 'Sanitização · Restaurante Sabor & Cia', amount: 240, taxAmount: 7.2, status: 'emitida', issuedAt: daysFromNow(-1),
+    // Tomador pessoa jurídica com retenções — é o caso em que bruto e
+    // líquido divergem, e o que o financeiro precisa mostrar.
+    taxes: { issRate: 0.03, iss: 7.2, issRetido: true, irrf: 2.4, inss: 0, pis: 1.56, cofins: 7.2, csll: 2.4, totalRetencoes: 20.76, net: 219.24 } },
 ];
 
 // ── Histórico / auditoria (exemplos iniciais) ───────────────────────────────

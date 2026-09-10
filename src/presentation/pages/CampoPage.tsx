@@ -175,6 +175,9 @@ export function CampoPage() {
   const setStatus = useAppointmentsStore((s) => s.setStatus);
   const updateAppt = useAppointmentsStore((s) => s.update);
   const storeAppts = useAppointmentsStore((s) => s.appointments); // reatividade
+  // A equipe da visita sai da OS vinculada, então mudar a equipe lá muda a
+  // lista do dia aqui — sem isto, incluir um ajudante só aparecia após recarregar.
+  const storeOrders = useServiceOrdersStore((s) => s.orders);
   const updateOs = useServiceOrdersStore((s) => s.update);
 
   // Técnicos cadastrados antes de os locais de estoque virarem cadastro real
@@ -184,7 +187,7 @@ export function CampoPage() {
   useEffect(() => { if (techId) ensureTechnicianStockLocation(techId, techName); }, [techId, techName]);
 
   const todayIso = new Date().toISOString();
-  const appts = useMemo(() => releasedAppointmentsForTechnician(techId, todayIso), [techId, todayIso, storeAppts]);
+  const appts = useMemo(() => releasedAppointmentsForTechnician(techId, todayIso), [techId, todayIso, storeAppts, storeOrders]); // eslint-disable-line react-hooks/exhaustive-deps
   const [activeId, setActiveId] = useState<string | null>(null);
   const active = appts.find((a) => a.id === activeId) ?? appts[0];
 
@@ -676,7 +679,10 @@ function AppliedProducts({ value, onChange, disabled, technicianIds }: {
   const toggle = (id: string) => onChange(value.map((x) => (x.productId === id ? { ...x, used: !x.used } : x)));
   const setQty = (id: string, qty: number) => onChange(value.map((x) => (x.productId === id ? { ...x, qty } : x)));
   const removeRow = (id: string) => onChange(value.filter((x) => x.productId !== id));
-  const addRow = (id: string) => { if (id && !value.some((x) => x.productId === id)) onChange([...value, { productId: id, qty: 1, used: true }]); setBusca(''); };
+  /** Produto que não estava no padrão do serviço entra zerado — quem sabe
+   *  quanto usou é quem aplicou. O Laudo só imprime quantidade > 0, então a
+   *  linha não vira dose fantasma se ficar em branco. */
+  const addRow = (id: string) => { if (id && !value.some((x) => x.productId === id)) onChange([...value, { productId: id, qty: 0, used: true }]); setBusca(''); };
 
   // A busca serve às duas coisas ao mesmo tempo: filtra o que já está na lista
   // e oferece o que ainda não está. Com o padrão do serviço passando de dez

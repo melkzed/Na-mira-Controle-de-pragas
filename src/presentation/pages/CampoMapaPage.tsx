@@ -7,6 +7,8 @@ import { RouteMap, type RouteStop } from '../components/RouteMap';
 import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
 import { releasedAppointmentsForTechnician, getCustomer, getServiceType } from '@/application/repository';
 import { googleMapsRoute, googleMapsRouteToAddress, formatAddress } from '@/lib/geo';
+import { useAppointmentsStore } from '@/store/appointmentsStore';
+import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import { fmtMinutes, minutesOfDay, planRoute, simulateRoute, type TimedStop } from '@/lib/route';
 import { fmtTime } from '@/lib/date';
 import { cn } from '@/lib/utils';
@@ -39,7 +41,11 @@ export function CampoMapaPage() {
   const { techId } = useFieldTech();
   const [optimized, setOptimized] = useState(true);
   const todayIso = new Date().toISOString();
-  const appts = useMemo(() => releasedAppointmentsForTechnician(techId, todayIso), [techId, todayIso]);
+  // Idem ao app do dia: a equipe sai da OS vinculada, então as duas stores
+  // entram como dependência.
+  const storeAppts = useAppointmentsStore((s) => s.appointments);
+  const storeOrders = useServiceOrdersStore((s) => s.orders);
+  const appts = useMemo(() => releasedAppointmentsForTechnician(techId, todayIso), [techId, todayIso, storeAppts, storeOrders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Localização atual — usada só para desenhar "você está aqui" no mapa; a
   // navegação em si (botão "Ir para a próxima parada") não depende dela, o

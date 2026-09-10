@@ -29,12 +29,17 @@ import { daysUntil, formatCompactCurrency, formatCurrency, formatNumber } from '
 import { fmtTime } from '@/lib/date';
 import { useAppStore } from '@/store/appStore';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
-import { useEquipmentStore, useFinanceStore } from '@/store/entityStores';
+import { useEquipmentStore, useFinanceStore, useLicensesStore } from '@/store/entityStores';
+import { useCustomersStore } from '@/store/customersStore';
 import { isEquipmentOverdue } from './EquipamentosPage';
 import { Link } from 'react-router-dom';
 
 export function DashboardPage() {
-  const m = useMemo(() => computeDashboard(), []);
+  // Contratos e licenças entram nos alertas: recalcula quando essas stores
+  // mudam, senão cadastrar um contrato não mexe na contagem do painel.
+  const customers = useCustomersStore((s) => s.customers);
+  const licenses = useLicensesStore((s) => s.items);
+  const m = useMemo(() => computeDashboard(), [customers, licenses]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Contas a pagar vencidas e a vencer.
@@ -221,9 +226,10 @@ export function DashboardPage() {
                   label="A pagar em até 7 dias" value={`${contas.vencendo.qtd} · ${formatCurrency(contas.vencendo.total)}`} />
               )}
               <AlertRow icon="PackageX" tone="warning" label="Estoque baixo" value={`${m.lowStockCount} produtos`} />
-              <AlertRow icon="CalendarX" tone="warning" label="Produtos vencendo" value={`${m.expiringCount} lotes`} />
-              <AlertRow icon="TriangleAlert" tone="danger" label="Produtos vencidos" value={`${m.expiredCount} lotes`} />
-              <AlertRow icon="FileWarning" tone="danger" label="Licenças a vencer" value={`${m.licensesExpiringSoon} docs`} />
+              <AlertRow icon="CalendarX" tone="warning" label="Produtos vencendo" value={`${m.expiringCount} lotes`} to={reportLink('Lotes de produto vencendo')} />
+              <AlertRow icon="TriangleAlert" tone="danger" label="Produtos vencidos" value={`${m.expiredCount} lotes`} to={reportLink('Lotes de produto vencendo')} />
+              <AlertRow icon="FileClock" tone="warning" label="Contratos a vencer" value={`${m.contractsExpiringSoon} contratos`} to={reportLink('Contratos a vencer')} />
+              <AlertRow icon="FileWarning" tone="danger" label="Licenças a vencer" value={`${m.licensesExpiringSoon} docs`} to={reportLink('Licenças e certificados a vencer')} />
               <AlertRow icon="Timer" tone="info" label="Tempo médio de atend." value={`${m.avgServiceMinutes} min`} />
             </CardBody>
           </Card>
@@ -283,6 +289,10 @@ function MiniStat({ label, value, icon, tone }: { label: string; value: number; 
   );
 }
 
+/** Link para o card correspondente em Relatórios — a página destaca e rola
+ *  até ele, então o alerta leva direto à lista, não só à tela. */
+const reportLink = (name: string) => `/relatorios?relatorio=${encodeURIComponent(name)}`;
+
 /** Linha de alerta. Com `to`, vira link — alerta que não leva a lugar nenhum
  *  obriga a pessoa a procurar sozinha onde resolver o que ele aponta. */
 function AlertRow({ icon, tone, label, value, to }: { icon: string; tone: any; label: string; value: string; to?: string }) {
@@ -302,7 +312,11 @@ function AlertRow({ icon, tone, label, value, to }: { icon: string; tone: any; l
   );
   if (!to) return <div className="flex items-center gap-3">{conteudo}</div>;
   return (
-    <Link to={to} className="-mx-1.5 flex items-center gap-3 rounded-lg px-1.5 py-1 transition hover:bg-muted">
+    <Link
+      to={to}
+      aria-label={`${label}: ${value} — ver relatório`}
+      className="-mx-1.5 flex items-center gap-3 rounded-lg px-1.5 py-0.5 transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+    >
       {conteudo}
     </Link>
   );

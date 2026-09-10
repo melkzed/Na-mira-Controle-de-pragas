@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Check, Download, MapPin, Pencil, Plus, Trash2, TriangleAlert, X, Zap } from 'lucide-react';
+import { Check, Download, Eraser, MapPin, Pencil, Plus, Trash2, TriangleAlert, X, Zap } from 'lucide-react';
 import { PageHeader } from '../components/ui/misc';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -11,7 +11,7 @@ import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
 import { ServiceOrderStatusBadge } from '../components/StatusBadge';
 import { appointmentsForCustomer, getCustomer, getPest, getProduct, getServiceType, getUser, lastOrderForCustomer } from '@/application/repository';
-import type { Pest, PaymentStatus, RecurrencePhase, ServiceOrder, ServiceType } from '@/domain/types';
+import type { Pest, PaymentStatus, RecurrencePhase, ServiceOrder, ServiceType, TreatedArea } from '@/domain/types';
 import type { AppointmentStatus, RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
 import { PAYMENT_METHODS, RECURRENCE_FREQ_DAYS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
 import {
@@ -39,7 +39,7 @@ import { Combobox, MultiCombobox } from '../components/ui/Combobox';
 import { useSettingsStore } from '@/store/settingsStore';
 import { computeTaxes } from '@/application/fiscal/tax';
 import { providerLabel } from '@/application/fiscal/providers';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, compareText, formatCurrency } from '@/lib/utils';
 import { formatAddress, googleMapsAddressUrl } from '@/lib/geo';
 import { recarregarDados } from '@/lib/supabaseClient';
 import { signerDocumentLabel } from '@/lib/signer';
@@ -59,7 +59,12 @@ const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
 
 /** Handle imperativo do formulário de OS — permite que um footer externo
  *  (fora do componente do formulário) dispare o envio. */
-interface OsFormHandle { submit: () => void }
+interface OsFormHandle {
+  submit: () => void;
+  /** Esvazia o formulário e descarta o rascunho — o mesmo "Começar em branco"
+   *  dos avisos, exposto no rodapé do modal de criação. */
+  clear: () => void;
+}
 
 /** Chip de seleção rápida (toggle) — otimizado para OS rápida em campo. */
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -68,8 +73,44 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   );
 }
 
-/** Rascunho da OS em criação — some assim que a OS é confirmada. */
+/** Chip de área tratada: toggle mais quantidade (+ / −) quando selecionado.
+ *  `qty` nulo significa não selecionado. Serve às três origens do campo — a
+ *  estrutura cadastrada no cliente, o catálogo geral e a área específica desta
+ *  OS —, que só diferem em onde a quantidade é guardada. */
+function AreaChip({ name, qty, onToggle, onQty, title }: {
+  name: string; qty: number | null; onToggle: () => void; onQty: (qty: number) => void; title?: string;
+}) {
+  const active = qty != null;
+  return (
+    <div
+      title={title}
+      className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition ${active ? 'border-brand bg-brand-soft text-brand' : 'border-border text-muted-foreground hover:bg-muted'}`}
+    >
+      <button type="button" onClick={onToggle}>{name}</button>
+      {active && (
+        <span className="flex items-center gap-1 border-l border-brand/30 pl-1">
+          <button type="button" aria-label={`Diminuir quantidade de ${name}`} onClick={() => onQty(qty - 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">−</button>
+          <span className="w-3.5 text-center font-semibold">{qty}</span>
+          <button type="button" aria-label={`Aumentar quantidade de ${name}`} onClick={() => onQty(qty + 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">+</button>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Rascunho da OS em criação.
+ *
+ *  Regra: o rascunho é uma única chance de retomar o que ficou pela metade num
+ *  fechamento abrupto. Ele é CONSUMIDO na hora em que volta ao formulário
+ *  (apagado do `localStorage` ao ser reposto), e a sessão que o consumiu não
+ *  grava outro ao fechar. Da segunda abertura em diante a OS nasce vazia.
+ *
+ *  Um rascunho novo só nasce de uma sessão que abriu em branco E teve
+ *  interação real de quem está usando — ver `interagiuRef`. */
 const OS_DRAFT_KEY = 'namira-os-draft';
+/** Chave de uma tentativa anterior de limitar reposições por contagem. Não é
+ *  mais escrita; `clearOsDraft` ainda a remove para não deixar resíduo. */
+const OS_DRAFT_USES_KEY = 'namira-os-draft-uses';
 
 type OsDraft = Record<string, unknown>;
 
@@ -82,8 +123,15 @@ function loadOsDraft(): OsDraft | null {
   }
 }
 
+function saveOsDraft(json: string) {
+  try { localStorage.setItem(OS_DRAFT_KEY, json); } catch { /* cota — ignora */ }
+}
+
 function clearOsDraft() {
-  try { localStorage.removeItem(OS_DRAFT_KEY); } catch { /* ignora */ }
+  try {
+    localStorage.removeItem(OS_DRAFT_KEY);
+    localStorage.removeItem(OS_DRAFT_USES_KEY);
+  } catch { /* ignora */ }
 }
 
 export function OrdensPage() {
@@ -97,6 +145,10 @@ export function OrdensPage() {
   // abrir outro Drawer por cima) — "editMode" só alterna o conteúdo exibido.
   const [editMode, setEditMode] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  /** Cliente com que a OS nova deve nascer, quando a criação foi aberta a
+   *  partir da ficha de um cliente. Vazio = criação normal, pelo botão da
+   *  própria tela de Ordens. */
+  const [presetCustomerId, setPresetCustomerId] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const removeOs = useServiceOrdersStore((s) => s.remove);
@@ -121,6 +173,18 @@ export function OrdensPage() {
     const so = orders.find((o) => o.id === id);
     if (so) { setSelected(so); setEditMode(false); }
     setParams((p) => { p.delete('id'); return p; }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
+
+  // "Novo agendamento" na ficha do cliente (?novoPara=<clienteId>): abre a
+  // criação de OS já naquele cliente. O parâmetro sai da URL depois de lido —
+  // senão recarregar a página reabriria o formulário sozinho.
+  useEffect(() => {
+    const cid = params.get('novoPara');
+    if (!cid) return;
+    setPresetCustomerId(cid);
+    setFormOpen(true);
+    setParams((p) => { p.delete('novoPara'); return p; }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
@@ -190,7 +254,7 @@ export function OrdensPage() {
         actions={
           <>
             <Button variant="outline" leftIcon={<Download size={16} />} onClick={exportCsv}>Exportar CSV</Button>
-            <Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Nova OS</Button>
+            <Button leftIcon={<Plus size={16} />} onClick={() => { setPresetCustomerId(''); setFormOpen(true); }}>Nova OS</Button>
           </>
         }
       />
@@ -212,15 +276,26 @@ export function OrdensPage() {
        *  detalhe da OS, para manter a exibição consistente entre criar e ver/editar. */}
       <Drawer
         open={formOpen}
-        onClose={() => setFormOpen(false)}
+        onClose={() => { setFormOpen(false); setPresetCustomerId(''); }}
         title="Nova Ordem de Serviço"
         subtitle="Preenchimento rápido — serviços, pragas e áreas em toques"
         wide
-        footer={<div className="flex justify-end gap-2"><Button variant="outline" disabled={saving} onClick={() => setFormOpen(false)}>Cancelar</Button><Button disabled={saving} onClick={() => createFormRef.current?.submit()} leftIcon={<Check size={15} />}>{saving ? 'Criando…' : 'Criar OS'}</Button></div>}
+        footer={(
+          <div className="flex items-center justify-between gap-2">
+            {/* Limpar fica separado das ações de conclusão, à esquerda: é o
+             *  oposto delas e não deve ser clicado por engano ao mirar em
+             *  "Criar OS". */}
+            <Button variant="ghost" disabled={saving} leftIcon={<Eraser size={15} />} onClick={() => { createFormRef.current?.clear(); toast('Formulário limpo — o cliente selecionado foi mantido.', { tone: 'info' }); }}>Limpar formulário</Button>
+            <div className="flex gap-2">
+              <Button variant="outline" disabled={saving} onClick={() => { setFormOpen(false); setPresetCustomerId(''); }}>Cancelar</Button>
+              <Button disabled={saving} onClick={() => createFormRef.current?.submit()} leftIcon={<Check size={15} />}>{saving ? 'Criando…' : 'Criar OS'}</Button>
+            </div>
+          </div>
+        )}
       >
         {formOpen && (
           <div className="mx-auto max-w-4xl">
-            <OsFormBody ref={createFormRef} initial={null} onSaved={(so) => { setFormOpen(false); setSelected(so); setEditMode(false); }} onSavingChange={setSaving} />
+            <OsFormBody ref={createFormRef} initial={null} presetCustomerId={presetCustomerId} onSaved={(so) => { setFormOpen(false); setPresetCustomerId(''); setSelected(so); setEditMode(false); }} onSavingChange={setSaving} />
           </div>
         )}
       </Drawer>
@@ -408,8 +483,8 @@ export function OrdensPage() {
  *  automática de produtos. Sem Drawer/rodapé próprios: quem o usa decide
  *  onde exibi-lo (painel novo ao criar, ou o próprio painel de detalhe já
  *  aberto, transformado in-place, ao editar) e aciona o envio via `ref`. */
-const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSaved: (so: ServiceOrder) => void; onSavingChange?: (saving: boolean) => void }>(
-  function OsFormBody({ initial, onSaved, onSavingChange }, ref) {
+const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; presetCustomerId?: string; onSaved: (so: ServiceOrder) => void; onSavingChange?: (saving: boolean) => void }>(
+  function OsFormBody({ initial, presetCustomerId, onSaved, onSavingChange }, ref) {
   const add = useServiceOrdersStore((s) => s.add);
   const updateOs = useServiceOrdersStore((s) => s.update);
   const allOrders = useServiceOrdersStore((s) => s.orders);
@@ -497,6 +572,14 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   /** true quando o formulário abriu com um rascunho recuperado — vale avisar,
    *  senão a pessoa não entende por que os campos vieram preenchidos. */
   const [fromDraft, setFromDraft] = useState(false);
+  /** Contador de "zeradas" do formulário. Serve só para a linha de base do
+   *  rascunho ser recapturada depois de "Começar em branco" — senão o
+   *  formulário esvaziado contaria como preenchimento e seria guardado. */
+  const [resetSeq, setResetSeq] = useState(0);
+  /** Este formulário foi aberto pelo botão "Novo agendamento" da ficha do
+   *  cliente, e não pelo "Nova OS" da própria tela de Ordens. Muda só o aviso
+   *  de preenchimento automático — ver o bloco `viaCliente` no formulário. */
+  const viaCliente = !!presetCustomerId;
   const [validityTouched, setValidityTouched] = useState(false);
   /** Texto livre de "áreas tratadas" de OS antigas (anteriores ao seletor por
    *  chips) — preservado ao editar quando nenhuma área com id correspondente
@@ -513,16 +596,60 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   const selectablePests = pests.filter((p) => p.isActive !== false || pestIds.includes(p.id));
   const selectableAreas = areas.filter((a) => a.isActive !== false || areaIds.includes(a.id));
 
+  /** Estrutura do local cadastrada no cliente escolhido (nome → quantidade).
+   *  Cadastro antigo só guardou a lista de nomes; nesse caso cada ambiente
+   *  conta como 1 — mesma leitura que a ficha do cliente faz. */
+  const customerStructure = useMemo<Record<string, number>>(() => {
+    if (!cust) return {};
+    if (cust.localStructureQty && Object.keys(cust.localStructureQty).length) return cust.localStructureQty;
+    return Object.fromEntries((cust.localStructure ?? []).map((n) => [n, 1]));
+  }, [cust]);
+
+  /** Os ambientes do cliente saem em destaque, separados em dois grupos: os que
+   *  existem no cadastro viram chip normal (guardados por id em `areaQty`), e os
+   *  próprios daquele cliente — digitados na ficha dele, sem par no cadastro —
+   *  entram como área específica desta OS (`customAreas`, por nome). Assim
+   *  nenhum campo ou coluna nova é preciso. A comparação usa `compareText`,
+   *  que ignora acento e caixa: "Camara fria" casa com "Câmara Fria". */
+  const { structureAreas, structureExtras } = useMemo(() => {
+    const doCadastro: { area: TreatedArea; qty: number }[] = [];
+    const proprios: { name: string; qty: number }[] = [];
+    for (const [nome, qty] of Object.entries(customerStructure)) {
+      const area = areas.find((a) => compareText(a.name, nome) === 0);
+      if (area) doCadastro.push({ area, qty });
+      else proprios.push({ name: nome, qty });
+    }
+    return { structureAreas: doCadastro, structureExtras: proprios };
+  }, [customerStructure, areas]);
+
+  const temEstrutura = structureAreas.length + structureExtras.length > 0;
+  /** O catálogo mostra o que sobrou — o que já subiu para a faixa do cliente
+   *  não se repete embaixo. */
+  const catalogAreas = selectableAreas.filter((a) => !structureAreas.some((s) => s.area.id === a.id));
+  /** Área específica digitada com o botão + nesta OS. As que vieram da estrutura
+   *  do cliente já aparecem na faixa de cima, então saem daqui. */
+  const looseCustomAreas = customAreas.filter((a) => !structureExtras.some((e) => compareText(e.name, a.name) === 0));
+
   /** Só equipamentos disponíveis (sem dono fixo) podem ser retirados temporariamente
    *  para a OS — o kit fixo/permanente do técnico não deve aparecer aqui. Em modo
    *  edição, mantém visível o que já está retirado nesta própria OS. */
   const availableEquipment = equipment.filter((e) => (!e.assignedTo && e.status === 'disponivel') || (initial && e.checkedOutOsId === initial.id));
 
-  const toggleArea = (id: string) => setAreaQty((m) => {
+  /** `defaultQty` traz a quantidade cadastrada no cliente ("3 Quartos") já ao
+   *  marcar o ambiente — no catálogo geral não há quantidade, então é 1. */
+  const toggleArea = (id: string, defaultQty = 1) => setAreaQty((m) => {
     if (m[id] != null) { const n = { ...m }; delete n[id]; return n; }
-    return { ...m, [id]: 1 };
+    return { ...m, [id]: Math.max(1, defaultQty) };
   });
   const setAreaQtyVal = (id: string, qty: number) => setAreaQty((m) => ({ ...m, [id]: Math.max(1, qty) }));
+
+  /** Ambiente próprio do cliente: não tem id de cadastro, então liga/desliga
+   *  direto em `customAreas` (por nome), como uma área específica desta OS. */
+  const toggleCustomArea = (name: string, defaultQty = 1) => setCustomAreas((prev) => (
+    prev.some((a) => compareText(a.name, name) === 0)
+      ? prev.filter((a) => compareText(a.name, name) !== 0)
+      : [...prev, { name, qty: Math.max(1, defaultQty) }]
+  ));
 
   /** Converte um ISO (armazenado) de volta para o formato de <input type=date>,
    *  usando getters locais — evita o desvio de fuso do bug de datas. */
@@ -531,7 +658,15 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
   // Roda uma vez ao montar — o componente é criado do zero sempre que passa
   // a ser exibido (formulário de criação recém-aberto, ou o painel de
   // detalhe recém-transformado em edição), então não depende de um "open".
+  //
+  // O guard de `hydratedRef` é o que faz isto valer sob `React.StrictMode`
+  // (ligado em `main.tsx`): em dev o React monta os efeitos, desmonta e monta
+  // de novo com o mesmo estado e os mesmos refs. Sem ele, a segunda execução
+  // relia o armazenamento, não achava mais o rascunho (já consumido na
+  // primeira) e zerava por cima o que tinha acabado de repor — o rascunho
+  // simplesmente não aparecia em dev, ao contrário da produção.
   useEffect(() => {
+    if (hydratedRef.current) return;
     if (initial) {
       // Modo edição: repopula todos os campos a partir da OS selecionada.
       setCustomerId(initial.customerId);
@@ -593,15 +728,33 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     const rascunho = loadOsDraft();
     if (rascunho) {
       aplicarRascunho(rascunho);
+      // Consumido: some do armazenamento agora, não na próxima abertura. Se o
+      // navegador for fechado antes de qualquer outra coisa, a OS seguinte
+      // abre vazia — que é o comportamento pedido.
+      clearOsDraft();
+      restoredRef.current = true;
+      // Aberto pela ficha de um cliente, o cliente pedido vence o do rascunho —
+      // senão o botão de lá pareceria não fazer nada. Só o cliente muda; o
+      // resto do rascunho volta inteiro, e a troca de cliente já dispara o
+      // preenchimento pelo último atendimento de quem foi escolhido agora.
+      if (presetCustomerId) setCustomerId(presetCustomerId);
       setFromDraft(true);
       hydratedRef.current = true;
       return;
     }
-    const c0 = customers[0]?.id ?? '';
-    setCustomerId(c0);
+    // OS nova abre realmente vazia: nem cliente, nem serviço, nem técnico.
+    //
+    // Antes ela nascia com o primeiro item de cada lista marcado, e isso lia
+    // como "voltou um rascunho": o formulário aparecia preenchido com um
+    // cliente que ninguém escolheu, o serviço dele repunha produtos padrão,
+    // valor e validade pelos efeitos de sugestão, e "Limpar formulário" não
+    // resolvia porque a próxima abertura repetia a marcação. Os campos são
+    // obrigatórios na validação do `submit`, então nada se perde ao começar
+    // vazio — só deixa de haver escolha feita por conta própria.
+    setCustomerId(presetCustomerId || '');
     setAppointmentId('');
-    setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
-    setTechnicianIds(technicianUsers[0] ? [technicianUsers[0].id] : []);
+    setServiceTypeIds([]);
+    setTechnicianIds([]);
     setSellerId(''); setStatus('em_andamento'); setAreaQty({}); setLegacyAreaText(''); setPestIds([]); setPestValidity({}); setDuration(''); setProcedures(''); setTechnicianMessage('');
     setPaymentMethod(''); setServiceValue(''); setServiceValueTouched(false); setValueConfirmed(false); setAssociatedOrderId(''); setPaymentStatus('pendente'); setPaymentDate('');
     setWarrantyHas(true); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
@@ -688,12 +841,65 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     recEnabled, recMeses, recFreq, recPrimeira, recPhases, recDates, execDate, execTime, dueDate, validityDate, validityTouched,
     certValidityDate, certValidityTouched, equipmentIds, products, returnAt]);
 
-  /** Guarda o rascunho a cada mudança — só na criação, e só depois que a
-   *  pessoa mexeu em alguma coisa (senão o estado inicial vira "rascunho"). */
+  // Estado atual do formulário acessível na limpeza da desmontagem, que roda
+  // fora do ciclo de render e não enxergaria o `draft` daquele momento.
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  /** Como o formulário ficou depois do preenchimento automático — o ponto de
+   *  partida que o sistema montou sozinho, não trabalho de ninguém. */
+  const baselineRef = useRef<string | null>(null);
+  /** A OS foi confirmada nesta sessão do formulário: não há rascunho a guardar. */
+  const savedRef = useRef(false);
+  /** Houve toque de verdade no formulário (ponteiro ou teclado) desde a
+   *  abertura — ou desde a última limpeza.
+   *
+   *  É a condição central para gravar rascunho, e existe porque comparar o
+   *  conteúdo com uma linha de base não bastava: os efeitos de sugestão
+   *  (validade, valor, produtos padrão) ainda ajustam campos DEPOIS que a
+   *  linha de base foi capturada. Toda abertura automática terminava
+   *  diferente da base, gravava um "rascunho" que ninguém digitou e o
+   *  formulário seguinte abria com ele — o rascunho nunca parava de voltar. */
+  const interagiuRef = useRef(false);
+  /** Este formulário abriu com o rascunho reposto. Sessão que consumiu o
+   *  rascunho não grava outro ao fechar: é isso que garante que ele volte uma
+   *  única vez. Fica em ref (e não no state `fromDraft`) porque quem lê é a
+   *  gravação da desmontagem. */
+  const restoredRef = useRef(false);
+
+  // Toda vez que o preenchimento pelo histórico roda (montagem, troca de
+  // cliente), o estado que ele produziu vira a nova linha de base. Sem isto,
+  // o que o `applyHistory` copiou da última OS do cliente contaria como
+  // preenchimento do usuário e seria guardado como rascunho dele.
   useEffect(() => {
-    if (initial || !hydratedRef.current) return;
-    try { localStorage.setItem(OS_DRAFT_KEY, JSON.stringify(draft)); } catch { /* cota — ignora */ }
-  }, [draft, initial]);
+    if (initial) return;
+    baselineRef.current = JSON.stringify(draftRef.current);
+  }, [filledFrom, customerId, resetSeq, initial]);
+
+  /** O rascunho existe para um caso só: você fechou a tela no meio do
+   *  preenchimento. Por isso ele é gravado ao sair do formulário, e não a cada
+   *  mudança — gravando a cada mudança, o preenchimento automático virava
+   *  "rascunho" sozinho e a OS seguinte abria anunciando um rascunho que
+   *  ninguém digitou, com os dados da OS recém-criada.
+   *
+   *  Quatro condições para guardar, todas necessárias:
+   *  1. a OS não foi confirmada (`savedRef`) — aí não há o que recuperar;
+   *  2. alguém tocou no formulário (`interagiuRef`) — sem isso o que existe na
+   *     tela é obra dos efeitos de sugestão, não trabalho de ninguém;
+   *  3. esta sessão não é a que consumiu um rascunho (`restoredRef`) — é o que
+   *     faz o rascunho voltar uma única vez e não se auto-renovar;
+   *  4. o conteúdo se afastou do que o sistema preencheu sozinho (`baseline`). */
+  useEffect(() => {
+    if (initial) return;
+    return () => {
+      // Sem toque de verdade não há trabalho a preservar, e a sessão que já
+      // consumiu um rascunho não gera outro.
+      if (savedRef.current || !hydratedRef.current) return;
+      if (!interagiuRef.current || restoredRef.current) return;
+      const atual = JSON.stringify(draftRef.current);
+      if (atual === baselineRef.current) return;
+      saveOsDraft(atual);
+    };
+  }, [initial]);
 
   /** Preenchimento inteligente: repete o último atendimento do cliente. */
   const applyHistory = (cid: string) => {
@@ -721,34 +927,73 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     setFilledFrom(last.number);
   };
 
-  // Ao selecionar o cliente, tenta preencher a partir do histórico — mas não
-  // em modo edição, para não sobrescrever os dados já preenchidos da OS.
-  useEffect(() => { if (customerId && !initial) { applyHistory(customerId); setAppointmentId(''); } }, [customerId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Trocar de cliente limpa o agendamento vinculado (era do cliente anterior)
+  // e o aviso de repetição, que apontava para a OS de outra pessoa.
+  //
+  // O preenchimento pelo histórico NÃO acontece aqui. Ele já foi automático:
+  // escolher o cliente marcava sozinho serviços, pragas, áreas, equipe,
+  // pagamento, garantia e recorrência copiados da última OS dele. Numa OS que
+  // vira documento e cobrança, dado que ninguém escolheu não pode entrar
+  // marcado — e, depois de salvar, a OS recém-criada virava a fonte da
+  // próxima, dando a impressão de que o formulário nunca zerava. Agora é o
+  // botão "Repetir" (ver `repetirUltimo`) que aplica, quando alguém pede.
+  useEffect(() => { if (customerId && !initial) { setAppointmentId(''); setFilledFrom(null); } }, [customerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Última OS deste cliente, se houver — origem do botão "Repetir". */
+  const lastOrder = useMemo(
+    () => (!initial && customerId ? lastOrderForCustomer(customerId) : undefined),
+    // `allOrders` entra de propósito, embora não apareça no corpo:
+    // `lastOrderForCustomer` lê a store por `getState()`, então sem esta
+    // dependência a oferta não acompanharia uma OS criada agora mesmo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [initial, customerId, allOrders],
+  );
+
+  /** Repetir o último atendimento, a pedido. Deixa de ser rascunho: o conteúdo
+   *  agora é uma cópia assumida da OS anterior, não o que ficou pela metade. */
+  const repetirUltimo = () => {
+    if (!customerId) return;
+    applyHistory(customerId);
+    setFromDraft(false);
+  };
+
   const customerAppointments = customerId ? appointmentsForCustomer(customerId) : [];
 
-  /** "Começar em branco": descarta o preenchimento automático e volta aos
-   *  MESMOS padrões de uma O.S. nova.
-   *
-   *  Antes deixava a equipe vazia, enquanto abrir uma "Nova O.S." já vinha com
-   *  o primeiro técnico marcado — duas telas de aparência idêntica começando
-   *  diferente, e a segunda recusando o salvamento por um campo que a primeira
-   *  preenchia sozinha.
-   *
-   *  O cliente NÃO é tocado, e isso é essencial: trocar `customerId` dispara o
-   *  preenchimento pelo histórico daquele cliente, que repopularia serviços,
-   *  pragas e áreas — exatamente o que este botão acabou de limpar. */
+  /** "Começar em branco" / "Limpar formulário": zera tudo e deixa o formulário
+   *  no MESMO estado de uma O.S. recém-aberta — que agora também é vazio,
+   *  cliente incluído. As duas telas precisam começar iguais: quando "Nova
+   *  O.S." vinha com o primeiro cliente, serviço e técnico marcados e o botão
+   *  limpava só parte disso, a limpeza parecia não pegar e a abertura seguinte
+   *  repunha a marcação. */
   const clearFill = () => {
-    setServiceTypeIds(serviceTypes[0] ? [serviceTypes[0].id] : []);
-    setTechnicianIds(technicianUsers[0] ? [technicianUsers[0].id] : []);
+    // Sem serviço a cascata de sugestão se desarma sozinha, sem mexer em
+    // nenhum `touched`: `suggestedProducts` fica vazio, `suggestedServiceValue`
+    // é 0 e `suggestedValidityDays` é undefined, então os três efeitos saem
+    // pelo return. A sugestão volta inteira ao escolher um serviço.
+    //
+    // O cliente também sai: "limpar" que deixa cliente escolhido não limpou
+    // nada aos olhos de quem clicou. Trocar `customerId` não repõe dado
+    // nenhum — o preenchimento pelo histórico só roda no botão "Repetir"
+    // (ver `repetirUltimo`), nunca sozinho na troca de cliente.
+    setCustomerId(''); setAppointmentId('');
+    setServiceTypeIds([]); setTechnicianIds([]); setSellerId('');
     setPestIds([]); setPestValidity({}); setAreaQty({}); setCustomAreas([]); setLegacyAreaText(''); setPaymentMethod(''); setRecEnabled(false); setRecPhases([]); setRecDates([]); setRecPrimeira(''); setFilledFrom(null);
     setValidityDate(''); setValidityTouched(false);
+    setCertValidityDate(''); setCertValidityTouched(false);
+    setWarrantyHas(false); setWarrantyValue('3'); setWarrantyUnit('meses'); setWarrantyType('corretivo');
     setProducts([]); setEquipmentIds([]); setProcedures(''); setTechnicianMessage('');
-    setExecDate(''); setExecTime(''); setDuration('');
+    setExecDate(''); setExecTime(''); setDuration(''); setDueDate('');
     setServiceValue(''); setServiceValueTouched(false); setValueConfirmed(false);
     // "Começar em branco" também descarta o rascunho — senão ele voltaria na
     // próxima abertura e pareceria que a limpeza não funcionou.
     clearOsDraft();
+    // Formulário zerado é ponto de partida limpo: nada a gravar até que
+    // alguém digite de novo, e o que vier depois é rascunho novo (a sessão
+    // deixa de ser "a que consumiu o rascunho").
+    interagiuRef.current = false;
+    restoredRef.current = false;
     setFromDraft(false);
+    setResetSeq((n) => n + 1);
   };
 
   const toggle = (setter: React.Dispatch<React.SetStateAction<string[]>>, id: string) =>
@@ -787,19 +1032,92 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     return days.length ? Math.max(...days) : undefined;
   }, [serviceTypeIds, pestIds, serviceTypes, pests]);
 
-  // Base do cálculo: a Data do Serviço quando informada; sem data marcada,
-  // conta sempre a partir de hoje (nunca de uma data anterior) — mesma regra
-  // já usada na validade por praga e na próxima visita, agora unificada aqui.
+  /** A menor validade entre as pragas selecionadas.
+   *
+   *  É a data que interessa para o serviço inteiro: a partir do momento em que
+   *  a primeira proteção vence, a OS deixa de cobrir tudo o que prometeu, ainda
+   *  que as outras pragas sigam protegidas por mais tempo. Datas em formato de
+   *  input (`aaaa-mm-dd`) ordenam corretamente como texto. */
+  const menorValidadePraga = useMemo(() => {
+    const datas = pestIds.map((id) => pestValidity[id]).filter(Boolean).sort();
+    return datas[0] ?? '';
+  }, [pestIds, pestValidity]);
+
+  /** Até quando a garantia vale.
+   *
+   *  O que a OS grava é o prazo (`warranty`: valor + unidade + tipo), não uma
+   *  data — então a data é sempre calculada da Data do Serviço. Isso mantém a
+   *  garantia colada ao atendimento: adiar o serviço adia a garantia junto,
+   *  sem ninguém precisar refazer a conta. */
+  const garantiaAte = useMemo(() => {
+    const n = Number(warrantyValue);
+    if (!warrantyHas || !n) return '';
+    const base = execDate ? parseDateInput(execDate) : new Date();
+    if (warrantyUnit === 'meses') base.setMonth(base.getMonth() + n);
+    else base.setDate(base.getDate() + n);
+    return toDateInputValue(base);
+  }, [warrantyHas, warrantyValue, warrantyUnit, execDate]);
+
+  /** Caminho inverso: escolher a data de término escreve o prazo equivalente.
+   *
+   *  Prefere meses quando a data cai exatamente num múltiplo de mês ("3 meses"
+   *  lê melhor que "92 dias" no certificado e é o que o cliente ouve); nos
+   *  demais casos grava dias. Os limites são os mesmos dos campos do bloco
+   *  Garantia — 12 meses ou 365 dias —, e a data anterior à do serviço não é
+   *  prazo nenhum. Nos dois casos o pedido é recusado com aviso, em vez de
+   *  gravar um prazo que a OS não sabe representar. */
+  const definirGarantiaAte = (valor: string) => {
+    if (!valor) return;
+    const base = execDate ? parseDateInput(execDate) : new Date();
+    base.setHours(0, 0, 0, 0);
+    const alvo = parseDateInput(valor);
+    alvo.setHours(0, 0, 0, 0);
+    const dias = Math.round((alvo.getTime() - base.getTime()) / 86400000);
+    if (dias <= 0) {
+      toast('A garantia precisa terminar depois da Data do Serviço.', { tone: 'warning' });
+      return;
+    }
+    for (let m = 1; m <= 12; m += 1) {
+      const teste = execDate ? parseDateInput(execDate) : new Date();
+      teste.setMonth(teste.getMonth() + m);
+      if (toDateInputValue(teste) === valor) {
+        setWarrantyUnit('meses');
+        setWarrantyValue(String(m));
+        return;
+      }
+    }
+    if (dias > 365) {
+      toast('Prazo máximo de garantia: 12 meses (365 dias).', { tone: 'warning' });
+      return;
+    }
+    setWarrantyUnit('dias');
+    setWarrantyValue(String(dias));
+  };
+
+  // Validade do serviço. Duas origens, nesta ordem:
   //
-  // A sugestão preenche o campo vazio e acompanha a Data do Serviço, mas NÃO
-  // se mexe quando o usuário adiciona ou remove uma praga: `suggestedValidityDays`
-  // é o maior prazo entre serviços e pragas escolhidos, então marcar mais uma
-  // praga trocava a validade já preenchida por baixo de quem estava montando a
-  // OS — e a validade do certificado ia junto, porque segue esta. Recalcular só
-  // quando a Data do Serviço muda mantém a conta certa sem apagar trabalho.
+  // 1. As datas por praga, quando existe ao menos uma: vale a MENOR delas.
+  //    Antes a validade do serviço saía de uma sugestão geral em dias e
+  //    ignorava o que se tinha ajustado praga a praga — a OS dizia cobrir até
+  //    uma data que uma das pragas já não alcançava.
+  // 2. Sem praga com data, cai na sugestão por dias (o maior prazo entre os
+  //    serviços e pragas escolhidos), contada da Data do Serviço quando
+  //    informada e de hoje quando não — nunca de uma data anterior.
+  //
+  // Nos dois casos, editar o campo (`validityTouched`) encerra o automático:
+  // a partir daí a data é de quem digitou.
+  //
+  // Também só em OS nova: na edição o efeito chega antes de `validityTouched`
+  // virar `true` e teria a mesma chance de reescrever o que está gravado.
   const execAnteriorRef = useRef(execDate);
   useEffect(() => {
-    if (validityTouched || suggestedValidityDays == null) return;
+    if (initial || validityTouched) return;
+    if (menorValidadePraga) {
+      execAnteriorRef.current = execDate;
+      setValidityDate(menorValidadePraga);
+      return;
+    }
+    if (suggestedValidityDays == null) return;
     const execMudou = execAnteriorRef.current !== execDate;
     execAnteriorRef.current = execDate;
     setValidityDate((atual) => {
@@ -808,14 +1126,19 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       base.setDate(base.getDate() + suggestedValidityDays);
       return toDateInputValue(base);
     });
-  }, [suggestedValidityDays, validityTouched, execDate]);
+  }, [menorValidadePraga, suggestedValidityDays, validityTouched, execDate, initial]);
 
   // Validade do certificado — segue a validade do serviço enquanto não for editada
   // manualmente; sem garantia, o certificado não se aplica (fica em branco).
+  //
+  // Só em OS nova, pelo mesmo motivo da validade por praga e do valor: ao abrir
+  // uma OS salva, este efeito roda no ciclo em que `certValidityTouched` ainda
+  // é `false` e `validityDate` ainda está vazio — o certificado gravado era
+  // trocado por vazio, e quem salvasse a OS depois disso perdia a data.
   useEffect(() => {
-    if (certValidityTouched) return;
+    if (initial || certValidityTouched) return;
     setCertValidityDate(warrantyHas ? validityDate : '');
-  }, [validityDate, warrantyHas, certValidityTouched]);
+  }, [validityDate, warrantyHas, certValidityTouched, initial]);
 
   // Prévia do plano de recorrência: cada ocorrência é calculada a partir da
   // anterior (nunca de hoje) — plano com fim definido, não repetição infinita.
@@ -866,7 +1189,15 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
 
   // Validade individual por praga — sugerida pelo cadastro da praga (ou pela
   // sugestão geral da OS), editável por praga; some quando a praga é removida.
+  //
+  // Só vale em OS nova. Abrir uma OS salva monta o formulário em duas frentes
+  // no mesmo instante: o efeito de hidratação repõe o que está gravado, e este
+  // aqui roda no mesmo ciclo ainda enxergando `pestIds` vazio — a limpeza do
+  // fim ("tira o que não está mais selecionado") varria as datas recém-repostas
+  // e a sugestão as reescrevia com o prazo padrão. Quem só ia corrigir outro
+  // campo e salvava gravava por cima datas que nunca escolheu.
   useEffect(() => {
+    if (initial) return;
     setPestValidity((m) => {
       const next = { ...m };
       pestIds.forEach((id) => {
@@ -884,7 +1215,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
       Object.keys(next).forEach((id) => { if (!pestIds.includes(id)) delete next[id]; });
       return next;
     });
-  }, [pestIds, execDate, pests, suggestedValidityDays]);
+  }, [pestIds, execDate, pests, suggestedValidityDays, initial]);
 
   // Certificações/licenças da empresa vencidas — alertadas na geração da OS.
   const expiredLicenses = licenses.filter((l) => l.expiresAt && new Date(l.expiresAt) < new Date());
@@ -928,10 +1259,15 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     () => serviceTypeIds.reduce((sum, id) => sum + (serviceTypes.find((s) => s.id === id)?.defaultPrice ?? 0), 0),
     [serviceTypeIds, serviceTypes],
   );
+  //
+  // Mesma regra da validade por praga: sugestão é coisa de OS nova. Na edição,
+  // `serviceValueTouched` só fica true depois que a hidratação se aplica, e
+  // este efeito roda antes disso — trocava o valor negociado pelo preço de
+  // tabela, ou o esvaziava quando o serviço não tem preço padrão.
   useEffect(() => {
-    if (serviceValueTouched) return;
+    if (initial || serviceValueTouched) return;
     setServiceValue(suggestedServiceValue ? String(suggestedServiceValue) : '');
-  }, [suggestedServiceValue, serviceValueTouched]);
+  }, [suggestedServiceValue, serviceValueTouched, initial]);
 
   /** Gera/atualiza os agendamentos futuros do plano de recorrência. Só
    *  regenera quando o plano (habilitado/fases) realmente mudou — reabrir e
@@ -1197,7 +1533,10 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
 
     logChange('criação', 'ordem de serviço', `OS #${so.number} · ${custName}`, so.id);
     // A OS foi confirmada: o rascunho deixou de existir. É isto que faz o
-    // próximo "Nova O.S." abrir em branco em vez de repetir esta.
+    // próximo "Nova O.S." abrir em branco em vez de repetir esta. O `savedRef`
+    // impede que a gravação da desmontagem, logo a seguir, escreva de volta o
+    // que acabou de ser apagado.
+    savedRef.current = true;
     clearOsDraft();
     hydratedRef.current = false;
     toast(`OS #${so.number} criada e adicionada à Agenda.`, { tone: 'success' });
@@ -1212,10 +1551,19 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
     }
   };
 
-  useImperativeHandle(ref, () => ({ submit }));
+  useImperativeHandle(ref, () => ({ submit, clear: clearFill }));
 
   return (
-      <div className="space-y-5">
+      /* Toque de verdade no formulário — é o que autoriza gravar rascunho ao
+       * fechar (ver `interagiuRef`). Em captura, para pegar também o que
+       * acontece dentro de campos e listas. O botão "Começar em branco" fica
+       * aqui dentro, mas o `pointerdown` dispara ANTES do clique dele, que
+       * zera o sinalizador em seguida — limpar continua limpando. */
+      <div
+        className="space-y-5"
+        onPointerDownCapture={() => { interagiuRef.current = true; }}
+        onKeyDownCapture={() => { interagiuRef.current = true; }}
+      >
         <Field label="Cliente" required>
           <Combobox
             value={customerId}
@@ -1237,18 +1585,44 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
           </Field>
         )}
 
-        {fromDraft && (
+        {/* Aberto pela ficha do cliente ("Novo agendamento"): quem clicou não
+         *  estava montando uma OS nem pensando em rascunho — pediu uma OS para
+         *  aquele cliente. Falar de "rascunho recuperado" aí explica uma
+         *  mecânica interna que não é a pergunta de quem chegou por esse
+         *  caminho; o que importa é que veio coisa preenchida e como zerar. */}
+        {/* Oferta, não ação: o atendimento anterior só entra no formulário se
+         *  alguém pedir. Some depois de aplicado — aí quem manda é o aviso de
+         *  "preenchido pelo último atendimento", que traz o desfazer. */}
+        {lastOrder && filledFrom == null && (
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 p-2.5 text-xs text-muted-foreground">
+            <Zap size={14} className="shrink-0" />
+            <span className="flex-1">Este cliente tem um atendimento anterior (OS #{lastOrder.number}) — serviços, pragas, áreas e equipe podem ser repetidos.</span>
+            <button onClick={repetirUltimo} className="shrink-0 font-medium text-brand underline">Repetir</button>
+          </div>
+        )}
+
+        {viaCliente && fromDraft && (
+          <div className="flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft/40 p-2.5 text-xs text-brand">
+            <Zap size={14} className="shrink-0" />
+            <span className="flex-1">
+              Certos dados foram preenchidos automaticamente com base no cliente escolhido. Para começar em branco,{' '}
+              <button onClick={clearFill} className="font-medium underline">clique aqui</button>.
+            </span>
+          </div>
+        )}
+
+        {fromDraft && !viaCliente && (
           <div className="flex items-center gap-2 rounded-xl border border-warning/40 bg-warning-soft/50 p-2.5 text-xs text-foreground">
             <Zap size={14} className="shrink-0 text-warning" />
-            <span className="flex-1">Rascunho recuperado — você tinha começado esta OS e não finalizou. Ao confirmar a criação, ela some daqui.</span>
+            <span className="flex-1">Rascunho recuperado — você tinha começado esta OS e não finalizou. Esta é a única vez que ele volta: se fechar sem confirmar, a próxima OS abre em branco.</span>
             <button onClick={clearFill} className="shrink-0 font-medium underline">Começar em branco</button>
           </div>
         )}
 
-        {filledFrom != null && !fromDraft && (
+        {filledFrom != null && (
           <div className="flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-soft/40 p-2.5 text-xs text-brand">
             <Zap size={14} className="shrink-0" />
-            <span className="flex-1">Preenchido automaticamente pelo último atendimento (OS #{filledFrom}). Revise e ajuste o que mudou.</span>
+            <span className="flex-1">Repetido do último atendimento (OS #{filledFrom}). Revise e ajuste o que mudou.</span>
             <button onClick={clearFill} className="shrink-0 font-medium underline">Começar em branco</button>
           </div>
         )}
@@ -1274,62 +1648,90 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
             <QuickAddChip label="praga" onAdd={quickAddPest} />
           </div>
           {pestIds.length > 0 && (
-            <div className="mt-2 space-y-1.5 rounded-xl border border-border bg-muted/30 p-2.5">
-              {pestIds.map((id) => {
-                const p = pests.find((x) => x.id === id);
-                return (
-                  <div key={id} className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-foreground">{p?.name}</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-muted-foreground">Validade</span>
-                      <DateInput type="date" value={pestValidity[id] ?? ''} onChange={(e) => setPestValidity((m) => ({ ...m, [id]: e.target.value }))} className="h-7 rounded-md border border-input bg-surface px-1.5 text-xs text-foreground focus:border-brand focus:outline-none" />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            /* A validade de cada praga é editada em "Prazos e validades", junto
+             * das outras três datas — repetir os campos aqui deixava a mesma
+             * data em dois pontos da mesma tela. */
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              A validade de cada praga fica em <span className="font-medium text-foreground">Prazos e validades</span>, logo abaixo.
+            </p>
           )}
         </Field>
 
         <Field label="Áreas tratadas" hint="Toque para selecionar; ajuste a quantidade com + / −">
+          {temEstrutura && (
+            <>
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Deste cliente</p>
+              <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                {structureAreas.map(({ area, qty }) => (
+                  <AreaChip
+                    key={area.id}
+                    name={area.name}
+                    qty={areaQty[area.id] ?? null}
+                    title={`Estrutura cadastrada neste cliente (${qty})`}
+                    onToggle={() => toggleArea(area.id, qty)}
+                    onQty={(n) => setAreaQtyVal(area.id, n)}
+                  />
+                ))}
+                {structureExtras.map(({ name, qty }) => {
+                  const atual = customAreas.find((a) => compareText(a.name, name) === 0);
+                  return (
+                    <AreaChip
+                      key={name}
+                      name={name}
+                      qty={atual?.qty ?? null}
+                      title={`Ambiente próprio deste cliente (${qty})`}
+                      onToggle={() => toggleCustomArea(name, qty)}
+                      onQty={(n) => setCustomQty(atual?.name ?? name, n)}
+                    />
+                  );
+                })}
+              </div>
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Catálogo</p>
+            </>
+          )}
           <div className="flex flex-wrap items-center gap-1.5">
-            {selectableAreas.map((a) => (
-              <div key={a.id} className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition ${areaQty[a.id] != null ? 'border-brand bg-brand-soft text-brand' : 'border-border text-muted-foreground hover:bg-muted'}`}>
-                <button type="button" onClick={() => toggleArea(a.id)}>{a.name}</button>
-                {areaQty[a.id] != null && (
-                  <span className="flex items-center gap-1 border-l border-brand/30 pl-1">
-                    <button type="button" aria-label={`Diminuir quantidade de ${a.name}`} onClick={() => setAreaQtyVal(a.id, areaQty[a.id] - 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">−</button>
-                    <span className="w-3.5 text-center font-semibold">{areaQty[a.id]}</span>
-                    <button type="button" aria-label={`Aumentar quantidade de ${a.name}`} onClick={() => setAreaQtyVal(a.id, areaQty[a.id] + 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">+</button>
-                  </span>
-                )}
-              </div>
+            {catalogAreas.map((a) => (
+              <AreaChip
+                key={a.id}
+                name={a.name}
+                qty={areaQty[a.id] ?? null}
+                onToggle={() => toggleArea(a.id)}
+                onQty={(n) => setAreaQtyVal(a.id, n)}
+              />
             ))}
-            {customAreas.map((a) => (
-              <div key={a.name} className="flex items-center gap-1 rounded-full border border-brand bg-brand-soft px-2 py-1 text-xs text-brand">
-                <span title="Área específica desta OS">{a.name}</span>
-                <span className="flex items-center gap-1 border-l border-brand/30 pl-1">
-                  <button type="button" aria-label={`Diminuir quantidade de ${a.name}`} onClick={() => setCustomQty(a.name, a.qty - 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">−</button>
-                  <span className="w-3.5 text-center font-semibold">{a.qty}</span>
-                  <button type="button" aria-label={`Aumentar quantidade de ${a.name}`} onClick={() => setCustomQty(a.name, a.qty + 1)} className="flex h-4 w-4 items-center justify-center rounded hover:bg-brand/20">+</button>
-                </span>
-              </div>
+            {looseCustomAreas.map((a) => (
+              <AreaChip
+                key={a.name}
+                name={a.name}
+                qty={a.qty}
+                title="Área específica desta OS"
+                onToggle={() => setCustomQty(a.name, 0)}
+                onQty={(n) => setCustomQty(a.name, n)}
+              />
             ))}
             <QuickAddChip label="área" onAdd={quickAddArea} />
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">
+            {temEstrutura
+              ? 'Em destaque, a estrutura do local cadastrada neste cliente — marcar já traz a quantidade dele. '
+              : ''}
             O <span className="font-medium">+</span> cria uma área específica desta OS (ex.: "Câmara fria do estoque").
-            Ela fica registrada só aqui — para virar opção fixa de todos os clientes, cadastre em Configurações → Cadastro.
+            Ela fica registrada só aqui — para virar opção fixa de todos os clientes, cadastre em Configurações → Cadastro → Estrutura do local.
           </p>
         </Field>
 
-        <Field label="Produtos previstos" hint="Sugeridos automaticamente pelos serviços selecionados — ajuste a quantidade, remova ou adicione outro">
+        <Field label="Produtos previstos" hint="Sugeridos automaticamente pelos serviços selecionados — o adicionado na mão entra zerado, informe a quantidade aplicada">
           <MultiCombobox
             values={products.map((p) => p.productId)}
             onChange={(ids) => { productsTouched.current = true; setProducts((prev) => {
               const kept = prev.filter((p) => ids.includes(p.productId));
               const addedIds = ids.filter((id) => !prev.some((p) => p.productId === id));
-              return [...kept, ...addedIds.map((id) => ({ productId: id, qty: 1 }))];
+              // Produto escolhido na mão entra zerado: quem sabe a dose é quem
+              // aplica. Sugerir 1 fazia essa quantidade virar "aplicada" no
+              // Laudo sem ninguém ter medido nada. O documento só imprime
+              // produto com quantidade > 0 (`printDocuments.ts`), então nada
+              // entra por engano enquanto o campo estiver em branco.
+              return [...kept, ...addedIds.map((id) => ({ productId: id, qty: 0 }))];
             }); }}
             placeholder="Buscar produto…"
             options={allProducts.map((p) => ({ value: p.id, label: p.name, sub: p.unit }))}
@@ -1514,13 +1916,119 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; onSa
             {touched && !execTime && <span className="mt-1 block text-xs text-danger">Informe o horário do serviço.</span>}
           </Field>
           <Field label="Data de Vencimento do Pagamento"><DateInput type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
-          <Field label="Validade do Serviço" hint={!validityTouched && suggestedValidityDays != null ? `Sugerida pelo serviço/praga: ${suggestedValidityDays} dias` : 'Validade do serviço executado, com ou sem garantia'}>
-            <DateInput type="date" value={validityDate} onChange={(e) => { setValidityDate(e.target.value); setValidityTouched(true); }} />
-          </Field>
-          <Field label="Validade do Certificado" hint={!warrantyHas ? 'Não aplicável — serviço sem garantia' : 'Validade do certificado a ser emitido'}>
-            <DateInput type="date" disabled={!warrantyHas} value={certValidityDate} onChange={(e) => { setCertValidityDate(e.target.value); setCertValidityTouched(true); }} />
-          </Field>
           <Field label="Duração (min)"><Input type="number" min={0} value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="—" /></Field>
+        </div>
+
+        {/* Prazos e validades — as quatro datas juntas.
+         *
+         *  Elas respondem a perguntas diferentes e antes viviam em três lugares
+         *  distintos da tela (a da praga junto das pragas; serviço e certificado
+         *  no meio das datas de pagamento; a garantia só como prazo). Lado a
+         *  lado fica visível o que cada uma cobre — e que a do serviço não vai
+         *  além da menor validade das pragas. */}
+        <div className="rounded-xl border border-border bg-muted/30 p-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Prazos e validades</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+
+            {/* 1 · Por praga — é daqui que sai a validade do serviço. */}
+            <div className="rounded-lg border border-border bg-surface p-2.5">
+              <p className="text-xs font-medium text-foreground">Validade por praga</p>
+              {pestIds.length === 0 ? (
+                <p className="mt-1 text-[11px] text-muted-foreground">Nenhuma praga selecionada.</p>
+              ) : (
+                <>
+                  <p className="mt-1 text-sm font-semibold text-foreground">{menorValidadePraga ? fmtDate(menorValidadePraga) : '—'}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {menorValidadePraga
+                      ? `Menor entre ${pestIds.length} praga(s) — até aqui o serviço cobre tudo`
+                      : 'Sem data definida nas pragas'}
+                  </p>
+                  <div className="mt-2 max-h-32 space-y-1 overflow-y-auto pr-0.5">
+                    {pestIds.map((id) => {
+                      const p = pests.find((x) => x.id === id);
+                      const ehMenor = !!menorValidadePraga && pestValidity[id] === menorValidadePraga;
+                      return (
+                        <div key={id} className="flex items-center justify-between gap-1.5">
+                          <span className={cn('truncate text-[11px]', ehMenor ? 'font-medium text-foreground' : 'text-muted-foreground')} title={p?.name}>{p?.name}</span>
+                          <DateInput
+                            type="date"
+                            value={pestValidity[id] ?? ''}
+                            onChange={(e) => setPestValidity((m) => ({ ...m, [id]: e.target.value }))}
+                            aria-label={`Validade da praga ${p?.name ?? ''}`}
+                            className="h-7 w-[7.5rem] shrink-0 rounded-md border border-input bg-surface px-1.5 text-xs text-foreground focus:border-brand focus:outline-none"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* 2 · Do serviço — segue a menor das pragas até alguém sobrescrever. */}
+            <div className="rounded-lg border border-border bg-surface p-2.5">
+              <p className="text-xs font-medium text-foreground">Validade do serviço</p>
+              <div className="mt-1.5">
+                <DateInput type="date" value={validityDate} onChange={(e) => { setValidityDate(e.target.value); setValidityTouched(true); }} aria-label="Validade do serviço" />
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {validityTouched
+                  ? 'Definida manualmente.'
+                  : menorValidadePraga
+                    ? 'Acompanha a menor validade das pragas.'
+                    : suggestedValidityDays != null
+                      ? `Sugerida pelo serviço/praga: ${suggestedValidityDays} dias.`
+                      : 'Validade do serviço executado, com ou sem garantia.'}
+              </p>
+              {validityTouched && menorValidadePraga && validityDate > menorValidadePraga && (
+                <p className="mt-1 text-[11px] text-warning">
+                  Passa da menor validade das pragas ({fmtDate(menorValidadePraga)}).
+                </p>
+              )}
+            </div>
+
+            {/* 3 · Do certificado — segue a do serviço; sem garantia não existe. */}
+            <div className="rounded-lg border border-border bg-surface p-2.5">
+              <p className="text-xs font-medium text-foreground">Validade do certificado</p>
+              <div className="mt-1.5">
+                <DateInput type="date" disabled={!warrantyHas} value={certValidityDate} onChange={(e) => { setCertValidityDate(e.target.value); setCertValidityTouched(true); }} aria-label="Validade do certificado" />
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {!warrantyHas
+                  ? 'Não aplicável — serviço sem garantia.'
+                  : certValidityTouched
+                    ? 'Definida manualmente.'
+                    : 'Acompanha a validade do serviço.'}
+              </p>
+            </div>
+
+            {/* 4 · Garantia — data derivada do prazo (o que a OS grava é o prazo). */}
+            <div className="rounded-lg border border-border bg-surface p-2.5">
+              <p className="text-xs font-medium text-foreground">Garantia até</p>
+              <div className="mt-1.5">
+                <DateInput
+                  type="date"
+                  disabled={!warrantyHas}
+                  value={garantiaAte}
+                  min={execDate || undefined}
+                  onChange={(e) => definirGarantiaAte(e.target.value)}
+                  aria-label="Garantia até"
+                />
+              </div>
+              {!warrantyHas ? (
+                <p className="mt-1 text-[11px] text-muted-foreground">Sem garantia neste serviço.</p>
+              ) : (
+                <>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {warrantyValue || '—'} {warrantyUnit} · {(WARRANTY_TYPE_LABEL[warrantyType] ?? warrantyType).toLowerCase()}
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Escolher a data aqui reescreve o prazo; mudar o prazo no bloco Garantia move a data. Ela conta sempre da Data do Serviço.
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         <Field label="Equipe — técnicos" required hint="Selecione um ou mais técnicos">

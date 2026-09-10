@@ -41,7 +41,10 @@ export function CommandPalette() {
     if (!commandOpen) setQuery('');
   }, [commandOpen]);
 
-  const nav = currentUser ? navForUser(currentUser, departments) : [];
+  const nav = useMemo(
+    () => (currentUser ? navForUser(currentUser, departments) : []),
+    [currentUser, departments],
+  );
 
   const results = useMemo(() => {
     const q = query.toLowerCase().trim();
@@ -60,7 +63,9 @@ export function CommandPalette() {
           }))
       : [];
     return [...pages, ...custs];
-  }, [query, nav]);
+    // `customers` entra nas dependências: sem ela, a busca de cliente ficava
+    // presa na lista do primeiro render e não achava quem foi cadastrado depois.
+  }, [query, nav, customers]);
 
   const go = (to: string) => {
     navigate(to);
