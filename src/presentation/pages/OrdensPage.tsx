@@ -1032,19 +1032,89 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
     return days.length ? Math.max(...days) : undefined;
   }, [serviceTypeIds, pestIds, serviceTypes, pests]);
 
-  // Base do cálculo: a Data do Serviço quando informada; sem data marcada,
-  // conta sempre a partir de hoje (nunca de uma data anterior) — mesma regra
-  // já usada na validade por praga e na próxima visita, agora unificada aqui.
+  /** A menor validade entre as pragas selecionadas.
+   *
+   *  É a data que interessa para o serviço inteiro: a partir do momento em que
+   *  a primeira proteção vence, a OS deixa de cobrir tudo o que prometeu, ainda
+   *  que as outras pragas sigam protegidas por mais tempo. Datas em formato de
+   *  input (`aaaa-mm-dd`) ordenam corretamente como texto. */
+  const menorValidadePraga = useMemo(() => {
+    const datas = pestIds.map((id) => pestValidity[id]).filter(Boolean).sort();
+    return datas[0] ?? '';
+  }, [pestIds, pestValidity]);
+
+  /** Até quando a garantia vale.
+   *
+   *  O que a OS grava é o prazo (`warranty`: valor + unidade + tipo), não uma
+   *  data — então a data é sempre calculada da Data do Serviço. Isso mantém a
+   *  garantia colada ao atendimento: adiar o serviço adia a garantia junto,
+   *  sem ninguém precisar refazer a conta. */
+  const garantiaAte = useMemo(() => {
+    const n = Number(warrantyValue);
+    if (!warrantyHas || !n) return '';
+    const base = execDate ? parseDateInput(execDate) : new Date();
+    if (warrantyUnit === 'meses') base.setMonth(base.getMonth() + n);
+    else base.setDate(base.getDate() + n);
+    return toDateInputValue(base);
+  }, [warrantyHas, warrantyValue, warrantyUnit, execDate]);
+
+  /** Caminho inverso: escolher a data de término escreve o prazo equivalente.
+   *
+   *  Prefere meses quando a data cai exatamente num múltiplo de mês ("3 meses"
+   *  lê melhor que "92 dias" no certificado e é o que o cliente ouve); nos
+   *  demais casos grava dias. Os limites são os mesmos dos campos do bloco
+   *  Garantia — 12 meses ou 365 dias —, e a data anterior à do serviço não é
+   *  prazo nenhum. Nos dois casos o pedido é recusado com aviso, em vez de
+   *  gravar um prazo que a OS não sabe representar. */
+  const definirGarantiaAte = (valor: string) => {
+    if (!valor) return;
+    const base = execDate ? parseDateInput(execDate) : new Date();
+    base.setHours(0, 0, 0, 0);
+    const alvo = parseDateInput(valor);
+    alvo.setHours(0, 0, 0, 0);
+    const dias = Math.round((alvo.getTime() - base.getTime()) / 86400000);
+    if (dias <= 0) {
+      toast('A garantia precisa terminar depois da Data do Serviço.', { tone: 'warning' });
+      return;
+    }
+    for (let m = 1; m <= 12; m += 1) {
+      const teste = execDate ? parseDateInput(execDate) : new Date();
+      teste.setMonth(teste.getMonth() + m);
+      if (toDateInputValue(teste) === valor) {
+        setWarrantyUnit('meses');
+        setWarrantyValue(String(m));
+        return;
+      }
+    }
+    if (dias > 365) {
+      toast('Prazo máximo de garantia: 12 meses (365 dias).', { tone: 'warning' });
+      return;
+    }
+    setWarrantyUnit('dias');
+    setWarrantyValue(String(dias));
+  };
+
+  // Validade do serviço. Duas origens, nesta ordem:
   //
-  // A sugestão preenche o campo vazio e acompanha a Data do Serviço, mas NÃO
-  // se mexe quando o usuário adiciona ou remove uma praga: `suggestedValidityDays`
-  // é o maior prazo entre serviços e pragas escolhidos, então marcar mais uma
-  // praga trocava a validade já preenchida por baixo de quem estava montando a
-  // OS — e a validade do certificado ia junto, porque segue esta. Recalcular só
-  // quando a Data do Serviço muda mantém a conta certa sem apagar trabalho.
+  // 1. As datas por praga, quando existe ao menos uma: vale a MENOR delas.
+  //    Antes a validade do serviço saía de uma sugestão geral em dias e
+  //    ignorava o que se tinha ajustado praga a praga — a OS dizia cobrir até
+  //    uma data que uma das pragas já não alcançava.
+  // 2. Sem praga com data, cai na sugestão por dias (o maior prazo entre os
+  //    serviços e pragas escolhidos), contada da Data do Serviço quando
+  //    informada e de hoje quando não — nunca de uma data anterior.
+  //
+  // Nos dois casos, editar o campo (`validityTouched`) encerra o automático:
+  // a partir daí a data é de quem digitou.
   const execAnteriorRef = useRef(execDate);
   useEffect(() => {
-    if (validityTouched || suggestedValidityDays == null) return;
+    if (validityTouched) return;
+    if (menorValidadePraga) {
+      execAnteriorRef.current = execDate;
+      setValidityDate(menorValidadePraga);
+      return;
+    }
+    if (suggestedValidityDays == null) return;
     const execMudou = execAnteriorRef.current !== execDate;
     execAnteriorRef.current = execDate;
     setValidityDate((atual) => {
@@ -1053,7 +1123,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
       base.setDate(base.getDate() + suggestedValidityDays);
       return toDateInputValue(base);
     });
-  }, [suggestedValidityDays, validityTouched, execDate]);
+  }, [menorValidadePraga, suggestedValidityDays, validityTouched, execDate]);
 
   // Validade do certificado — segue a validade do serviço enquanto não for editada
   // manualmente; sem garantia, o certificado não se aplica (fica em branco).
@@ -1557,20 +1627,12 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
             <QuickAddChip label="praga" onAdd={quickAddPest} />
           </div>
           {pestIds.length > 0 && (
-            <div className="mt-2 space-y-1.5 rounded-xl border border-border bg-muted/30 p-2.5">
-              {pestIds.map((id) => {
-                const p = pests.find((x) => x.id === id);
-                return (
-                  <div key={id} className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-foreground">{p?.name}</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-muted-foreground">Validade</span>
-                      <DateInput type="date" value={pestValidity[id] ?? ''} onChange={(e) => setPestValidity((m) => ({ ...m, [id]: e.target.value }))} className="h-7 rounded-md border border-input bg-surface px-1.5 text-xs text-foreground focus:border-brand focus:outline-none" />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            /* A validade de cada praga é editada em "Prazos e validades", junto
+             * das outras três datas — repetir os campos aqui deixava a mesma
+             * data em dois pontos da mesma tela. */
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              A validade de cada praga fica em <span className="font-medium text-foreground">Prazos e validades</span>, logo abaixo.
+            </p>
           )}
         </Field>
 
@@ -1833,13 +1895,119 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
             {touched && !execTime && <span className="mt-1 block text-xs text-danger">Informe o horário do serviço.</span>}
           </Field>
           <Field label="Data de Vencimento do Pagamento"><DateInput type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
-          <Field label="Validade do Serviço" hint={!validityTouched && suggestedValidityDays != null ? `Sugerida pelo serviço/praga: ${suggestedValidityDays} dias` : 'Validade do serviço executado, com ou sem garantia'}>
-            <DateInput type="date" value={validityDate} onChange={(e) => { setValidityDate(e.target.value); setValidityTouched(true); }} />
-          </Field>
-          <Field label="Validade do Certificado" hint={!warrantyHas ? 'Não aplicável — serviço sem garantia' : 'Validade do certificado a ser emitido'}>
-            <DateInput type="date" disabled={!warrantyHas} value={certValidityDate} onChange={(e) => { setCertValidityDate(e.target.value); setCertValidityTouched(true); }} />
-          </Field>
           <Field label="Duração (min)"><Input type="number" min={0} value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="—" /></Field>
+        </div>
+
+        {/* Prazos e validades — as quatro datas juntas.
+         *
+         *  Elas respondem a perguntas diferentes e antes viviam em três lugares
+         *  distintos da tela (a da praga junto das pragas; serviço e certificado
+         *  no meio das datas de pagamento; a garantia só como prazo). Lado a
+         *  lado fica visível o que cada uma cobre — e que a do serviço não vai
+         *  além da menor validade das pragas. */}
+        <div className="rounded-xl border border-border bg-muted/30 p-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Prazos e validades</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+
+            {/* 1 · Por praga — é daqui que sai a validade do serviço. */}
+            <div className="rounded-lg border border-border bg-surface p-2.5">
+              <p className="text-xs font-medium text-foreground">Validade por praga</p>
+              {pestIds.length === 0 ? (
+                <p className="mt-1 text-[11px] text-muted-foreground">Nenhuma praga selecionada.</p>
+              ) : (
+                <>
+                  <p className="mt-1 text-sm font-semibold text-foreground">{menorValidadePraga ? fmtDate(menorValidadePraga) : '—'}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {menorValidadePraga
+                      ? `Menor entre ${pestIds.length} praga(s) — até aqui o serviço cobre tudo`
+                      : 'Sem data definida nas pragas'}
+                  </p>
+                  <div className="mt-2 max-h-32 space-y-1 overflow-y-auto pr-0.5">
+                    {pestIds.map((id) => {
+                      const p = pests.find((x) => x.id === id);
+                      const ehMenor = !!menorValidadePraga && pestValidity[id] === menorValidadePraga;
+                      return (
+                        <div key={id} className="flex items-center justify-between gap-1.5">
+                          <span className={cn('truncate text-[11px]', ehMenor ? 'font-medium text-foreground' : 'text-muted-foreground')} title={p?.name}>{p?.name}</span>
+                          <DateInput
+                            type="date"
+                            value={pestValidity[id] ?? ''}
+                            onChange={(e) => setPestValidity((m) => ({ ...m, [id]: e.target.value }))}
+                            aria-label={`Validade da praga ${p?.name ?? ''}`}
+                            className="h-7 w-[7.5rem] shrink-0 rounded-md border border-input bg-surface px-1.5 text-xs text-foreground focus:border-brand focus:outline-none"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* 2 · Do serviço — segue a menor das pragas até alguém sobrescrever. */}
+            <div className="rounded-lg border border-border bg-surface p-2.5">
+              <p className="text-xs font-medium text-foreground">Validade do serviço</p>
+              <div className="mt-1.5">
+                <DateInput type="date" value={validityDate} onChange={(e) => { setValidityDate(e.target.value); setValidityTouched(true); }} aria-label="Validade do serviço" />
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {validityTouched
+                  ? 'Definida manualmente.'
+                  : menorValidadePraga
+                    ? 'Acompanha a menor validade das pragas.'
+                    : suggestedValidityDays != null
+                      ? `Sugerida pelo serviço/praga: ${suggestedValidityDays} dias.`
+                      : 'Validade do serviço executado, com ou sem garantia.'}
+              </p>
+              {validityTouched && menorValidadePraga && validityDate > menorValidadePraga && (
+                <p className="mt-1 text-[11px] text-warning">
+                  Passa da menor validade das pragas ({fmtDate(menorValidadePraga)}).
+                </p>
+              )}
+            </div>
+
+            {/* 3 · Do certificado — segue a do serviço; sem garantia não existe. */}
+            <div className="rounded-lg border border-border bg-surface p-2.5">
+              <p className="text-xs font-medium text-foreground">Validade do certificado</p>
+              <div className="mt-1.5">
+                <DateInput type="date" disabled={!warrantyHas} value={certValidityDate} onChange={(e) => { setCertValidityDate(e.target.value); setCertValidityTouched(true); }} aria-label="Validade do certificado" />
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {!warrantyHas
+                  ? 'Não aplicável — serviço sem garantia.'
+                  : certValidityTouched
+                    ? 'Definida manualmente.'
+                    : 'Acompanha a validade do serviço.'}
+              </p>
+            </div>
+
+            {/* 4 · Garantia — data derivada do prazo (o que a OS grava é o prazo). */}
+            <div className="rounded-lg border border-border bg-surface p-2.5">
+              <p className="text-xs font-medium text-foreground">Garantia até</p>
+              <div className="mt-1.5">
+                <DateInput
+                  type="date"
+                  disabled={!warrantyHas}
+                  value={garantiaAte}
+                  min={execDate || undefined}
+                  onChange={(e) => definirGarantiaAte(e.target.value)}
+                  aria-label="Garantia até"
+                />
+              </div>
+              {!warrantyHas ? (
+                <p className="mt-1 text-[11px] text-muted-foreground">Sem garantia neste serviço.</p>
+              ) : (
+                <>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {warrantyValue || '—'} {warrantyUnit} · {(WARRANTY_TYPE_LABEL[warrantyType] ?? warrantyType).toLowerCase()}
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Escolher a data aqui reescreve o prazo; mudar o prazo no bloco Garantia move a data. Ela conta sempre da Data do Serviço.
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         <Field label="Equipe — técnicos" required hint="Selecione um ou mais técnicos">
