@@ -1106,9 +1106,12 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
   //
   // Nos dois casos, editar o campo (`validityTouched`) encerra o automático:
   // a partir daí a data é de quem digitou.
+  //
+  // Também só em OS nova: na edição o efeito chega antes de `validityTouched`
+  // virar `true` e teria a mesma chance de reescrever o que está gravado.
   const execAnteriorRef = useRef(execDate);
   useEffect(() => {
-    if (validityTouched) return;
+    if (initial || validityTouched) return;
     if (menorValidadePraga) {
       execAnteriorRef.current = execDate;
       setValidityDate(menorValidadePraga);
@@ -1123,14 +1126,19 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
       base.setDate(base.getDate() + suggestedValidityDays);
       return toDateInputValue(base);
     });
-  }, [menorValidadePraga, suggestedValidityDays, validityTouched, execDate]);
+  }, [menorValidadePraga, suggestedValidityDays, validityTouched, execDate, initial]);
 
   // Validade do certificado — segue a validade do serviço enquanto não for editada
   // manualmente; sem garantia, o certificado não se aplica (fica em branco).
+  //
+  // Só em OS nova, pelo mesmo motivo da validade por praga e do valor: ao abrir
+  // uma OS salva, este efeito roda no ciclo em que `certValidityTouched` ainda
+  // é `false` e `validityDate` ainda está vazio — o certificado gravado era
+  // trocado por vazio, e quem salvasse a OS depois disso perdia a data.
   useEffect(() => {
-    if (certValidityTouched) return;
+    if (initial || certValidityTouched) return;
     setCertValidityDate(warrantyHas ? validityDate : '');
-  }, [validityDate, warrantyHas, certValidityTouched]);
+  }, [validityDate, warrantyHas, certValidityTouched, initial]);
 
   // Prévia do plano de recorrência: cada ocorrência é calculada a partir da
   // anterior (nunca de hoje) — plano com fim definido, não repetição infinita.
@@ -1181,7 +1189,15 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
 
   // Validade individual por praga — sugerida pelo cadastro da praga (ou pela
   // sugestão geral da OS), editável por praga; some quando a praga é removida.
+  //
+  // Só vale em OS nova. Abrir uma OS salva monta o formulário em duas frentes
+  // no mesmo instante: o efeito de hidratação repõe o que está gravado, e este
+  // aqui roda no mesmo ciclo ainda enxergando `pestIds` vazio — a limpeza do
+  // fim ("tira o que não está mais selecionado") varria as datas recém-repostas
+  // e a sugestão as reescrevia com o prazo padrão. Quem só ia corrigir outro
+  // campo e salvava gravava por cima datas que nunca escolheu.
   useEffect(() => {
+    if (initial) return;
     setPestValidity((m) => {
       const next = { ...m };
       pestIds.forEach((id) => {
@@ -1199,7 +1215,7 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
       Object.keys(next).forEach((id) => { if (!pestIds.includes(id)) delete next[id]; });
       return next;
     });
-  }, [pestIds, execDate, pests, suggestedValidityDays]);
+  }, [pestIds, execDate, pests, suggestedValidityDays, initial]);
 
   // Certificações/licenças da empresa vencidas — alertadas na geração da OS.
   const expiredLicenses = licenses.filter((l) => l.expiresAt && new Date(l.expiresAt) < new Date());
@@ -1243,10 +1259,15 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
     () => serviceTypeIds.reduce((sum, id) => sum + (serviceTypes.find((s) => s.id === id)?.defaultPrice ?? 0), 0),
     [serviceTypeIds, serviceTypes],
   );
+  //
+  // Mesma regra da validade por praga: sugestão é coisa de OS nova. Na edição,
+  // `serviceValueTouched` só fica true depois que a hidratação se aplica, e
+  // este efeito roda antes disso — trocava o valor negociado pelo preço de
+  // tabela, ou o esvaziava quando o serviço não tem preço padrão.
   useEffect(() => {
-    if (serviceValueTouched) return;
+    if (initial || serviceValueTouched) return;
     setServiceValue(suggestedServiceValue ? String(suggestedServiceValue) : '');
-  }, [suggestedServiceValue, serviceValueTouched]);
+  }, [suggestedServiceValue, serviceValueTouched, initial]);
 
   /** Gera/atualiza os agendamentos futuros do plano de recorrência. Só
    *  regenera quando o plano (habilitado/fases) realmente mudou — reabrir e
