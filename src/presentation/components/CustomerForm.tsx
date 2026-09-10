@@ -6,7 +6,7 @@ import { DateInput, Field, Input, Select, Textarea } from './ui/Field';
 import { Segmented } from './ui/Segmented';
 import { Badge } from './ui/Badge';
 import { useCustomersStore, type CustomerInput } from '@/store/customersStore';
-import { useUsersStore } from '@/store/entityStores';
+import { useAreasStore, useUsersStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
 import type { ContractStatus, Customer, CustomerContact, Reservoir, ServiceContract } from '@/domain/types';
 import type { CustomerType } from '@/domain/enums';
@@ -19,7 +19,6 @@ import { toast } from '@/store/toastStore';
 
 const DRAFT_KEY = 'namira-cliente-draft';
 
-const LOCAL_STRUCTURE_PRESETS = ['Cozinha', 'Produção', 'Escritório', 'Câmara Fria', 'Estoque', 'Refeitório', 'Área Externa'];
 const COMPLEMENTARY_SERVICE_PRESETS = ["Limpeza de Coifa", "Higienização de Caixa d'Água", 'Limpeza de Reservatórios', 'Sanitização', 'Outros'];
 const RESERVOIR_TYPES = ["Caixa d'água", 'Cisterna', 'Reservatório elevado'];
 const CONTRACT_STATUS_LABEL: Record<ContractStatus, string> = {
@@ -179,6 +178,13 @@ export function CustomerForm({
 }) {
   const { add, update } = useCustomersStore();
   const staff = useUsersStore((s) => s.items);
+  /** Ambientes vêm do cadastro (Configurações → Cadastro → Estrutura do local),
+   *  não de uma lista fixa: o que se cadastra uma vez vale para todo cliente.
+   *  Inativo some da seleção; o que já estava marcado neste cliente continua
+   *  aparecendo (o QtyTagChips junta presets com as chaves do valor atual). */
+  const structurePresets = useAreasStore((s) => s.items)
+    .filter((a) => a.isActive !== false)
+    .map((a) => a.name);
   const isEdit = !!initial;
   const [form, setForm] = useState<FormState>(empty);
   const [touched, setTouched] = useState(false);
@@ -545,8 +551,12 @@ export function CustomerForm({
             </div>
 
             <div className="border-t border-border pt-4">
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Estrutura do local</p>
-              <QtyTagChips presets={LOCAL_STRUCTURE_PRESETS} value={localStructure} onChange={setLocalStructure} />
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Estrutura do local</p>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Os ambientes marcados aqui aparecem em destaque nas áreas tratadas da Ordem de Serviço deste cliente.
+                O ambiente adicionado abaixo vale só para ele — para virar opção de todos, cadastre em Configurações → Cadastro.
+              </p>
+              <QtyTagChips presets={structurePresets} value={localStructure} onChange={setLocalStructure} />
             </div>
 
             <div className="border-t border-border pt-4">

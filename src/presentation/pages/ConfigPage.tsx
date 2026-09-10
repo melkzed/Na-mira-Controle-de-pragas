@@ -964,9 +964,13 @@ function PestsPanel() {
   );
 }
 
-/** Cadastro de áreas tratadas — selecionáveis (com quantidade) na OS e
- *  exibidas no PDF. Inativas somem da seleção em novas OS, mas ficam
- *  preservadas em OS já existentes. */
+/** Cadastro da estrutura do local — os ambientes que existem no cliente
+ *  (Cozinha, Câmara Fria, Refeitório…). Alimenta dois lugares: a ficha do
+ *  cliente (Cadastro Completo → Estrutura do local, com quantidade por
+ *  ambiente) e o campo "Áreas tratadas" da OS, onde os ambientes do cliente
+ *  escolhido aparecem em destaque e o restante deste cadastro logo abaixo.
+ *  Inativos somem da seleção em novos registros, mas ficam preservados em
+ *  OS/documentos já existentes. */
 function AreasPanel() {
   const { items, add, update, remove } = useAreasStore();
   const [name, setName] = useState('');
@@ -979,12 +983,12 @@ function AreasPanel() {
 
   return (
     <Card>
-      <CardHeader title={<span className="flex items-center gap-2"><MapPin size={16} className="text-brand" /> Áreas tratadas</span>} subtitle={`${items.length} cadastradas · selecionáveis (com quantidade) na OS`}
+      <CardHeader title={<span className="flex items-center gap-2"><MapPin size={16} className="text-brand" /> Estrutura do local</span>} subtitle={`${items.length} ambientes · usados na ficha do cliente e nas áreas tratadas da OS`}
         action={<PanelImport spec={areasImport} items={items} add={add} update={update} />}
       />
       <CardBody className="space-y-3">
         <div className="flex gap-2">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Refeitório" onKeyDown={(e) => e.key === 'Enter' && create()} />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Câmara Fria" onKeyDown={(e) => e.key === 'Enter' && create()} />
           <Button leftIcon={<Plus size={15} />} onClick={create} disabled={!name.trim()}>Adicionar</Button>
         </div>
         <div className="max-h-80 space-y-1.5 overflow-y-auto">
@@ -992,15 +996,15 @@ function AreasPanel() {
             const active = a.isActive !== false;
             return (
               <div key={a.id} className={cn('flex items-center gap-2 rounded-lg border border-border/60 px-3 py-2', !active && 'opacity-60')}>
-                <Input value={a.name} onChange={(e) => update(a.id, { name: e.target.value })} className="h-8 min-w-0 flex-1 text-sm" aria-label={`Nome da área ${a.name}`} />
+                <Input value={a.name} onChange={(e) => update(a.id, { name: e.target.value })} className="h-8 min-w-0 flex-1 text-sm" aria-label={`Nome do ambiente ${a.name}`} />
                 <button onClick={() => update(a.id, { isActive: !active })} className="shrink-0" aria-label={active ? `Desativar ${a.name}` : `Ativar ${a.name}`}>
-                  <Badge tone={active ? 'success' : 'neutral'} dot>{active ? 'Ativa' : 'Inativa'}</Badge>
+                  <Badge tone={active ? 'success' : 'neutral'} dot>{active ? 'Ativo' : 'Inativo'}</Badge>
                 </button>
                 <button onClick={() => remove(a.id)} aria-label={`Excluir ${a.name}`} className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-danger"><Trash2 size={14} /></button>
               </div>
             );
           })}
-          {items.length === 0 && <p className="text-xs text-muted-foreground">Nenhuma área cadastrada.</p>}
+          {items.length === 0 && <p className="text-xs text-muted-foreground">Nenhum ambiente cadastrado.</p>}
         </div>
       </CardBody>
     </Card>

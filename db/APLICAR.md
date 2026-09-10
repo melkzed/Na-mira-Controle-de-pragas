@@ -21,6 +21,7 @@ precisa reiniciar nada.
 | ~~11~~ | ~~`db/migrate_recurrence_id_text.sql`~~ | **Dispensável.** O app passou a gerar o id da recorrência com `crypto.randomUUID()`, então a coluna `uuid` do schema original serve. Rodar não faz mal; não rodar também não. |
 | 12 | `db/migrate_cor_tecnico.sql` | `users.color` — grava a cor que cada técnico escolhe no cadastro e que a agenda usa |
 | 13 | `db/migrate_monitoramento_mip.sql` | `trap_inspections.occurrence` e `.action_taken` — as duas colunas que os relatórios de Monitoramento e MIP exigem |
+| 14 | `db/migrate_equipe_visita_rls.sql` | **Equipe da visita**: o técnico que entra como ajudante em `service_orders.technician_ids` passa a enxergar o atendimento e a OS (e com eles a mensagem para o técnico, o ponto e o estoque da visita). Sem isto o RLS entrega zero linhas para ele, e nenhuma mudança no app resolve |
 
 Depois do passo 9, implante a função de login do Portal:
 

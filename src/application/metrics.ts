@@ -4,7 +4,8 @@
  */
 import * as seed from '@/infrastructure/seed/data';
 import { activeTechnicians, centralBalance } from './repository';
-import { useProductsStore } from '@/store/entityStores';
+import { useLicensesStore, useProductsStore } from '@/store/entityStores';
+import { useCustomersStore } from '@/store/customersStore';
 import { expiringBatches } from '@/lib/batches';
 import { daysUntil } from '@/lib/utils';
 import { localDayKey } from '@/lib/date';
@@ -46,6 +47,7 @@ export interface DashboardMetrics {
   vehiclesInOperation: number;
   avgServiceMinutes: number;
   licensesExpiringSoon: number;
+  contractsExpiringSoon: number;
 }
 
 export function computeDashboard(): DashboardMetrics {
@@ -101,10 +103,25 @@ export function computeDashboard(): DashboardMetrics {
     ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
     : 0;
 
-  const licensesExpiringSoon = seed.licenses.filter((l) => {
+  // Licenças/alvarás da empresa: lê a store (e não o seed) para contar também
+  // o que o usuário cadastrou — senão o painel diverge do relatório.
+  const licensesExpiringSoon = useLicensesStore.getState().items.filter((l) => {
     const d = daysUntil(l.expiresAt) ?? 999;
     return d <= 30;
   }).length;
+
+  // Contrato a vencer é receita prestes a ser perdida: conta o que vence nos
+  // próximos 30 dias e também o que já venceu sem renovação. Cancelado fica
+  // de fora — não há o que renovar. Mesmo critério de "Contratos a vencer"
+  // em Relatórios → Vencimentos.
+  const contractsExpiringSoon = useCustomersStore.getState().customers.reduce(
+    (total, c) => total + (c.contracts ?? []).filter((ct) => {
+      if (ct.status === 'cancelado' || !ct.endDate) return false;
+      const d = daysUntil(ct.endDate);
+      return d !== null && d <= 30;
+    }).length,
+    0,
+  );
 
   return {
     todayAppointments,
@@ -126,6 +143,7 @@ export function computeDashboard(): DashboardMetrics {
     vehiclesInOperation,
     avgServiceMinutes,
     licensesExpiringSoon,
+    contractsExpiringSoon,
   };
 }
 

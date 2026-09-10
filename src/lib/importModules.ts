@@ -456,15 +456,15 @@ export const pestsImport: ImportSpec<Pest> = {
 };
 
 export const areasImport: ImportSpec<TreatedArea> = {
-  key: 'areas',
-  title: 'Importar áreas tratadas de planilha',
-  entity: 'área',
-  entityPlural: 'áreas',
+  key: 'estrutura-do-local',
+  title: 'Importar estrutura do local de planilha',
+  entity: 'ambiente',
+  entityPlural: 'ambientes',
   requiredFields: ['name'],
   matchField: 'name',
   keyOf: (a) => a.name,
   fields: [
-    { key: 'name', label: 'Área', aliases: ['area', 'nome', 'local', 'ambiente', 'descricao'], sample: ['Cozinha', 'Depósito'] },
+    { key: 'name', label: 'Ambiente', aliases: ['ambiente', 'area', 'nome', 'local', 'estrutura', 'descricao'], sample: ['Cozinha', 'Câmara Fria'] },
     { key: 'notes', label: 'Observações', aliases: ['observacao', 'observacoes', 'obs'], sample: ['', ''] },
   ],
   create: (v, ctx) => ({ id: ctx.id, orgId: ctx.orgId, name: v.name ?? '', isActive: true, ...areasImport.patch(v) }),

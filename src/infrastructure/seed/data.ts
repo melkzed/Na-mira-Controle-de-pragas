@@ -129,6 +129,9 @@ export const treatedAreas: TreatedArea[] = [
   { id: 'ar-dep', orgId: ORG, name: 'Depósito' },
   { id: 'ar-ext', orgId: ORG, name: 'Área externa' },
   { id: 'ar-gar', orgId: ORG, name: 'Garagem' },
+  { id: 'ar-pro', orgId: ORG, name: 'Produção' },
+  { id: 'ar-cfr', orgId: ORG, name: 'Câmara Fria' },
+  { id: 'ar-ref', orgId: ORG, name: 'Refeitório' },
 ];
 
 export const trapTypes: TrapType[] = [
