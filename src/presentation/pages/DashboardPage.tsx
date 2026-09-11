@@ -31,7 +31,7 @@ import { useAppStore } from '@/store/appStore';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useEquipmentStore, useFinanceStore, useLicensesStore } from '@/store/entityStores';
 import { useCustomersStore } from '@/store/customersStore';
-import { isEquipmentOverdue } from './EquipamentosPage';
+import { isEquipmentOverdue } from '@/domain/equipment';
 import { Link } from 'react-router-dom';
 
 export function DashboardPage() {

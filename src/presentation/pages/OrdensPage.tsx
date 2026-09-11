@@ -10,7 +10,7 @@ import { DateInput, Field, Input, Select, Textarea } from '../components/ui/Fiel
 import { Segmented } from '../components/ui/Segmented';
 import { Table, type Column } from '../components/ui/Table';
 import { ServiceOrderStatusBadge } from '../components/StatusBadge';
-import { appointmentsForCustomer, getCustomer, getPest, getProduct, getServiceType, getUser, lastOrderForCustomer } from '@/application/repository';
+import { appointmentsForCustomer, getCustomer, getPest, getProduct, getServiceType, getUser, lastOrderForCustomer, serviceOrdersForCustomer } from '@/application/repository';
 import type { Pest, PaymentStatus, RecurrencePhase, ServiceOrder, ServiceType, TreatedArea } from '@/domain/types';
 import type { AppointmentStatus, RecurrenceFreq, ServiceOrderStatus, WarrantyType, WarrantyUnit } from '@/domain/enums';
 import { PAYMENT_METHODS, RECURRENCE_FREQ_DAYS, RECURRENCE_FREQ_LABEL, WARRANTY_TYPE_LABEL } from '@/domain/enums';
@@ -622,13 +622,37 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
     return { structureAreas: doCadastro, structureExtras: proprios };
   }, [customerStructure, areas]);
 
+  /** Áreas específicas que já foram digitadas em OS anteriores deste cliente.
+   *  Cada uma continua valendo só para a OS onde for marcada — o que muda é
+   *  que ela reaparece como sugestão em vez de ser redigitada. Ficam de fora
+   *  as que já estão no catálogo ou na estrutura do cliente (não repetir o
+   *  mesmo ambiente em duas faixas) e a própria OS em edição. */
+  const previousAreas = useMemo<{ name: string; qty: number }[]>(() => {
+    if (!customerId) return [];
+    const vistas = new Map<string, number>();
+    for (const os of serviceOrdersForCustomer(customerId)) {
+      if (initial && os.id === initial.id) continue;
+      for (const a of os.customAreas ?? []) {
+        const chave = a.name.trim();
+        if (!chave || vistas.has(chave)) continue;
+        if (areas.some((c) => compareText(c.name, chave) === 0)) continue;
+        if (structureExtras.some((e) => compareText(e.name, chave) === 0)) continue;
+        vistas.set(chave, Math.max(1, a.qty || 1));
+      }
+    }
+    return [...vistas].map(([name, qty]) => ({ name, qty }));
+  }, [customerId, initial, areas, structureExtras]);
+
   const temEstrutura = structureAreas.length + structureExtras.length > 0;
   /** O catálogo mostra o que sobrou — o que já subiu para a faixa do cliente
    *  não se repete embaixo. */
   const catalogAreas = selectableAreas.filter((a) => !structureAreas.some((s) => s.area.id === a.id));
   /** Área específica digitada com o botão + nesta OS. As que vieram da estrutura
    *  do cliente já aparecem na faixa de cima, então saem daqui. */
-  const looseCustomAreas = customAreas.filter((a) => !structureExtras.some((e) => compareText(e.name, a.name) === 0));
+  const looseCustomAreas = customAreas.filter((a) => (
+    !structureExtras.some((e) => compareText(e.name, a.name) === 0)
+    && !previousAreas.some((e) => compareText(e.name, a.name) === 0)
+  ));
 
   /** Só equipamentos disponíveis (sem dono fixo) podem ser retirados temporariamente
    *  para a OS — o kit fixo/permanente do técnico não deve aparecer aqui. Em modo
@@ -709,8 +733,12 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
       // para os controles abrirem coerentes com o que está salvo.
       setRecMeses(initial.recurrence?.durationMonths ?? mesesDoPlano(fases));
       setRecDates(initial.recurrence?.dates ?? []);
-      setExecDate(toInput(initial.executionDate));
-      setExecTime(initial.executionTime ?? '');
+      // OS anterior ao campo (ou vinda do seed) não tem `executionDate`, e sem
+      // ele a edição travava em "Preencha os campos obrigatórios" mesmo com a
+      // data à vista no detalhe. O fallback para `startedAt` é o mesmo que a
+      // tela de detalhe e a exportação já usam.
+      setExecDate(toInput(initial.executionDate ?? initial.startedAt));
+      setExecTime(initial.executionTime ?? (initial.startedAt ? fmtTime(initial.startedAt) : ''));
       setDueDate(toInput(initial.dueDate));
       setValidityDate(toInput(initial.validityDate));
       setValidityTouched(true);
@@ -1686,8 +1714,32 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
                   );
                 })}
               </div>
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Catálogo</p>
             </>
+          )}
+          {previousAreas.length > 0 && (
+            <>
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Usadas antes neste cliente</p>
+              <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                {previousAreas.map(({ name, qty }) => {
+                  const atual = customAreas.find((a) => compareText(a.name, name) === 0);
+                  return (
+                    <AreaChip
+                      key={name}
+                      name={name}
+                      qty={atual?.qty ?? null}
+                      title={`Área específica usada em OS anterior deste cliente (${qty})`}
+                      onToggle={() => toggleCustomArea(name, qty)}
+                      onQty={(n) => setCustomQty(atual?.name ?? name, n)}
+                    />
+                  );
+                })}
+              </div>
+            </>
+          )}
+          {/* O rótulo do catálogo só aparece quando há uma faixa acima dele —
+              sem faixa, a lista de baixo é a única e não precisa de título. */}
+          {(temEstrutura || previousAreas.length > 0) && (
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Catálogo</p>
           )}
           <div className="flex flex-wrap items-center gap-1.5">
             {catalogAreas.map((a) => (

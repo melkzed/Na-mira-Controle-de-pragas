@@ -261,11 +261,16 @@ function VisaoGeralTab() {
     // data de execução e nota emitida — é por esses campos que se procura um
     // recebimento, não pela descrição do lançamento.
     ...(subTab === 'receber' ? [
-      { key: 'os', header: 'OS', hideBelow: 'lg', render: (e: FinanceEntry) => {
+      { key: 'os', header: 'OS', hideBelow: 'xl', render: (e: FinanceEntry) => {
         const os = e.serviceOrderId ? getServiceOrder(e.serviceOrderId) : undefined;
         return os ? <span className="font-medium tabular-nums">#{os.number}</span> : <span className="text-muted-foreground">—</span>;
       } } as Column<FinanceEntry>,
-      { key: 'cliente', header: 'Cliente', primary: true, render: (e: FinanceEntry) => (
+      // `w-full max-w-0` faz a coluna do cliente absorver a sobra e truncar em
+      // vez de esticar a tabela: com `table-layout: auto` e células sem quebra,
+      // um nome longo empurrava as colunas da direita (Status, Ações) para
+      // fora da área visível, obrigando a rolagem lateral que o cliente pediu
+      // para acabar.
+      { key: 'cliente', header: 'Cliente', primary: true, className: 'w-full min-w-[10rem] max-w-0', render: (e: FinanceEntry) => (
         <div className="min-w-0">
           <p className="truncate font-medium">{e.customerId ? getCustomer(e.customerId)?.name ?? e.description : e.description}</p>
           <p className="truncate text-xs text-muted-foreground">{e.description}</p>
@@ -275,20 +280,20 @@ function VisaoGeralTab() {
           </div>
         </div>
       ) } as Column<FinanceEntry>,
-      { key: 'pgto', header: 'Pagamento', hideBelow: 'xl', render: (e: FinanceEntry) => (
+      { key: 'pgto', header: 'Pagamento', hideBelow: '2xl', render: (e: FinanceEntry) => (
         e.paymentMethod ? PAYMENT_METHOD_LABEL[e.paymentMethod] : <span className="text-muted-foreground">—</span>
       ) } as Column<FinanceEntry>,
-      { key: 'exec', header: 'Dt. Execução', hideBelow: 'xl', render: (e: FinanceEntry) => {
+      { key: 'exec', header: 'Dt. Execução', hideBelow: '2xl', render: (e: FinanceEntry) => {
         const os = e.serviceOrderId ? getServiceOrder(e.serviceOrderId) : undefined;
         const data = os?.executionDate ?? os?.finishedAt ?? os?.startedAt;
         return data ? fmtDate(data.slice(0, 10)) : <span className="text-muted-foreground">—</span>;
       } } as Column<FinanceEntry>,
     ] : [
-      { key: 'desc', header: 'Descrição', primary: true, render: (e: FinanceEntry) => (
-        <div>
-          <p className="font-medium">{e.description}</p>
+      { key: 'desc', header: 'Descrição', primary: true, className: 'w-full min-w-[10rem] max-w-0', render: (e: FinanceEntry) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium">{e.description}</p>
           <div className="mt-0.5 flex flex-wrap items-center gap-1">
-            {e.customerId && <span className="text-xs text-muted-foreground">{getCustomer(e.customerId)?.name}</span>}
+            {e.customerId && <span className="truncate text-xs text-muted-foreground">{getCustomer(e.customerId)?.name}</span>}
             {e.taxKind && <Badge tone="info" className="text-[10px]">{taxKindLabel(e.taxKind)}</Badge>}
             {e.discount ? <Badge tone="brand" className="text-[10px]">desconto {formatCurrency(e.discount)}</Badge> : null}
             {e.postponedFrom && <Badge tone="warning" className="text-[10px]">prorrogada</Badge>}
@@ -326,7 +331,7 @@ function VisaoGeralTab() {
       );
     } },
     ...(subTab === 'receber' ? [
-      { key: 'nf', header: 'Nº NF', hideBelow: 'lg', render: (e: FinanceEntry) => {
+      { key: 'nf', header: 'Nº NF', hideBelow: 'xl', render: (e: FinanceEntry) => {
         const nf = notaDaOs(e.serviceOrderId);
         return nf ? <span className="tabular-nums">{nf.number}</span> : <span className="text-muted-foreground">—</span>;
       } } as Column<FinanceEntry>,
@@ -389,6 +394,33 @@ function VisaoGeralTab() {
         <StatCard label="Recebido no mês" value={totals.recebido} icon="CircleDollarSign" tone="info" format={formatCompactCurrency} />
       </Stagger>
 
+      {dueSoon.length > 0 && (
+        <div className="mt-6 flex items-center gap-2 rounded-xl border border-warning/40 bg-warning-soft/40 p-3 text-sm text-warning">
+          <TriangleAlert size={16} className="shrink-0" />
+          {dueSoon.length} conta(s) a pagar vencendo em até 7 dias — total {formatCurrency(dueSoon.reduce((s, e) => s + netAmount(e), 0))}.
+        </div>
+      )}
+
+      <div className="mt-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <Segmented value={subTab} onChange={(v) => { setSubTab(v); setSelectedIds([]); }} options={[{ value: 'receber', label: 'Contas a receber' }, { value: 'pagar', label: 'Contas a pagar' }]} />
+          <div className="flex gap-2">
+            {subTab === 'pagar' && payableSelected.length > 0 && (
+              <Button size="sm" leftIcon={<CheckCheck size={14} />} onClick={() => setPayDialogEntries(payableSelected)}>Pagar selecionados ({payableSelected.length})</Button>
+            )}
+            <Button variant="outline" leftIcon={<Upload size={16} />} onClick={() => setImportOpen(true)}>Importar planilha</Button>
+            <Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Novo lançamento</Button>
+          </div>
+        </div>
+        <Table columns={columns} rows={rows} keyField={(e) => e.id} />
+      </div>
+
+      <RecurringPayablesPanel />
+
+      {/* O acumulado vem depois do que exige ação hoje. O DRE e o resumo do
+          mês são consulta — quem abre o Financeiro na rotina vem ver o que
+          vence e o que entrou, não o gráfico dos últimos doze meses; deixá-los
+          no topo empurrava as duas listas de contas para fora da primeira tela. */}
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader title="DRE simplificado" subtitle="Receita x Despesa mensal" />
@@ -432,29 +464,6 @@ function VisaoGeralTab() {
           </CardBody>
         </Card>
       </div>
-
-      {dueSoon.length > 0 && (
-        <div className="mt-6 flex items-center gap-2 rounded-xl border border-warning/40 bg-warning-soft/40 p-3 text-sm text-warning">
-          <TriangleAlert size={16} className="shrink-0" />
-          {dueSoon.length} conta(s) a pagar vencendo em até 7 dias — total {formatCurrency(dueSoon.reduce((s, e) => s + netAmount(e), 0))}.
-        </div>
-      )}
-
-      <div className="mt-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <Segmented value={subTab} onChange={(v) => { setSubTab(v); setSelectedIds([]); }} options={[{ value: 'receber', label: 'Contas a receber' }, { value: 'pagar', label: 'Contas a pagar' }]} />
-          <div className="flex gap-2">
-            {subTab === 'pagar' && payableSelected.length > 0 && (
-              <Button size="sm" leftIcon={<CheckCheck size={14} />} onClick={() => setPayDialogEntries(payableSelected)}>Pagar selecionados ({payableSelected.length})</Button>
-            )}
-            <Button variant="outline" leftIcon={<Upload size={16} />} onClick={() => setImportOpen(true)}>Importar planilha</Button>
-            <Button leftIcon={<Plus size={16} />} onClick={() => setFormOpen(true)}>Novo lançamento</Button>
-          </div>
-        </div>
-        <Table columns={columns} rows={rows} keyField={(e) => e.id} />
-      </div>
-
-      <RecurringPayablesPanel />
 
       <FinanceForm
         open={formOpen}

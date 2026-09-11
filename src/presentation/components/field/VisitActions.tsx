@@ -10,22 +10,22 @@
  * stores compartilhadas (visita, OS, armadilhas, não conformidades), então
  * aparece no sistema da empresa na hora.
  */
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
-import { Bug, Camera, CheckCircle2, ClipboardCheck, ClipboardList, Eye, PenLine, Plus, Radar, Settings2, TriangleAlert, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Bug, CheckCircle2, ClipboardCheck, ClipboardList, Eye, PenLine, Plus, Radar, Settings2, TriangleAlert } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Drawer } from '../ui/Drawer';
-import { Field, Input, Select, Textarea } from '../ui/Field';
+import { DateInput, Field, Input, Select, Textarea } from '../ui/Field';
 import { Segmented } from '../ui/Segmented';
 import { SignaturePad } from '../SignaturePad';
 import { SignerFields, SignerSummary } from '../SignerFields';
+import { PhotoField } from '../PhotoField';
 import { signerMissing } from '@/lib/signer';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import { useTrapsStore } from '@/store/trapsStore';
 import { useNonConformitiesStore, useTrapTypesStore, useUsersStore } from '@/store/entityStores';
 import { TRAP_ACTIONS_TAKEN, TRAP_OCCURRENCES, type StoredImage } from '@/domain/types';
-import { photoSrc, resizeImage, uploadImage } from '@/lib/photoStorage';
 import { useSettingsStore } from '@/store/settingsStore';
 import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
@@ -36,10 +36,11 @@ import {
 } from '@/application/repository';
 import { useAreasStore } from '@/store/entityStores';
 import { NC_CATEGORY_LABEL } from '@/lib/printReports';
-import { fmtDate, localDayKey } from '@/lib/date';
+import { dateInputToIso, fmtDate, localDayKey, toDateInputValue } from '@/lib/date';
 import { projectPoints } from '@/lib/geo';
+import { TRAP_STATUS_META } from '@/domain/trapMeta';
 import type {
-  Appointment, NonConformity, ServiceOrder, SignerInfo, TrapDevice, VerificationItem,
+  Appointment, NonConformity, ServiceOrder, SignerInfo, TrapDevice, TrapStatus, User, VerificationItem,
 } from '@/domain/types';
 import type { AppointmentPriority } from '@/domain/enums';
 
@@ -285,6 +286,8 @@ function ArmadilhasDrawer({ open, onClose, appt, techId }: {
   // saber se aquela armadilha é dele e desde quando está no ponto.
   const staff = useUsersStore((s) => s.items);
   const nomeDoResponsavel = (t: TrapDevice) => staff.find((u) => u.id === t.responsibleId)?.name?.split(' ')[0];
+  /** Quem pode ficar como responsável pela armadilha. */
+  const tecnicos = staff.filter((u) => u.role === 'tecnico');
 
   // Só as armadilhas deste cliente entram no mapa, e só as que têm posição
   // registrada — sem coordenadas, a lista por ponto de instalação é o que o
@@ -296,6 +299,8 @@ function ArmadilhasDrawer({ open, onClose, appt, techId }: {
       {instalando ? (
         <InstalarArmadilhaForm
           tipos={trapTypes.map((t) => t.name)}
+          tecnicos={tecnicos}
+          techId={techId}
           onCancel={() => setInstalando(false)}
           onSave={(dados) => {
             const nova = addTrap({
@@ -303,8 +308,12 @@ function ArmadilhasDrawer({ open, onClose, appt, techId }: {
               code: dados.code,
               type: dados.type,
               location: dados.location || undefined,
-              installedAt: new Date().toISOString(),
-              responsibleId: techId,
+              status: dados.status,
+              installedAt: dados.installedAt ? dateInputToIso(dados.installedAt) : new Date().toISOString(),
+              responsibleId: dados.responsibleId || undefined,
+              nextInspectionAt: dados.nextInspectionAt ? dateInputToIso(dados.nextInspectionAt) : undefined,
+              notes: dados.notes || undefined,
+              photos: dados.photos.length ? dados.photos : undefined,
             });
             logChange('criação', 'monitoramento', `Armadilha ${nova.code} instalada em ${dados.location || 'local não informado'}`, nova.id);
             toast(`${nova.code} instalada.`, { tone: 'success' });
@@ -533,26 +542,45 @@ function InspecaoForm({ trap, onCancel, onSave }: {
  * código colado no dispositivo e onde ele ficou. Data de instalação é hoje —
  * é a instalação acontecendo — e o responsável é o técnico que está ali.
  */
-function InstalarArmadilhaForm({ tipos, onCancel, onSave }: {
+/** Ficha de instalação em campo — os mesmos campos do cadastro do escritório.
+ *  A data e o responsável já vêm preenchidos (hoje e o próprio técnico), mas
+ *  ficam à vista e editáveis: armadilha instalada ontem e cadastrada hoje é
+ *  rotina, e uma data automática errada só aparece meses depois, no relatório. */
+function InstalarArmadilhaForm({ tipos, tecnicos, techId, onCancel, onSave }: {
   tipos: string[];
+  tecnicos: User[];
+  techId: string;
   onCancel: () => void;
-  onSave: (d: { code: string; type: string; location: string }) => void;
+  onSave: (d: {
+    code: string; type: string; location: string; status: TrapStatus;
+    installedAt: string; responsibleId: string; nextInspectionAt: string; notes: string;
+    photos: StoredImage[];
+  }) => void;
 }) {
   const [code, setCode] = useState('');
   const [type, setType] = useState(tipos[0] ?? 'Porta-isca');
   const [location, setLocation] = useState('');
+  const [status, setStatus] = useState<TrapStatus>('ativa');
+  const [installedAt, setInstalledAt] = useState(toDateInputValue(new Date()));
+  const [responsibleId, setResponsibleId] = useState(techId);
+  const [nextInspectionAt, setNextInspectionAt] = useState('');
+  const [notes, setNotes] = useState('');
+  const [photos, setPhotos] = useState<StoredImage[]>([]);
 
   const salvar = () => {
     if (!code.trim()) { toast('Informe o código da armadilha (ex.: Porta Isca 001).', { tone: 'warning' }); return; }
     if (!location.trim()) { toast('Informe o local de instalação (ex.: Área da lixeira).', { tone: 'warning' }); return; }
-    onSave({ code: code.trim(), type, location: location.trim() });
+    onSave({
+      code: code.trim(), type, location: location.trim(), status,
+      installedAt, responsibleId, nextInspectionAt, notes: notes.trim(), photos,
+    });
   };
 
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        Registre a armadilha no momento em que instalar — o código e o ponto ficam gravados
-        com a data de hoje e no seu nome.
+        Registre a armadilha no momento em que instalar. A data e o responsável já vêm
+        preenchidos — corrija se ela foi instalada antes ou por outra pessoa.
       </p>
       <Field label="Código" required>
         <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Ex.: Porta Isca 001" />
@@ -565,6 +593,36 @@ function InstalarArmadilhaForm({ tipos, onCancel, onSave }: {
       <Field label="Local de instalação" required>
         <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Ex.: Área da lixeira" />
       </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Data de instalação">
+          <DateInput type="date" value={installedAt} onChange={(e) => setInstalledAt(e.target.value)} />
+        </Field>
+        <Field label="Situação">
+          <Select value={status} onChange={(e) => setStatus(e.target.value as TrapStatus)}>
+            {(Object.keys(TRAP_STATUS_META) as TrapStatus[]).map((k) => <option key={k} value={k}>{TRAP_STATUS_META[k].label}</option>)}
+          </Select>
+        </Field>
+      </div>
+      <Field label="Responsável">
+        <Select value={responsibleId} onChange={(e) => setResponsibleId(e.target.value)}>
+          <option value="">—</option>
+          {tecnicos.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </Select>
+      </Field>
+      <Field label="Próxima inspeção prevista" hint="Deixe em branco para definir na primeira inspeção">
+        <DateInput type="date" value={nextInspectionAt} onChange={(e) => setNextInspectionAt(e.target.value)} />
+      </Field>
+      <Field label="Observação">
+        <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ex.: acesso pelo corredor de serviço, chave com o zelador" />
+      </Field>
+      <PhotoField
+        label="Foto do ponto"
+        hint="Quem vier na próxima visita acha a armadilha pela foto, não pela descrição"
+        folder="armadilha"
+        value={photos}
+        onChange={setPhotos}
+        max={3}
+      />
       <div className="grid grid-cols-2 gap-2">
         <Button variant="outline" onClick={onCancel}>Cancelar</Button>
         <Button leftIcon={<CheckCircle2 size={15} />} onClick={salvar}>Instalar</Button>
@@ -584,32 +642,11 @@ function NaoConformidadeDrawer({ open, onClose, appt, techId }: {
   const [description, setDescription] = useState('');
   const [correctiveAction, setCorrectiveAction] = useState('');
   const [photos, setPhotos] = useState<StoredImage[]>([]);
-  const [enviando, setEnviando] = useState(false);
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
-    if (!open) { setCategory('fresta'); setPriority('normal'); setDescription(''); setCorrectiveAction(''); setPhotos([]); setEnviando(false); setTouched(false); }
+    if (!open) { setCategory('fresta'); setPriority('normal'); setDescription(''); setCorrectiveAction(''); setPhotos([]); setTouched(false); }
   }, [open]);
-
-  /** A foto é reduzida antes de subir e vai direto para o Storage: é o técnico
-   *  em campo, no pacote de dados dele, e o documento mostra a imagem pequena. */
-  const adicionarFotos = async (e: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []).slice(0, 4);
-    e.target.value = '';
-    if (!files.length) return;
-    setEnviando(true);
-    try {
-      for (const file of files) {
-        const reduzida = await resizeImage(file);
-        const img = await uploadImage(reduzida, 'nao-conformidade', file.name);
-        setPhotos((p) => [...p, img]);
-      }
-    } catch {
-      toast('Não foi possível anexar a foto. Tente novamente.', { tone: 'danger' });
-    } finally {
-      setEnviando(false);
-    }
-  };
 
   const submit = () => {
     setTouched(true);
@@ -672,30 +709,13 @@ function NaoConformidadeDrawer({ open, onClose, appt, techId }: {
         <Field label="Ação corretiva sugerida">
           <Textarea rows={3} value={correctiveAction} onChange={(e) => setCorrectiveAction(e.target.value)} placeholder="O que o cliente precisa providenciar…" />
         </Field>
-        <Field label="Fotos" hint="Saem na seção de não conformidades do Relatório MIP do cliente">
-          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground transition hover:bg-muted">
-            <Camera size={17} />
-            {enviando ? 'Enviando…' : 'Tirar foto'}
-            <input type="file" accept="image/*" capture="environment" multiple onChange={adicionarFotos} className="hidden" disabled={enviando} />
-          </label>
-          {photos.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {photos.map((ph, i) => (
-                <div key={i} className="relative">
-                  <img src={photoSrc(ph)} alt={ph.name ?? `Foto ${i + 1}`} className="h-20 w-24 rounded-lg border border-border object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => setPhotos((p) => p.filter((_, j) => j !== i))}
-                    aria-label={`Remover foto ${i + 1}`}
-                    className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-danger text-white"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </Field>
+        <PhotoField
+          label="Fotos"
+          hint="Saem na seção de não conformidades do Relatório MIP do cliente"
+          folder="nao-conformidade"
+          value={photos}
+          onChange={setPhotos}
+        />
       </div>
     </Drawer>
   );

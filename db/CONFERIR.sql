@@ -70,7 +70,12 @@ with esperado(migration, tabela, coluna) as (values
   -- Mensagem para o técnico e equipe da OS — a visita do ajudante depende das
   -- duas (a mensagem viaja com a OS; a equipe é quem pode vê-la).
   ('14 equipe/local', 'service_orders',     'technician_message'),
-  ('14 equipe/local', 'service_orders',     'technician_ids')
+  ('14 equipe/local', 'service_orders',     'technician_ids'),
+  -- 15 · migrate_ficha_armadilha.sql
+  -- Observação da ficha de instalação — sem ela a ficha em campo grava o
+  -- restante e perde só esse campo.
+  ('15 ficha armad.', 'trap_devices',       'notes'),
+  ('15 ficha armad.', 'trap_devices',       'photos')
 ),
 colunas as (
   select

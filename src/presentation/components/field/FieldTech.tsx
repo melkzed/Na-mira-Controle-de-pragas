@@ -1,20 +1,9 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Eye } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import { useUsersStore } from '@/store/entityStores';
 import { Select } from '../ui/Field';
-
-interface FieldTechValue {
-  /** Usuário autenticado é técnico (não é staff em pré-visualização). */
-  isTech: boolean;
-  /** Id do técnico ativo (o próprio, ou o selecionado pelo staff). */
-  techId: string;
-  techName: string;
-  previewId: string;
-  setPreviewId: (id: string) => void;
-}
-
-const Ctx = createContext<FieldTechValue | null>(null);
+import { FieldTechCtx, useFieldTech } from './fieldTechContext';
 
 /**
  * Provider da identidade de campo. O técnico enxerga apenas os próprios dados;
@@ -34,16 +23,10 @@ export function FieldTechProvider({ children }: { children: ReactNode }) {
     'Técnico';
 
   return (
-    <Ctx.Provider value={{ isTech, techId, techName, previewId, setPreviewId }}>
+    <FieldTechCtx.Provider value={{ isTech, techId, techName, previewId, setPreviewId }}>
       {children}
-    </Ctx.Provider>
+    </FieldTechCtx.Provider>
   );
-}
-
-export function useFieldTech(): FieldTechValue {
-  const v = useContext(Ctx);
-  if (!v) throw new Error('useFieldTech deve ser usado dentro de FieldTechProvider');
-  return v;
 }
 
 /** Faixa de pré-visualização — exibida apenas para staff (não-técnicos). */
