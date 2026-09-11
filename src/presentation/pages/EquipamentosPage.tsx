@@ -8,6 +8,7 @@ import { Field, Input, Select } from '../components/ui/Field';
 import { Table, type Column } from '../components/ui/Table';
 import { ImportDrawer } from '../components/ImportDrawer';
 import { equipmentImport } from '@/lib/importModules';
+import { isEquipmentOverdue } from '@/domain/equipment';
 import { getUser } from '@/application/repository';
 import { useEquipmentStore, useUsersStore } from '@/store/entityStores';
 import { uid } from '@/store/createEntityStore';
@@ -43,10 +44,6 @@ function saveKind(kind: string) {
   }
 }
 
-/** Equipamento em uso com devolução vencida. */
-export function isEquipmentOverdue(e: Equipment): boolean {
-  return e.status === 'em_uso' && !!e.expectedReturnAt && new Date(e.expectedReturnAt).getTime() < Date.now();
-}
 const fmtDateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 
 export function EquipamentosPage() {

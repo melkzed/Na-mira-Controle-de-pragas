@@ -4,7 +4,7 @@ import { Icon } from './ui/Icon';
 import { AnimatedNumber } from './ui/AnimatedNumber';
 import { cn } from '@/lib/utils';
 import type { Tone } from './ui/Badge';
-import { staggerItem } from './ui/misc';
+import { staggerItem } from '@/lib/motion';
 
 const toneRing: Record<Tone, string> = {
   neutral: 'text-muted-foreground bg-muted',

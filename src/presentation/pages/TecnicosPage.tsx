@@ -25,7 +25,7 @@ import { techniciansImport } from '@/lib/importModules';
 import { toast } from '@/store/toastStore';
 import { CORES_TECNICO, technicianColor } from '@/lib/agendaColor';
 import { getProduct, appointmentsHistoryForTechnician, getCustomer, getServiceType, serviceOrdersForTechnician } from '@/application/repository';
-import { isEquipmentOverdue } from './EquipamentosPage';
+import { isEquipmentOverdue } from '@/domain/equipment';
 import { EQUIPMENT_STATUS_META as statusMeta } from '@/domain/equipmentMeta';
 import type { User, Equipment } from '@/domain/types';
 import type { EquipmentStatus } from '@/domain/enums';

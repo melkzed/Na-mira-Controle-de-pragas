@@ -31,7 +31,8 @@ import type { Appointment, Customer, PaymentStatus, ServiceOrder, ServiceOrderPr
 import { fmtTime } from '@/lib/date';
 import { cn, formatDocument } from '@/lib/utils';
 import { formatAddress, googleMapsRoute, googleMapsRouteToAddress } from '@/lib/geo';
-import { PreviewBanner, useFieldTech } from '../components/field/FieldTech';
+import { PreviewBanner } from '../components/field/FieldTech';
+import { useFieldTech } from '../components/field/fieldTechContext';
 import { TrapsIndicator, VisitActionsMenu } from '../components/field/VisitActions';
 import { ensureTechnicianStockLocation, technicianStockLocationId } from '@/store/stockLocations';
 
