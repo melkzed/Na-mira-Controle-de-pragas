@@ -155,14 +155,19 @@ function signerOf(appt: Appointment, os?: ServiceOrder): SignerInfo {
 }
 
 /** Produtos aplicados padrão da visita — parte do que já foi registrado na OS
- *  (se o atendimento já foi finalizado antes) ou do plano original. */
+ *  (se o atendimento já foi finalizado antes) ou do plano original.
+ *
+ *  Sem OS gravada, o que existe é plano: o cadastro do serviço diz QUAIS
+ *  produtos costumam entrar, não quanto será aplicado. A lista vem zerada para
+ *  o técnico informar a dose que usou — número pré-preenchido que ninguém
+ *  conferiu vira dose declarada no Laudo e baixa de estoque indevida. */
 function defaultProductRows(appt: Appointment, linkedOs?: ServiceOrder): AppliedProductRow[] {
   if (linkedOs?.products?.length) {
     return linkedOs.products.map((p) => ({ productId: p.productId, qty: p.usedQty, used: true }));
   }
   const svc = getServiceType(appt.serviceTypeId);
-  const base = appt.products?.length ? appt.products.map((p) => ({ productId: p.productId, qty: p.plannedQty })) : (svc?.defaultProducts ?? []);
-  return base.map((b) => ({ productId: b.productId, qty: b.qty, used: true }));
+  const base = appt.products?.length ? appt.products.map((p) => p.productId) : (svc?.defaultProducts ?? []).map((p) => p.productId);
+  return base.map((productId) => ({ productId, qty: 0, used: true }));
 }
 
 /**
