@@ -1248,15 +1248,21 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
   // Certificações/licenças da empresa vencidas — alertadas na geração da OS.
   const expiredLicenses = licenses.filter((l) => l.expiresAt && new Date(l.expiresAt) < new Date());
 
-  // Produtos sugeridos: união dos produtos padrão dos serviços selecionados.
+  /**
+   * Produtos sugeridos: união dos produtos padrão dos serviços selecionados.
+   *
+   * O que o cadastro do serviço diz é QUAIS produtos costumam entrar, não
+   * quanto foi aplicado — isso só quem executou sabe. Por isso a sugestão
+   * entra zerada, igual ao produto escolhido à mão: uma quantidade pré-
+   * preenchida que ninguém conferiu acabava no Laudo como dose aplicada, e
+   * dava baixa de estoque de produto que talvez nem tenha saído do carro.
+   */
   const suggestedProducts = useMemo(() => {
-    const map = new Map<string, number>();
+    const ids = new Set<string>();
     serviceTypeIds.forEach((stId) => {
-      serviceTypes.find((s) => s.id === stId)?.defaultProducts?.forEach((dp) => {
-        map.set(dp.productId, Math.max(map.get(dp.productId) ?? 0, dp.qty));
-      });
+      serviceTypes.find((s) => s.id === stId)?.defaultProducts?.forEach((dp) => ids.add(dp.productId));
     });
-    return [...map.entries()].map(([productId, qty]) => ({ productId, qty }));
+    return [...ids].map((productId) => ({ productId, qty: 0 }));
   }, [serviceTypeIds, serviceTypes]);
 
   // Produtos sugeridos (união dos padrões dos serviços selecionados) entram
@@ -1772,13 +1778,13 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
           </p>
         </Field>
 
-        <Field label="Produtos previstos" hint="Sugeridos automaticamente pelos serviços selecionados — o adicionado na mão entra zerado, informe a quantidade aplicada">
+        <Field label="Produtos previstos" hint="Os serviços selecionados sugerem quais produtos entram; a quantidade começa zerada — informe o que foi aplicado. O que ficar em zero não sai no Laudo nem dá baixa no estoque.">
           <MultiCombobox
             values={products.map((p) => p.productId)}
             onChange={(ids) => { productsTouched.current = true; setProducts((prev) => {
               const kept = prev.filter((p) => ids.includes(p.productId));
               const addedIds = ids.filter((id) => !prev.some((p) => p.productId === id));
-              // Produto escolhido na mão entra zerado: quem sabe a dose é quem
+              // Todo produto entra zerado — sugerido ou escolhido à mão: quem sabe a dose é quem
               // aplica. Sugerir 1 fazia essa quantidade virar "aplicada" no
               // Laudo sem ninguém ter medido nada. O documento só imprime
               // produto com quantidade > 0 (`printDocuments.ts`), então nada
