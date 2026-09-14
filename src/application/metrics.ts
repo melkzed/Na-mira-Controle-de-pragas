@@ -2,10 +2,12 @@
  * Aplicação — cálculo de indicadores (KPIs) do dashboard.
  * Deriva métricas a partir da fonte de dados sem lógica de UI.
  */
-import * as seed from '@/infrastructure/seed/data';
 import { activeTechnicians, centralBalance } from './repository';
-import { useLicensesStore, useProductsStore } from '@/store/entityStores';
+import { monthlySeries } from './financeSeries';
+import { useFinanceStore, useLicensesStore, useProductsStore, useVehiclesStore } from '@/store/entityStores';
 import { useCustomersStore } from '@/store/customersStore';
+import { useAppointmentsStore } from '@/store/appointmentsStore';
+import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import { expiringBatches } from '@/lib/batches';
 import { daysUntil } from '@/lib/utils';
 import { localDayKey } from '@/lib/date';
@@ -50,9 +52,18 @@ export interface DashboardMetrics {
   contractsExpiringSoon: number;
 }
 
+/**
+ * Indicadores do painel.
+ *
+ * Tudo sai das stores, não do seed. O painel é a primeira tela do sistema e
+ * lia o exemplo: cadastrar cliente, cancelar visita, dar baixa num
+ * recebimento ou lançar um produto não mexia em número nenhum, e o painel
+ * divergia dos relatórios, que já liam os dados reais.
+ */
 export function computeDashboard(): DashboardMetrics {
   const day = today();
-  const appts = seed.appointments;
+  const appts = useAppointmentsStore.getState().appointments;
+  const customers = useCustomersStore.getState().customers;
 
   const todayAppointments = appts.filter((a) => isSameDay(a.scheduledStart, day)).length;
   const weekAppointments = appts.filter((a) => isThisWeek(a.scheduledStart)).length;
@@ -63,8 +74,8 @@ export function computeDashboard(): DashboardMetrics {
     ['agendado', 'confirmado', 'em_deslocamento', 'em_atendimento'].includes(a.status),
   ).length;
 
-  const activeCustomers = seed.customers.filter((c) => c.isActive).length;
-  const newCustomers = seed.customers.filter(
+  const activeCustomers = customers.filter((c) => c.isActive).length;
+  const newCustomers = customers.filter(
     (c) => (daysUntil(c.createdAt) ?? -999) >= -30,
   ).length;
 
@@ -77,16 +88,19 @@ export function computeDashboard(): DashboardMetrics {
   const techniciansWorking = busyTechIds.size;
   const techniciansAvailable = activeTechnicians().length - techniciansWorking;
 
-  const paidToday = seed.financeEntries.filter(
+  const paidToday = useFinanceStore.getState().items.filter(
     (e) => e.type === 'receita' && e.status === 'pago' && isSameDay(e.paidAt ?? '', day),
   );
   const revenueToday = paidToday.reduce((s, e) => s + e.amount, 0);
 
-  const revenueMonth = seed.revenueSeries.at(-1)?.receita ?? 0;
-  const expensesMonth = seed.revenueSeries.at(-1)?.despesa ?? 0;
+  // Receita e despesa do mês corrente, dos lançamentos reais — mesma conta do
+  // DRE do Financeiro, para os dois não divergirem.
+  const mesCorrente = monthlySeries().at(-1);
+  const revenueMonth = mesCorrente?.receita ?? 0;
+  const expensesMonth = mesCorrente?.despesa ?? 0;
   const profitMonth = revenueMonth - expensesMonth;
 
-  const lowStockCount = seed.products.filter(
+  const lowStockCount = useProductsStore.getState().items.filter(
     (p) => centralBalance(p.id) <= p.minQuantity,
   ).length;
 
@@ -94,9 +108,9 @@ export function computeDashboard(): DashboardMetrics {
   const expiringCount = expiring.filter((r) => r.level === 'vencendo').length;
   const expiredCount = expiring.filter((r) => r.level === 'vencido').length;
 
-  const vehiclesInOperation = seed.vehicles.filter((v) => v.inOperation).length;
+  const vehiclesInOperation = useVehiclesStore.getState().items.filter((v) => v.inOperation).length;
 
-  const durations = seed.serviceOrders
+  const durations = useServiceOrdersStore.getState().orders
     .filter((so) => so.totalMinutes)
     .map((so) => so.totalMinutes!);
   const avgServiceMinutes = durations.length
@@ -147,26 +161,35 @@ export function computeDashboard(): DashboardMetrics {
   };
 }
 
-/** Consumo de produtos agregado a partir das OS concluídas. */
+/**
+ * Consumo de produtos agregado a partir das OS.
+ *
+ * Só conta quantidade aplicada de verdade: produto que ficou zerado na OS
+ * entrou na lista mas não saiu do estoque. E o produto precisa existir no
+ * cadastro atual — antes a busca era no seed com `!`, então um produto
+ * cadastrado depois virava `undefined` e derrubava o gráfico do painel.
+ */
 export function productConsumption() {
   const map = new Map<string, number>();
-  for (const so of seed.serviceOrders) {
+  for (const so of useServiceOrdersStore.getState().orders) {
     for (const p of so.products) {
+      if (!(p.usedQty > 0)) continue;
       map.set(p.productId, (map.get(p.productId) ?? 0) + p.usedQty);
     }
   }
+  const produtos = useProductsStore.getState().items;
   return [...map.entries()]
-    .map(([productId, qty]) => ({
-      product: seed.products.find((p) => p.id === productId)!,
-      qty,
-    }))
+    .flatMap(([productId, qty]) => {
+      const product = produtos.find((p) => p.id === productId);
+      return product ? [{ product, qty }] : [];
+    })
     .sort((a, b) => b.qty - a.qty);
 }
 
 /** Distribuição de atendimentos por status (para gráfico). */
 export function statusDistribution() {
   const counts: Record<string, number> = {};
-  for (const a of seed.appointments) {
+  for (const a of useAppointmentsStore.getState().appointments) {
     counts[a.status] = (counts[a.status] ?? 0) + 1;
   }
   return counts;

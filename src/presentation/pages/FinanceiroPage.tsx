@@ -14,6 +14,7 @@ import { useBankTransactionsStore, accountBalance, TRANSACTION_SIGN } from '@/st
 import { useCashClosingStore } from '@/store/cashClosingStore';
 import { useInvoicesStore } from '@/store/invoicesStore';
 import { valorRecebimento, somaLiquida } from '@/application/fiscal/liquido';
+import { monthlySeries, netAmount } from '@/application/financeSeries';
 import { useSettingsStore } from '@/store/settingsStore';
 import { uid } from '@/store/createEntityStore';
 import { currentOrgId } from '@/store/appStore';
@@ -49,7 +50,6 @@ const monthsFor = (f: RecurrenceFreq) => PAYABLE_FREQ.find((p) => p.value === f)
 const pad = (n: number) => String(n).padStart(2, '0');
 const toDateStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const today0 = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
-const netAmount = (e: FinanceEntry) => e.amount - (e.discount ?? 0);
 
 /** Intervalo em meses da conta: o personalizado, quando informado, senão o da
  *  frequência padrão escolhida. */
@@ -179,27 +179,9 @@ function VisaoGeralTab() {
    * que vêm com o sistema. Quem conferia o faturamento por aqui estava olhando
    * números que não eram da empresa.
    */
-  const serie = useMemo(() => {
-    const meses: { key: string; month: string; receita: number; despesa: number }[] = [];
-    const base = new Date();
-    for (let i = 11; i >= 0; i -= 1) {
-      const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
-      meses.push({
-        key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-        month: d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''),
-        receita: 0,
-        despesa: 0,
-      });
-    }
-    const porMes = new Map(meses.map((m) => [m.key, m]));
-    entries.filter((e) => e.status !== 'cancelado').forEach((e) => {
-      const alvo = porMes.get((e.dueDate ?? e.createdAt).slice(0, 7));
-      if (!alvo) return;
-      if (e.type === 'receita') alvo.receita += netAmount(e);
-      else alvo.despesa += netAmount(e);
-    });
-    return meses;
-  }, [entries]);
+  // A conta mora em `application/financeSeries`: o painel faz a mesma pergunta
+  // e os dois não podem divergir.
+  const serie = useMemo(() => monthlySeries(12), [entries]); // eslint-disable-line react-hooks/exhaustive-deps
   const mesAtual = serie[serie.length - 1];
   /** Retenções das notas do mês — saem do bruto antes de o dinheiro entrar,
    *  então o lucro real do mês precisa considerá-las. */

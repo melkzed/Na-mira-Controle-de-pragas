@@ -11,10 +11,10 @@ import { Drawer } from '../components/ui/Drawer';
 import { Field, Input, Select } from '../components/ui/Field';
 import { useLeadsStore, type LeadInput } from '@/store/leadsStore';
 import { getUser } from '@/application/repository';
-import { users } from '@/infrastructure/seed/data';
 import { CRM_STAGE_META, type CrmStage } from '@/domain/enums';
 import type { CrmLead } from '@/domain/types';
-import { formatCompactCurrency } from '@/lib/utils';
+import { formatCompactCurrency, sortByName } from '@/lib/utils';
+import { useUsersStore } from '@/store/entityStores';
 
 const STAGES: CrmStage[] = ['novo_contato', 'orcamento', 'negociacao', 'follow_up', 'ganho', 'perdido'];
 const STAGE_ORDER = STAGES;
@@ -128,12 +128,19 @@ function LeadForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
   const [source, setSource] = useState('Indicação');
   const [stage, setStage] = useState<CrmStage>('novo_contato');
   const [value, setValue] = useState('');
-  const [ownerId, setOwnerId] = useState(users[0].id);
+  /** Responsáveis possíveis: a equipe cadastrada, não a do exemplo. Lendo o
+   *  seed, quem entrou depois não aparecia na lista, e o padrão podia gravar
+   *  no lead um `ownerId` que não existe na base — daí o "—" no responsável. */
+  const equipe = useUsersStore((st) => sortByName(st.items.filter((u) => u.role !== 'tecnico' && u.isActive)));
+  /** Id estável para as dependências do efeito: `equipe` é um array novo a
+   *  cada render e faria o formulário se limpar sozinho enquanto digita. */
+  const donoPadrao = equipe[0]?.id ?? '';
+  const [ownerId, setOwnerId] = useState(donoPadrao);
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
-    if (open) { setName(''); setCompany(''); setPhone(''); setSource('Indicação'); setStage('novo_contato'); setValue(''); setOwnerId(users[0].id); setTouched(false); }
-  }, [open]);
+    if (open) { setName(''); setCompany(''); setPhone(''); setSource('Indicação'); setStage('novo_contato'); setValue(''); setOwnerId(donoPadrao); setTouched(false); }
+  }, [open, donoPadrao]);
 
   const submit = () => {
     setTouched(true);
@@ -162,7 +169,8 @@ function LeadForm({ open, onClose, onSave }: { open: boolean; onClose: () => voi
           </Field>
           <Field label="Responsável" className="col-span-2">
             <Select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-              {users.filter((u) => u.role !== 'tecnico').map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              <option value="">—</option>
+              {equipe.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </Select>
           </Field>
         </div>

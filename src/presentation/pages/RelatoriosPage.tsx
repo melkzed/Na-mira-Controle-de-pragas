@@ -7,10 +7,9 @@ import { Button } from '../components/ui/Button';
 import { Card, CardBody } from '../components/ui/Card';
 import { Icon } from '../components/ui/Icon';
 import { DateInput, Input, Select } from '../components/ui/Field';
-import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getServiceType, getUser } from '@/application/repository';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
-import { useProductsStore, useUsersStore } from '@/store/entityStores';
+import { useProductsStore, useServiceTypesStore, useUsersStore } from '@/store/entityStores';
 import { useCustomersStore } from '@/store/customersStore';
 import { downloadCsv, downloadXls } from '@/lib/export';
 import { printDataReport } from '@/lib/printReports';
@@ -57,6 +56,9 @@ export function RelatoriosPage() {
   const [highlight, setHighlight] = useState<string | null>(null);
   const customers = useCustomersStore((s) => s.customers);
   const technicians = useUsersStore((s) => sortByName(s.items.filter((u) => u.role === 'tecnico')));
+  // Serviços cadastrados, não os do exemplo: um serviço criado depois não
+  // aparecia no filtro, e o relatório dele era impossível de isolar.
+  const serviceTypes = useServiceTypesStore((st) => sortByName(st.items));
   useServiceOrdersStore((s) => s.orders); // reatividade das contagens
   useProductsStore((s) => s.items);
 
@@ -181,7 +183,7 @@ export function RelatoriosPage() {
             </Select>
             <Select value={f.serviceTypeId} onChange={(e) => set({ serviceTypeId: e.target.value })} aria-label="Filtrar por serviço">
               <option value="">Todos os serviços</option>
-              {seed.serviceTypes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {serviceTypes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
             <Select value={f.status} onChange={(e) => set({ status: e.target.value })} aria-label="Filtrar por status">
               <option value="">Todos os status</option>

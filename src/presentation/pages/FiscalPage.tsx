@@ -7,10 +7,9 @@ import { Badge } from '../components/ui/Badge';
 import { Drawer } from '../components/ui/Drawer';
 import { DateInput, Field, Input, Select } from '../components/ui/Field';
 import { Table, type Column } from '../components/ui/Table';
-import * as seed from '@/infrastructure/seed/data';
 import { getCustomer, getUser } from '@/application/repository';
 import { useInvoicesStore } from '@/store/invoicesStore';
-import { useLicensesStore } from '@/store/entityStores';
+import { useLicensesStore, useUsersStore } from '@/store/entityStores';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useOrgProfileStore } from '@/store/orgProfileStore';
 import { uid } from '@/store/createEntityStore';
@@ -19,7 +18,7 @@ import { toast } from '@/store/toastStore';
 import { downloadNfseXml, printNfse } from '@/lib/printInvoice';
 import { Download, FileCode } from 'lucide-react';
 import type { Invoice, License } from '@/domain/types';
-import { daysUntil, formatCurrency } from '@/lib/utils';
+import { daysUntil, formatCurrency, sortByName } from '@/lib/utils';
 import { dateInputToIso, fmtDate } from '@/lib/date';
 
 export function FiscalPage() {
@@ -126,6 +125,9 @@ function LicenseForm({ open, onClose, onSave, initial }: {
   const [name, setName] = useState('');
   const [issuer, setIssuer] = useState('');
   const [number, setNumber] = useState('');
+  /** A equipe cadastrada, não a do exemplo: técnico admitido depois não
+   *  aparecia na lista de responsável técnico da licença. */
+  const equipe = useUsersStore((st) => sortByName(st.items.filter((u) => u.isActive)));
   const [responsibleId, setResponsibleId] = useState('');
   const [issuedAt, setIssuedAt] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
@@ -165,7 +167,7 @@ function LicenseForm({ open, onClose, onSave, initial }: {
         <Field label="Documento" required className="col-span-2"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Alvará Sanitário" />{touched && !name.trim() && <span className="mt-1 block text-xs text-danger">Informe o documento.</span>}</Field>
         <Field label="Órgão emissor"><Input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="Vigilância Sanitária" /></Field>
         <Field label="Número"><Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="VS-2025-0001" /></Field>
-        <Field label="Responsável técnico" className="col-span-2"><Select value={responsibleId} onChange={(e) => setResponsibleId(e.target.value)}><option value="">—</option>{seed.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></Field>
+        <Field label="Responsável técnico" className="col-span-2"><Select value={responsibleId} onChange={(e) => setResponsibleId(e.target.value)}><option value="">—</option>{equipe.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</Select></Field>
         <Field label="Emissão"><DateInput type="date" value={issuedAt} onChange={(e) => setIssuedAt(e.target.value)} /></Field>
         <Field label="Validade"><DateInput type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} /></Field>
       </div>

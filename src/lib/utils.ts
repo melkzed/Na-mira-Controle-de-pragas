@@ -74,10 +74,21 @@ export function stringToHue(str: string): number {
 
 export function daysUntil(dateISO?: string): number | null {
   if (!dateISO) return null;
-  const target = new Date(dateISO).getTime();
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return Math.ceil((target - now.getTime()) / (1000 * 60 * 60 * 24));
+  // Data pura (`YYYY-MM-DD`) precisa virar meia-noite LOCAL: `new Date` a lê
+  // como UTC e, num fuso negativo como o do Brasil, o dia já vem atrasado.
+  const alvo = /^\d{4}-\d{2}-\d{2}$/.test(dateISO)
+    ? new Date(Number(dateISO.slice(0, 4)), Number(dateISO.slice(5, 7)) - 1, Number(dateISO.slice(8, 10)))
+    : new Date(dateISO);
+  if (Number.isNaN(alvo.getTime())) return null;
+  // A conta é entre DIAS, não entre instantes. Comparando instantes, um lote
+  // que vencia hoje às 23h devolvia 1 ("vence amanhã") e ficava de fora da
+  // contagem de vencidos — o painel e o relatório de vencimentos deixavam
+  // passar exatamente o que precisavam apontar.
+  alvo.setHours(0, 0, 0, 0);
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  // `|| 0` troca o -0 do arredondamento por 0: "-0 dias" aparecia na tela.
+  return Math.round((alvo.getTime() - hoje.getTime()) / 86400000) || 0;
 }
 
 /**
