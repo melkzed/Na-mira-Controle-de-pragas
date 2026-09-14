@@ -22,8 +22,8 @@ import { Avatar } from '../components/ui/Avatar';
 import { Icon } from '../components/ui/Icon';
 import { AppointmentStatusBadge } from '../components/StatusBadge';
 import { computeDashboard, productConsumption } from '@/application/metrics';
+import { monthlySeries } from '@/application/financeSeries';
 import { appointmentsByDay, getCustomer, getServiceType, getUser } from '@/application/repository';
-import * as seed from '@/infrastructure/seed/data';
 import { APPOINTMENT_STATUS_META } from '@/domain/enums';
 import { daysUntil, formatCompactCurrency, formatCurrency, formatNumber } from '@/lib/utils';
 import { fmtTime } from '@/lib/date';
@@ -63,14 +63,35 @@ export function DashboardPage() {
     };
   }, [entries]);
   const consumption = useMemo(() => productConsumption().slice(0, 5), []);
+
+  /** Faturamento dos últimos 6 meses, dos lançamentos reais. O gráfico lia uma
+   *  série fixa do exemplo: mostrava um faturamento que não era o da empresa e
+   *  não mexia quando se lançava ou baixava uma conta. */
+  const serie = useMemo(() => monthlySeries(6), [entries]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Variação da receita contra o mês anterior — antes era um "+8%" fixo no
+   *  código, que continuava ali com qualquer número na tela. */
+  const variacao = useMemo(() => {
+    const atual = serie.at(-1)?.receita ?? 0;
+    const anterior = serie.at(-2)?.receita ?? 0;
+    if (!anterior) return null;
+    return Math.round(((atual - anterior) / anterior) * 100);
+  }, [serie]);
   const notifications = useAppStore((s) => s.notifications);
   const todayIso = new Date().toISOString();
   const todayAppts = appointmentsByDay(todayIso);
   const pendingConfirmations = useAppointmentsStore((s) => s.appointments.filter((a) => a.status === 'agendado').length);
 
+  // Contagem por status das visitas reais — antes vinha do seed, então o
+  // gráfico não mudava ao confirmar, cancelar ou finalizar um atendimento.
+  const appointments = useAppointmentsStore((st) => st.appointments);
+  const statusCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    appointments.forEach((a) => { c[a.status] = (c[a.status] ?? 0) + 1; });
+    return c;
+  }, [appointments]);
   const statusData = Object.entries(APPOINTMENT_STATUS_META).map(([key, meta]) => ({
     name: meta.label,
-    value: seed.appointments.filter((a) => a.status === key).length,
+    value: statusCounts[key] ?? 0,
     tone: meta.tone,
   })).filter((d) => d.value > 0);
 
@@ -123,11 +144,15 @@ export function DashboardPage() {
           <CardHeader
             title="Faturamento x Despesas"
             subtitle="Últimos 6 meses"
-            action={<Badge tone="success" dot>+8% vs. mês anterior</Badge>}
+            action={variacao == null ? undefined : (
+              <Badge tone={variacao >= 0 ? 'success' : 'danger'} dot>
+                {variacao >= 0 ? '+' : ''}{variacao}% vs. mês anterior
+              </Badge>
+            )}
           />
           <CardBody>
             <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={seed.revenueSeries} margin={{ left: -18, right: 8, top: 8 }}>
+              <AreaChart data={serie} margin={{ left: -18, right: 8, top: 8 }}>
                 <defs>
                   <linearGradient id="gRec" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />

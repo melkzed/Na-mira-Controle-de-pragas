@@ -102,7 +102,9 @@ export function technicianBalances(locationId: string) {
 }
 
 export function lowStockProducts() {
-  return seed.products
+  // Lê a store, não o seed: produto cadastrado depois nunca entrava no aviso
+  // de estoque baixo, justamente o que a empresa acabou de passar a usar.
+  return useProductsStore.getState().items
     .map((p) => ({ product: p, qty: centralBalance(p.id) }))
     .filter(({ product, qty }) => qty <= product.minQuantity);
 }

@@ -27,6 +27,9 @@ export function ProdutosPage() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [query, setQuery] = useState('');
+  /** As categorias de produto são uma lista fixa do domínio (inseticida,
+   *  rodenticida…), sem cadastro na interface e sem store — por isso vêm do
+   *  seed, ao contrário do resto da tela. */
   const catName = (id?: string) => seed.productCategories.find((c) => c.id === id)?.name ?? '—';
 
   const filtered = useMemo(
