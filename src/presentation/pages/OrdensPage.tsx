@@ -643,6 +643,30 @@ const OsFormBody = forwardRef<OsFormHandle, { initial: ServiceOrder | null; pres
     return [...vistas].map(([name, qty]) => ({ name, qty }));
   }, [customerId, initial, areas, structureExtras]);
 
+  /**
+   * Ao escolher o cliente numa OS nova, a estrutura do local cadastrada nele
+   * já entra marcada.
+   *
+   * Antes ela era só sugestão: se ninguém clicasse ambiente por ambiente, a OS
+   * ia sem área nenhuma e o Certificado saía com "Área tratada: —" mesmo o
+   * cliente tendo a casa inteira cadastrada. Marcar o que o cliente tem é o
+   * padrão certo; desmarcar o que não foi tratado é um toque.
+   *
+   * Só acontece em OS nova e só quando nada foi marcado ainda — editar uma OS
+   * salva nunca sobrepõe a escolha de quem a preencheu.
+   */
+  const clientePreMarcado = useRef('');
+  useEffect(() => {
+    if (initial) return;
+    if (clientePreMarcado.current === customerId) return;
+    clientePreMarcado.current = customerId;
+    if (!customerId) return;
+    setAreaQty((atual) => (Object.keys(atual).length ? atual : Object.fromEntries(
+      structureAreas.map(({ area, qty }) => [area.id, Math.max(1, qty)]),
+    )));
+    setCustomAreas((atual) => (atual.length ? atual : structureExtras.map(({ name, qty }) => ({ name, qty: Math.max(1, qty) }))));
+  }, [customerId, structureAreas, structureExtras, initial]);
+
   const temEstrutura = structureAreas.length + structureExtras.length > 0;
   /** O catálogo mostra o que sobrou — o que já subiu para a faixa do cliente
    *  não se repete embaixo. */
