@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   CheckCircle2, ChevronRight, Clock, FileText, Info, Map as MapIcon, MapPin, Navigation,
-  Pencil, PhoneCall, Play, TriangleAlert,
+  Pencil, PhoneCall, Play, TriangleAlert, Users,
 } from 'lucide-react';
 import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -20,7 +20,7 @@ import { SignerFields } from '../components/SignerFields';
 import { signerMissing } from '@/lib/signer';
 import { useSettingsStore } from '@/store/settingsStore';
 import { releasedAppointmentsForTechnician, getCustomer, getProduct, getServiceType, serviceOrderForAppointment } from '@/application/repository';
-import { useProductsStore } from '@/store/entityStores';
+import { useProductsStore, useUsersStore } from '@/store/entityStores';
 import { useAppointmentsStore } from '@/store/appointmentsStore';
 import { useServiceOrdersStore } from '@/store/serviceOrdersStore';
 import { useStockStore } from '@/store/stockStore';
@@ -930,6 +930,12 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
   // A assinatura do técnico não é mais colhida no atendimento: vem do cadastro
   // dele (Técnicos → assinatura), como o cliente pediu. Só a assinatura de
   // quem recebeu o serviço é capturada aqui.
+  /** Os outros técnicos escalados para esta mesma visita. */
+  const equipe = useUsersStore((st) => st.items);
+  const colegas = ((linkedOs?.technicianIds?.length ? linkedOs.technicianIds : [linkedOs?.technicianId])
+    .filter((id): id is string => !!id && id !== techId))
+    .map((id) => equipe.find((u) => u.id === id)?.name)
+    .filter((n): n is string => !!n);
   const storedSig = useSettingsStore((s) => s.signatures[techId]);
   const signature = appt.technicianSignature ?? storedSig;
   const [customerSignature, setCustomerSignature] = useState<string | undefined>(appt.customerSignature);
@@ -1007,6 +1013,17 @@ function NextVisit({ appt, techId, onNavigate, onDetail, onStart, onFinish, onEd
               <p className="text-xs font-semibold uppercase tracking-wide text-warning">Observações do contrato</p>
               <p className="text-foreground">{cust.permanentNotes}</p>
             </div>
+          </div>
+        )}
+        {/* Com quem ele está nesta visita. A OS já sabia que o atendimento era
+            de dois, mas nenhum dos técnicos via isso: cada um abria a visita
+            achando que ia sozinho. */}
+        {colegas.length > 0 && (
+          <div className="flex items-center gap-2 rounded-xl border border-info/30 bg-info-soft/40 p-3 text-sm">
+            <Users size={16} className="shrink-0 text-info" />
+            <p className="text-foreground">
+              <span className="font-medium">Atendimento em dupla</span> — com {colegas.join(' e ')}.
+            </p>
           </div>
         )}
         <div className="flex flex-wrap gap-1.5">

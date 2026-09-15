@@ -40,6 +40,12 @@ export function printServiceOrder(input: ServiceOrder, output: DocumentOutput = 
   const techIds = so.technicianIds?.length ? so.technicianIds : [so.technicianId];
   const techName = getUser(techIds[0])?.name ?? '—';
   const helperName = techIds[1] ? getUser(techIds[1])?.name : undefined;
+  // Com mais de um técnico o atendimento é de uma dupla, e o documento precisa
+  // dizer isso: dois campos separados ("Técnico" e "Ajudante") não deixavam
+  // claro que os dois estiveram na mesma visita, e nenhum dos dois sabia com
+  // quem estava escalado.
+  const equipeNomes = techIds.map((id) => getUser(id)?.name).filter(Boolean) as string[];
+  const emDupla = equipeNomes.length > 1;
   const sellerName = so.sellerId ? getUser(so.sellerId)?.name : undefined;
   const dataHora = fmtDateTime(so.startedAt ?? so.executionDate ?? so.createdAt);
   const inicio = so.startedAt ? fmtTime(so.startedAt) : '—';
@@ -93,16 +99,21 @@ export function printServiceOrder(input: ServiceOrder, output: DocumentOutput = 
       <span><strong>Data/Hora Execução:</strong> ${esc(dataHora)}</span>
       <span><strong>Início:</strong> ${esc(inicio)}</span>
       <span><strong>Término:</strong> ${esc(termino)}</span>
-      <span><strong>Técnico:</strong> ${esc(techName)}</span>
-      <span><strong>Ajudante:</strong> ${esc(helperName ?? '—')}</span>
+      ${emDupla
+        ? `<span><strong>Equipe (${equipeNomes.length}):</strong> ${esc(equipeNomes.join(' e '))}</span>`
+        : `<span><strong>Técnico:</strong> ${esc(techName)}</span><span><strong>Ajudante:</strong> ${esc(helperName ?? '—')}</span>`}
       ${sellerName ? `<span><strong>Vendedor:</strong> ${esc(sellerName)}</span>` : ''}
     </div>
 
     <p class="doctitle">ORDEM DE SERVIÇO<span class="sub">Controle de pragas</span></p>
     <p class="center">Validade ${esc(validade)}</p>
 
-    <table><thead><tr><th>Serviço</th><th>Validade</th></tr></thead>
-    <tbody><tr><td>${esc(serviceNames(so))}</td><td>${esc(warrantyText(so))}</td></tr></tbody></table>
+    <!-- Garantia e validade são coisas diferentes e saem em colunas próprias:
+         a garantia é o prazo que a empresa assume, a validade é a data até
+         quando o serviço protege. A coluna única rotulada "Validade" mostrava
+         o prazo da garantia, e as duas viravam a mesma informação. -->
+    <table><thead><tr><th>Serviço</th><th>Garantia</th><th>Validade</th></tr></thead>
+    <tbody><tr><td>${esc(serviceNames(so))}</td><td>${esc(warrantyText(so))}</td><td>${esc(validade)}</td></tr></tbody></table>
 
     <div class="valorbox">
       <div class="vb-left">
